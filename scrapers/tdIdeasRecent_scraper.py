@@ -88,6 +88,28 @@ class TradingViewIdeasRecentScraper(FeedScraper):
                         debug_warning(f"Skipping idea with no content: {title}")
                         continue
                     
+                    # Extract comments and boost information
+                    comments_count = idea.get('comments_count', 0)
+                    likes_count = idea.get('likes_count', 0)
+                    
+                    # Create comments_content string
+                    comments_content = f"COMMENTS: {comments_count}"
+                    # Note: Individual comment messages are not accessible via public API
+                    # Only the count is available
+                    
+                    # Create likes_content string  
+                    likes_content = ""
+                    if likes_count > 0:
+                        likes_content = f"{likes_count} PEOPLE FOUND THIS USEFUL"
+                    
+                    # Append comments and likes info to content
+                    if comments_content or likes_content:
+                        content += "\n\n"
+                        if likes_content:
+                            content += likes_content + "\n"
+                        if comments_content:
+                            content += comments_content
+                    
                     # Handle timestamp - the API returns date_timestamp as Unix timestamp
                     date_timestamp = idea.get('date_timestamp')
                     if date_timestamp:

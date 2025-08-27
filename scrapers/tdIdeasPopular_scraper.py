@@ -89,6 +89,39 @@ class TradingViewIdeasPopularScraper(FeedScraper):
                         debug_warning(f"Skipping idea with no content: {title}")
                         continue
                     
+                    # Extract comments and boost information
+                    comments_count = idea.get('comments_count', 0)
+                    boosts_count = idea.get('boosts_count', 0)
+                    
+                    # Convert to integers if they're strings
+                    try:
+                        comments_count = int(comments_count) if comments_count else 0
+                    except (ValueError, TypeError):
+                        comments_count = 0
+                    
+                    try:
+                        boosts_count = int(boosts_count) if boosts_count else 0
+                    except (ValueError, TypeError):
+                        boosts_count = 0
+                    
+                    # Create comments_content string
+                    comments_content = f"COMMENTS: {comments_count}"
+                    # Note: Individual comment messages are not accessible via public API
+                    # Only the count is available
+                    
+                    # Create likes_content string  
+                    likes_content = ""
+                    if boosts_count > 0:
+                        likes_content = f"{boosts_count} PEOPLE FOUND THIS USEFUL"
+                    
+                    # Append comments and likes info to content
+                    if comments_content or likes_content:
+                        content += "\n\n"
+                        if likes_content:
+                            content += likes_content + "\n"
+                        if comments_content:
+                            content += comments_content
+                    
                     # Handle publication datetime
                     timePosted = idea.get('publication_datetime')
                     if not timePosted:
@@ -186,9 +219,9 @@ class TradingViewIdeasPopularScraper(FeedScraper):
         # Boosts count
         boosts_count_tag = article_tag.find('button', class_=lambda x: x and x.startswith('boostButton-'))
         if boosts_count_tag:
-            aria_label = boosts_count_tag.get('aria-label')
-            if aria_label:
-                article_json["boosts_count"] = aria_label.split()[0]
+            button_text = boosts_count_tag.get_text().strip()
+            if button_text and button_text.isdigit():
+                article_json["boosts_count"] = int(button_text)
             else:
                 article_json["boosts_count"] = 0
         else:
