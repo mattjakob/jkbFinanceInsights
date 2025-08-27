@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Add New Entry - JKB Finance Terminal{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header bg-secondary text-white">
+                <h3 class="mb-0">
+                    <i class="bi bi-plus-circle"></i> Add New Terminal Entry
+                </h3>
+            </div>
+            <div class="card-body">
+                <form method="post" action="/add">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="type" class="form-label text-light">Type *</label>
+                                <select class="form-select bg-dark text-light border-secondary" id="type" name="type" required>
+                                    <option value="">Select type...</option>
+                                    {% for feed in feed_names %}
+                                    <option value="{{ feed.name }}">{{ feed.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="title" class="form-label text-light">Title *</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary" id="title" name="title" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="timePosted" class="form-label text-light">Time Posted</label>
+                                <input type="datetime-local" class="form-control bg-dark text-light border-secondary" id="timePosted" name="timePosted">
+                                <small class="form-text text-muted">Leave empty to use current time</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="content" class="form-label text-light">Content *</label>
+                        <textarea class="form-control bg-dark text-light border-secondary" id="content" name="content" rows="4" required></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="symbol" class="form-label text-light">Symbol</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary" id="symbol" name="symbol" placeholder="AAPL, GOOGL, BTC, etc.">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="exchange" class="form-label text-light">Exchange</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary" id="exchange" name="exchange" placeholder="NASDAQ, NYSE, CRYPTO, etc.">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="imageURL" class="form-label text-light">Image URL</label>
+                        <input type="url" class="form-control bg-dark text-light border-secondary" id="imageURL" name="imageURL" placeholder="https://example.com/image.jpg">
+                    </div>
+
+                    <div class="card bg-dark border-secondary mt-4">
+                        <div class="card-header bg-secondary">
+                            <h5 class="mb-0 text-light">
+                                <i class="bi bi-robot"></i> AI Analysis (Optional)
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="AITextSummary" class="form-label text-light">AI Text Summary</label>
+                                        <textarea class="form-control bg-dark text-light border-secondary" id="AITextSummary" name="AITextSummary" rows="3"></textarea>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="AIImageSummary" class="form-label text-light">AI Image Summary</label>
+                                        <textarea class="form-control bg-dark text-light border-secondary" id="AIImageSummary" name="AIImageSummary" rows="3"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="AISummary" class="form-label text-light">Overall AI Summary</label>
+                                <textarea class="form-control bg-dark text-light border-secondary" id="AISummary" name="AISummary" rows="3"></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="AIAction" class="form-label text-light">Recommended AI Action</label>
+                                <select class="form-select bg-dark text-light border-secondary" id="AIAction" name="AIAction">
+                                    <option value="">Select action...</option>
+                                    <option value="BUY">BUY</option>
+                                    <option value="SELL">SELL</option>
+                                    <option value="HOLD">HOLD</option>
+                                    <option value="WATCH">WATCH</option>
+                                    <option value="ANALYZE">ANALYZE</option>
+                                </select>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="AIConfidence" class="form-label text-light">AI Confidence (0-1)</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" id="AIConfidence" name="AIConfidence" min="0" max="1" step="0.01" placeholder="0.85">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="AIEventTime" class="form-label text-light">AI Event Time</label>
+                                        <input type="datetime-local" class="form-control bg-dark text-light border-secondary" id="AIEventTime" name="AIEventTime">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="AILevels" class="form-label text-light">AI Levels</label>
+                                        <input type="text" class="form-control bg-dark text-light border-secondary" id="AILevels" name="AILevels" placeholder="S: 108319.86, R: 112662.27">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-circle"></i> Add Entry
+                        </button>
+                        <a href="/" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Add form submission logging
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const timePostedValue = document.getElementById('timePosted').value;
+            const aiEventTimeValue = document.getElementById('AIEventTime').value;
+            
+            console.log('=== FORM SUBMISSION DEBUG ===');
+            console.log('timePosted value:', timePostedValue);
+            console.log('timePosted type:', typeof timePostedValue);
+            console.log('timePosted length:', timePostedValue ? timePostedValue.length : 0);
+            console.log('AIEventTime value:', aiEventTimeValue);
+            console.log('AIEventTime type:', typeof aiEventTimeValue);
+            
+            // Log all form data
+            const formData = new FormData(form);
+            console.log('All form data:');
+            for (let [key, value] of formData.entries()) {
+                console.log(`  ${key}: '${value}' (${typeof value})`);
+            }
+            
+            // If timePosted is empty, show warning
+            if (!timePostedValue || timePostedValue.trim() === '') {
+                console.warn('WARNING: timePosted is empty, will use current time');
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

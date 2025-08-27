@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}JKB Finance Terminal{% endblock %}
+
+{% block content %}
+<div class="terminal-header mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <h1 class="terminal-title mb-0">
+            JKB Finance Terminal
+        </h1>
+    </div>
+</div>
+
+<!-- Control Panel -->
+<div class="control-panel mb-4">
+    <div class="row g-3 align-items-center">
+        <div class="col-auto">
+            <label class="control-label">SYMBOL:</label>
+            <select class="form-select form-select-sm control-select">
+                <option selected>BITSTAMP:BTCUSD</option>
+                <option>BINANCE:BTCUSDT</option>
+                <option>COINBASE:BTC-USD</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="control-label">FEED TYPE:</label>
+            <select class="form-select form-select-sm control-select">
+                <option selected>ALL</option>
+                <option>NEWS</option>
+                <option>ANALYSIS</option>
+                <option>ALERTS</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="control-label">INTERVAL:</label>
+            <select class="form-select form-select-sm control-select">
+                <option selected>60s</option>
+                <option>5m</option>
+                <option>15m</option>
+                <option>1h</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="control-label">ITEMS:</label>
+            <select class="form-select form-select-sm control-select">
+                <option selected>10</option>
+                <option>25</option>
+                <option>50</option>
+                <option>100</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="aiCheck" checked>
+                <label class="form-check-label control-label" for="aiCheck">
+                    AI
+                </label>
+            </div>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary btn-sm update-btn">UPDATE</button>
+        </div>
+        <div class="col-auto">
+            <a href="/add" class="btn btn-outline-light btn-sm add-entry-btn">
+                <i class="bi bi-plus-circle"></i> ADD ENTRY
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- AI Engine Status -->
+<div class="ai-status mb-3">
+    <span class="ai-status-text">[AI ENGINE] Running multimodal analysis for IDEAS-2025-08-27T00:39:57.245Z_7af2af68 with image</span>
+</div>
+
+{% if insights %}
+    <div class="table-responsive">
+        <table class="table table-dark finance-table">
+            <thead>
+                <tr>
+                    <th>TYPE</th>
+                    <th>AGE</th>
+                    <th>TITLE</th>
+                    <th>SYMBOL/EXCHANGE</th>
+                    <th>AI SUMMARY</th>
+                    <th>ACTION</th>
+                    <th>CONF%</th>
+                    <th>EVENT TIME</th>
+                    <th>LEVELS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for insight in insights %}
+                <tr class="insight-row" data-insight-id="{{ insight.id }}">
+                    <td class="type-col">
+                        {% if insight.type == 'TD NEWS' %}
+                            <i class="bi bi-newspaper type-icon type-document" title="{{ insight.feed_description or insight.type }}"></i>
+                        {% elif insight.type == 'TD OPINIONS' %}
+                            <i class="bi bi-chat-quote type-icon type-analysis" title="{{ insight.feed_description or insight.type }}"></i>
+                        {% elif 'IDEAS' in insight.type %}
+                            <i class="bi bi-lightbulb type-icon type-document" title="{{ insight.feed_description or insight.type }}"></i>
+                        {% else %}
+                            <i class="bi bi-geo-alt type-icon type-location" title="{{ insight.feed_description or insight.type }}"></i>
+                        {% endif %}
+                    </td>
+                    <td class="age-col">
+                        <span class="age-text" data-time-posted="{{ insight.timePosted }}">-</span>
+                    </td>
+                    <td class="title-col">
+                        <div class="title-content">
+                            <strong>{{ insight.title[:80] }}{% if insight.title|length > 80 %}...{% endif %}</strong>
+                        </div>
+                    </td>
+                    <td class="symbol-exchange-col">
+                        {% if insight.symbol or insight.exchange %}
+                            <div class="symbol-exchange-content">
+                                {% if insight.symbol %}
+                                    <strong class="symbol">{{ insight.symbol }}</strong>
+                                {% endif %}
+                                {% if insight.exchange %}
+                                    <span class="exchange text-muted">/ {{ insight.exchange }}</span>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="summary-col">
+                        {% if insight.AISummary %}
+                            {{ insight.AISummary[:100] }}{% if insight.AISummary|length > 100 %}...{% endif %}
+                        {% else %}
+                            <div class="loading-spinner"></div>
+                        {% endif %}
+                    </td>
+                    <td class="action-col">
+                        {% if insight.AIAction %}
+                            {% if 'SELL' in insight.AIAction|upper %}
+                                <span class="action-badge action-sell">SELL</span>
+                            {% elif 'BUY' in insight.AIAction|upper %}
+                                <span class="action-badge action-buy">BUY</span>
+                            {% elif 'HOLD' in insight.AIAction|upper %}
+                                <span class="action-badge action-hold">HOLD</span>
+                            {% else %}
+                                <span class="action-badge action-neutral">{{ insight.AIAction[:4]|upper }}</span>
+                            {% endif %}
+                        {% else %}
+                            <div class="loading-spinner"></div>
+                        {% endif %}
+                    </td>
+                    <td class="confidence-col">
+                        {% if insight.AIConfidence %}
+                            <span class="confidence-value">{{ "%.0f"|format(insight.AIConfidence * 100) }}%</span>
+                        {% else %}
+                            <div class="loading-spinner"></div>
+                        {% endif %}
+                    </td>
+                    <td class="time-col">
+                        {% if insight.AIEventTime %}
+                            {{ insight.AIEventTime[-5:] if ':' in insight.AIEventTime else insight.AIEventTime[:5] }}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="levels-col">
+                        {% if insight.AILevels %}
+                            <span class="levels-text">{{ insight.AILevels[:30] }}{% if insight.AILevels|length > 30 %}...{% endif %}</span>
+                        {% else %}
+                            <div class="loading-spinner"></div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="empty-state">
+        <div class="terminal-prompt">
+            <span class="prompt-symbol">$</span>
+            <span class="prompt-text">No insights found. Run 'add_insight' to create your first entry.</span>
+        </div>
+        <div class="mt-4 text-center">
+            <a href="/add" class="btn btn-success">
+                <i class="bi bi-plus-circle"></i> ADD FIRST INSIGHT
+            </a>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

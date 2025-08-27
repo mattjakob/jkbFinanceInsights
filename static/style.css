@@ -1,0 +1,659 @@
+/* JKB Finance Terminal Monochromatic Theme - Centralized Colors */
+
+/* Ensure CSS variables are supported */
+@supports (--custom: property) {
+    :root {
+    /* Base Colors */
+    --color-bg: #000000;
+    --color-primary: #ffffff;
+    --color-secondary: #1a1a1a;
+    --color-text: #ffffff;
+    --color-border: #333333;
+    --color-hover: #1a1a1a;
+    --color-transparent: transparent;
+    
+    /* Extended Color Palette */
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --color-gray-light: #1a1a1a;
+    --color-gray-medium: #333333;
+    --color-gray-dark: #000000;
+    
+    /* Opacity and Shadow Colors */
+    --color-shadow-white: rgba(255, 255, 255, 0.25);
+    --color-shadow-white-light: rgba(255, 255, 255, 0.3);
+    --color-shadow-white-very-light: rgba(255, 255, 255, 0.1);
+    
+    /* Status Colors */
+    --color-success: #ffffff;
+    --color-info: #ffffff;
+    --color-warning: #ffffff;
+    --color-danger: #ffffff;
+    
+    /* Interactive States */
+    --color-focus: #ffffff;
+    --color-disabled: rgba(255, 255, 255, 0.7);
+    
+    /* Opacity Values */
+    --opacity-disabled: 0.7;
+    
+    /* Fallback Values */
+    --fallback-bg: #000000;
+    --fallback-text: #ffffff;
+    --fallback-border: #333333;
+    }
+}
+
+/* Fallback styles for browsers without CSS variable support */
+@supports not (--custom: property) {
+    .terminal-body {
+        background-color: #000000;
+        color: #ffffff;
+    }
+    
+    .terminal-nav {
+        background-color: transparent !important;
+        border-bottom: 1px solid #333333;
+    }
+    
+    .terminal-brand {
+        color: #ffffff !important;
+    }
+    
+    .control-panel {
+        border: 1px solid #333333;
+    }
+    
+    .control-select {
+        border: 1px solid #333333;
+        color: #ffffff;
+    }
+    
+    .update-btn {
+        background-color: #ffffff;
+        color: #000000;
+    }
+    
+    .finance-table {
+        border: 1px solid #333333;
+    }
+    
+    .finance-table thead th {
+        border-bottom: 2px solid #333333;
+        color: #ffffff;
+    }
+    
+    .finance-table tbody tr {
+        border-bottom: 1px solid #333333;
+    }
+}
+
+.terminal-body {
+    background-color: var(--color-bg, var(--fallback-bg));
+    color: var(--color-text, var(--fallback-text));
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 0;
+    padding: 0;
+}
+
+.terminal-nav {
+    background-color: var(--color-transparent) !important;
+    border-bottom: 1px solid var(--color-border);
+    padding: 0.5rem 0;
+}
+
+.terminal-brand {
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: var(--color-primary) !important;
+}
+
+.terminal-main {
+    padding: 1.5rem;
+    max-width: none;
+    background-color: var(--color-transparent);
+}
+
+.terminal-header {
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.terminal-title {
+    color: var(--color-text);
+    font-size: 1.8rem;
+    font-weight: bold;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    letter-spacing: 0.5px;
+}
+
+/* Control Panel Styles */
+.control-panel {
+    background-color: var(--color-transparent);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: none;
+}
+
+.control-label {
+    color: var(--color-text);
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    display: block;
+    letter-spacing: 0.5px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.control-select {
+    background-color: var(--color-transparent);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-size: 11px;
+    padding: 0.4rem 0.6rem;
+    min-width: 130px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    border-radius: 4px;
+}
+
+.control-select:focus {
+    background-color: var(--color-transparent);
+    border-color: var(--color-primary);
+    color: var(--color-text);
+    box-shadow: 0 0 0 0.2rem var(--color-shadow-white);
+    outline: none;
+}
+
+.update-btn {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-bg);
+    font-weight: bold;
+    font-size: 11px;
+    padding: 0.4rem 1.2rem;
+    text-transform: uppercase;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    letter-spacing: 0.5px;
+    min-width: 100px;
+}
+
+.update-btn:hover {
+    background-color: var(--color-secondary);
+    border-color: var(--color-secondary);
+    color: var(--color-text);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px var(--color-shadow-white-light);
+}
+
+.update-btn:disabled {
+    opacity: var(--opacity-disabled);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.add-entry-btn {
+    background-color: var(--color-transparent);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    font-weight: bold;
+    font-size: 11px;
+    padding: 0.4rem 1.2rem;
+    text-transform: uppercase;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    letter-spacing: 0.5px;
+    min-width: 120px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.add-entry-btn:hover {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-bg);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px var(--color-shadow-white-light);
+}
+
+.add-entry-btn i {
+    font-size: 12px;
+}
+
+.form-check-input:checked {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
+.form-check-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.2rem var(--color-shadow-white);
+}
+
+.form-check-label {
+    color: var(--color-text);
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    letter-spacing: 0.5px;
+    margin-left: 0.5rem;
+}
+
+/* AI Status Styles */
+.ai-status {
+    background-color: var(--color-transparent);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.75rem 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: none;
+}
+
+.ai-status-text {
+    color: var(--color-primary);
+    font-size: 12px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    letter-spacing: 0.3px;
+}
+
+/* Finance Table Styles */
+.finance-table {
+    background-color: var(--color-transparent);
+    border: 1px solid var(--color-border);
+    font-size: 12px;
+    margin-bottom: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: none;
+}
+
+.finance-table thead th {
+    background-color: var(--color-transparent);
+    border-bottom: 2px solid var(--color-border);
+    color: var(--color-text);
+    font-weight: bold;
+    padding: 0.75rem 0.6rem;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    vertical-align: middle;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    border-right: 1px solid var(--color-border);
+}
+
+.finance-table thead th:last-child {
+    border-right: none;
+}
+
+.finance-table tbody tr {
+    border-bottom: 1px solid var(--color-border);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.finance-table tbody tr:hover {
+    background-color: var(--color-hover);
+    transform: translateX(2px);
+    box-shadow: 0 2px 8px var(--color-shadow-white-very-light);
+}
+
+.finance-table tbody tr:active {
+    transform: translateX(1px);
+    background-color: var(--color-secondary);
+}
+
+.finance-table tbody tr.expanded {
+    background-color: var(--color-hover);
+    border-left: 3px solid var(--color-primary);
+}
+
+.finance-table tbody td {
+    padding: 0.6rem 0.6rem;
+    vertical-align: middle;
+    border-color: var(--color-border);
+    border-right: 1px solid var(--color-border);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.finance-table tbody td:last-child {
+    border-right: none;
+}
+
+/* Type Icon Styles */
+.type-col {
+    width: 50px;
+    text-align: center;
+    padding: 0.5rem !important;
+}
+
+.type-icon {
+    font-size: 18px;
+    color: var(--color-text);
+    display: block;
+}
+
+.type-document {
+    color: var(--color-primary);
+}
+
+.type-analysis {
+    color: var(--color-primary);
+}
+
+.type-location {
+    color: var(--color-primary);
+}
+
+/* Column Specific Styles */
+.age-col {
+    width: 70px;
+    text-align: center;
+    font-size: 11px;
+}
+
+.age-text {
+    color: var(--color-text);
+    font-weight: bold;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.title-col {
+    min-width: 280px;
+    max-width: 380px;
+}
+
+.title-content strong {
+    display: block;
+    color: var(--color-text);
+    margin-bottom: 4px;
+    line-height: 1.4;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.summary-col {
+    min-width: 220px;
+    max-width: 320px;
+    font-size: 11px;
+    color: var(--color-secondary);
+    line-height: 1.4;
+}
+
+.action-col {
+    width: 90px;
+    text-align: center;
+}
+
+.confidence-col {
+    width: 80px;
+    text-align: center;
+}
+
+.confidence-value {
+    color: var(--color-primary);
+    font-weight: bold;
+    font-size: 11px;
+}
+
+.time-col {
+    width: 90px;
+    text-align: center;
+    font-size: 11px;
+}
+
+.levels-col {
+    min-width: 140px;
+    max-width: 200px;
+    font-size: 11px;
+}
+
+.levels-text {
+    color: var(--color-secondary);
+    line-height: 1.4;
+}
+
+/* Loading Spinner */
+.loading-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--color-border);
+    border-top: 2px solid var(--color-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Action Badge Styles */
+.action-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    letter-spacing: 0.5px;
+    min-width: 50px;
+    text-align: center;
+}
+
+.action-sell {
+    background-color: var(--color-primary);
+    color: var(--color-bg);
+}
+
+.action-buy {
+    background-color: var(--color-primary);
+    color: var(--color-bg);
+}
+
+.action-hold {
+    background-color: var(--color-transparent);
+    color: var(--color-primary);
+    border: 1px solid var(--color-primary);
+}
+
+.action-neutral {
+    background-color: var(--color-secondary);
+    color: var(--color-text);
+}
+
+/* Button Styles */
+.btn-success {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-bg);
+    font-weight: bold;
+}
+
+.btn-success:hover {
+    background-color: var(--color-secondary);
+    border-color: var(--color-secondary);
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 4rem;
+    color: var(--color-secondary);
+}
+
+.terminal-prompt {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 14px;
+    text-align: left;
+    display: inline-block;
+    padding: 1.5rem;
+    background-color: var(--color-transparent);
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    box-shadow: none;
+}
+
+.prompt-symbol {
+    color: var(--color-primary);
+    margin-right: 0.5rem;
+    font-weight: bold;
+}
+
+.prompt-text {
+    color: var(--color-text);
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .summary-col,
+    .levels-col {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .finance-table {
+        font-size: 10px;
+    }
+    
+    .age-col,
+    .time-col,
+    .confidence-col {
+        display: none;
+    }
+    
+    .title-col {
+        min-width: 150px;
+    }
+    
+    .terminal-main {
+        padding: 1rem;
+    }
+    
+    .control-panel {
+        padding: 1rem;
+    }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-secondary);
+}
+
+/* Table Responsive Wrapper */
+.table-responsive {
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background-color: var(--color-transparent);
+    box-shadow: none;
+}
+
+/* Text Color Overrides */
+.text-muted {
+    color: var(--color-secondary) !important;
+}
+
+/* Form Controls Enhancement */
+.form-select-sm {
+    height: 32px;
+}
+
+.form-check-input {
+    width: 16px;
+    height: 16px;
+}
+
+/* DateTime Input Styling */
+input[type="datetime-local"] {
+    color: var(--color-text, var(--fallback-text)) !important;
+    background-color: var(--color-bg, var(--fallback-bg)) !important;
+    border-color: var(--color-border, var(--fallback-border)) !important;
+}
+
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+}
+
+input[type="datetime-local"]::-webkit-datetime-edit {
+    color: var(--color-text, var(--fallback-text));
+}
+
+input[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper {
+    color: var(--color-text, var(--fallback-text));
+}
+
+input[type="datetime-local"]::-webkit-datetime-edit-text {
+    color: var(--color-text, var(--fallback-text));
+}
+
+input[type="datetime-local"]::-webkit-datetime-edit-month-field {
+    color: var(--color-text, var(--fallback-text));
+}
+
+input[type="datetime-local"]::-webkit-datetime-edit-day-field {
+    color: var(--color-text, var(--fallback-text));
+}
+
+input[type="datetime-local"]::-webkit-datetime-edit-year-field {
+    color: var(--color-text, var(--fallback-text));
+}
+
+input[type="datetime-local"]::-webkit-datetime-edit-hour-field {
+    color: var(--color-text, var(--fallback-text));
+}
+
+input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
+    color: var(--color-text, var(--fallback-text));
+}
+
+/* Row Hover Effects */
+.insight-row {
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.insight-row:hover {
+    background-color: var(--color-hover) !important;
+    transform: translateX(2px);
+    box-shadow: 0 2px 8px var(--color-shadow-white-very-light);
+}
+
+.insight-row:active {
+    transform: translateX(1px);
+    background-color: var(--color-secondary) !important;
+}
+
+/* Spinner in Update Button */
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.15em;
+}
