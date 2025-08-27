@@ -102,25 +102,42 @@ def add_insight(
     
     return insight_id
 
-def get_all_insights() -> List[Dict[str, Any]]:
+def get_all_insights(type_filter: str = None) -> List[Dict[str, Any]]:
     """
      ┌─────────────────────────────────────┐
      │        GET_ALL_INSIGHTS             │
      └─────────────────────────────────────┘
-     Retrieve all insights from the database
+     Retrieve all insights from the database with optional type filtering
      
      Returns all insights with their feed descriptions, ordered by most recently posted first.
+     Supports filtering by type when type_filter is provided.
+     
+     Parameters:
+     - type_filter: Optional feed type to filter by (e.g., "TD NEWS"). If None or empty, returns all insights.
      
      Returns:
      - List of insight dictionaries
     """
     conn = get_db_connection()
-    insights = conn.execute('''
-        SELECT i.*, f.description as feed_description 
-        FROM insights i 
-        LEFT JOIN feed_names f ON i.type = f.name 
-        ORDER BY i.timePosted DESC
-    ''').fetchall()
+    
+    if type_filter and type_filter.strip():
+        # Filter by specific type
+        insights = conn.execute('''
+            SELECT i.*, f.description as feed_description 
+            FROM insights i 
+            LEFT JOIN feed_names f ON i.type = f.name 
+            WHERE i.type = ?
+            ORDER BY i.timePosted DESC
+        ''', (type_filter,)).fetchall()
+    else:
+        # Return all insights (no filter)
+        insights = conn.execute('''
+            SELECT i.*, f.description as feed_description 
+            FROM insights i 
+            LEFT JOIN feed_names f ON i.type = f.name 
+            ORDER BY i.timePosted DESC
+        ''').fetchall()
+    
     conn.close()
     
     return [dict(insight) for insight in insights]

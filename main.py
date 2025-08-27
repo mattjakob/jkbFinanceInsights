@@ -9,7 +9,7 @@ summaries and actions. Provides both API endpoints and web interface.
 """
 
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import sqlite3
@@ -19,12 +19,31 @@ import uvicorn
 from pydantic import BaseModel
 import items_management
 import fake_data
+import os
+from symbol_validator import exchange_manager
 
 # Initialize FastAPI app
 app = FastAPI(title="Finance Insights", description="Simple Finance Insights Management App")
 
 # Setup templates and static files
 templates = Jinja2Templates(directory="templates")
+
+# Custom static files with cache-busting for development
+@app.get("/static/{file_path:path}")
+async def serve_static_files(file_path: str, t: Optional[str] = None):
+    """Serve static files with cache-busting headers for development"""
+    file_path = os.path.join("static", file_path)
+    if os.path.exists(file_path):
+        return FileResponse(
+            file_path,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+    raise HTTPException(status_code=404, detail="File not found")
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Database schema
@@ -80,21 +99,27 @@ init_db()
 # Database structure checking is now handled by database_schema module
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+async def home(request: Request, type_filter: Optional[str] = None):
     """
      ┌─────────────────────────────────────┐
      │             HOME                    │
      └─────────────────────────────────────┘
-     Display the main page with all insights
+     Display the main page with all insights, optionally filtered by type
      
      Renders the home template with a list of all finance insights
-     ordered by most recently posted first.
+     ordered by most recently posted first. Supports filtering by feed type.
+     
+     Parameters:
+     - type_filter: Optional feed type to filter insights by
     """
-    insights = items_management.get_all_insights()
+    insights = items_management.get_all_insights(type_filter=type_filter)
+    feed_names = items_management.get_feed_names()
     
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "insights": insights
+        "insights": insights,
+        "feed_names": feed_names,
+        "selected_type": type_filter or ""
     })
 
 @app.get("/add", response_class=HTMLResponse)
@@ -324,12 +349,6 @@ async def delete_insight(insight_id: int):
     
     return {"message": "Insight deleted successfully"}
 
-# Debug endpoint
-@app.get("/debug/feeds")
-async def debug_feeds():
-    """Debug endpoint to test feed names"""
-    feeds = items_management.get_feed_names()
-    return {"count": len(feeds), "feeds": feeds}
 
 # Debug stream endpoint to catch and log these requests
 @app.get("/debug/stream")
@@ -475,6 +494,87 @@ async def reset_insight_ai(insight_id: int):
             "success": False,
             "message": f"Error resetting AI fields: {str(e)}"
         }
+
+@app.get("/api/symbol-search")
+async def search_symbols(q: str, limit: int = 10):
+    """
+     ┌─────────────────────────────────────┐
+     │         SYMBOL_SEARCH               │
+     └─────────────────────────────────────┘
+     Search for trading symbols using TradingView API
+     
+     Provides autocomplete functionality by searching TradingView's symbol
+     database and returning formatted results for frontend consumption.
+     
+     Parameters:
+     - q: Search query (symbol name)
+     - limit: Maximum number of results (default: 10)
+     
+     Returns:
+     - JSON response with symbol suggestions and metadata
+    """
+    try:
+        if not q or len(q.strip()) < 1:
+            return {"symbols": []}
+        
+        # Use the exchange manager to search symbols
+        results = exchange_manager.search_symbol(q.strip())
+        
+        # Format results for frontend
+        formatted_results = []
+        for result in results[:limit]:
+            formatted_results.append({
+                "symbol": result.symbol,
+                "description": result.description,
+                "type": result.type,
+                "exchange": result.exchange,
+                "currency": result.currency_code,
+                "display_text": f"{result.symbol} - {result.description}",
+                "is_primary": result.is_primary_listing
+            })
+        
+        return {"symbols": formatted_results}
+        
+    except Exception as e:
+        print(f"Error searching symbols: {e}")
+        return {"symbols": [], "error": str(e)}
+
+class SymbolValidationRequest(BaseModel):
+    symbol: str
+    exchange: Optional[str] = None
+
+@app.get("/api/validate-symbol")
+async def validate_symbol_endpoint(symbol: str, exchange: Optional[str] = None):
+    """
+     ┌─────────────────────────────────────┐
+     │        VALIDATE_SYMBOL              │
+     └─────────────────────────────────────┘
+     Validate a trading symbol and get detailed information
+     
+     Uses TradingView API to validate symbol existence and format,
+     returning comprehensive validation results and symbol metadata.
+     
+     Parameters:
+     - request: JSON object containing symbol and optional exchange
+     
+     Returns:
+     - JSON response with validation result and symbol details
+    """
+    try:
+        if not symbol or len(symbol.strip()) < 1:
+            return {"valid": False, "error": "Symbol is required"}
+        
+        # Use the exchange manager to validate
+        validation_result = exchange_manager.validate_request(
+            symbol=symbol.strip().upper(),
+            exchange=exchange
+        )
+        
+        return validation_result
+        
+    except Exception as e:
+        print(f"Error validating symbol: {e}")
+        return {"valid": False, "error": str(e)}
 
 if __name__ == "__main__":
     from config import SERVER_HOST, SERVER_PORT

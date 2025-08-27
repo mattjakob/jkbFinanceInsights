@@ -13,63 +13,87 @@
 
 <!-- Control Panel -->
 <div class="control-panel mb-4">
-    <div class="row g-3 align-items-center">
+    <div class="row g-2 align-items-center">
+        <!-- Symbol and Exchange Group -->
         <div class="col-auto">
-            <label class="control-label">SYMBOL:</label>
-            <select class="form-select form-select-sm control-select">
-                <option selected>BITSTAMP:BTCUSD</option>
-                <option>BINANCE:BTCUSDT</option>
-                <option>COINBASE:BTC-USD</option>
-            </select>
-        </div>
-        <div class="col-auto">
-            <label class="control-label">FEED TYPE:</label>
-            <select class="form-select form-select-sm control-select">
-                <option selected>ALL</option>
-                <option>NEWS</option>
-                <option>ANALYSIS</option>
-                <option>ALERTS</option>
-            </select>
-        </div>
-        <div class="col-auto">
-            <label class="control-label">INTERVAL:</label>
-            <select class="form-select form-select-sm control-select">
-                <option selected>60s</option>
-                <option>5m</option>
-                <option>15m</option>
-                <option>1h</option>
-            </select>
-        </div>
-        <div class="col-auto">
-            <label class="control-label">ITEMS:</label>
-            <select class="form-select form-select-sm control-select">
-                <option selected>10</option>
-                <option>25</option>
-                <option>50</option>
-                <option>100</option>
-            </select>
-        </div>
-        <div class="col-auto">
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="aiCheck" checked>
-                <label class="form-check-label control-label" for="aiCheck">
-                    AI
-                </label>
+            <div class="symbol-autocomplete-container">
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control control-select symbol-input" 
+                           id="symbolInput" 
+                           title="Trading Symbol" 
+                           placeholder="BTCUSD" 
+                           value="BTCUSD"
+                           pattern="[A-Za-z0-9]{2,20}"
+                           autocomplete="off"
+                           data-bs-toggle="tooltip"
+                           data-bs-placement="bottom"
+                           data-bs-title="Enter a trading symbol (e.g., BTCUSD, AAPL)">
+                    <span class="input-group-text separator">:</span>
+                    <input type="text" class="form-control control-select exchange-input" 
+                           id="exchangeInput" 
+                           title="Trading Exchange" 
+                           placeholder="BINANCE" 
+                           autocomplete="off"
+                           data-bs-toggle="tooltip"
+                           data-bs-placement="bottom"
+                           data-bs-title="Enter an exchange (e.g., BINANCE, NASDAQ)">
+                    <span class="input-group-text validation-icon" id="symbolValidationIcon">
+                        <i class="bi bi-search" id="symbolIcon"></i>
+                    </span>
+                </div>
+                <div class="autocomplete-dropdown" id="symbolAutocomplete">
+                    <!-- Autocomplete suggestions will be inserted here -->
+                </div>
             </div>
         </div>
         <div class="col-auto">
-            <button class="btn btn-primary btn-sm update-btn">UPDATE</button>
+            <select class="form-select form-select-sm control-select" id="typeFilter" title="Feed Type">
+                <option value="" {% if selected_type == "" %}selected{% endif %}>ALL</option>
+                {% for feed in feed_names %}
+                <option value="{{ feed.name }}" {% if selected_type == feed.name %}selected{% endif %}>{{ feed.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Settings Group -->
+        <div class="col-auto ms-3">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text">INTERVAL</span>
+                <select class="form-select form-select-sm control-select" title="Update Interval">
+                    <option selected>60s</option>
+                    <option>5m</option>
+                    <option>15m</option>
+                    <option>1h</option>
+                </select>
+            </div>
         </div>
         <div class="col-auto">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text">ITEMS</span>
+                <select class="form-select form-select-sm control-select" title="Number of Items">
+                    <option selected>10</option>
+                    <option>25</option>
+                    <option>50</option>
+                    <option>100</option>
+                </select>
+            </div>
+        </div>
+
+        
+        <!-- Action Group -->
+        <div class="col-auto ms-3">
             <a href="/add" class="btn btn-outline-light btn-sm add-entry-btn">
                 <i class="bi bi-plus-circle"></i> ADD ENTRY
             </a>
         </div>
         <div class="col-auto">
-            <div class="d-flex align-items-center">
-                <input type="number" class="form-control form-control-sm me-2" id="resetInsightId" placeholder="ID" min="1" style="width: 80px;">
+            <button class="btn btn-primary btn-sm update-btn">UPDATE</button>
+        </div>
+        <div class="col-auto">
+            <div class="d-flex align-items-center gap-1">
+                <input type="number" class="form-control form-control-sm reset-id-input" id="resetInsightId" placeholder="ID" min="1">
                 <button class="btn btn-outline-warning btn-sm" id="aiResetBtn" title="Reset AI fields for the specified insight ID">
-                    <i class="bi bi-arrow-clockwise"></i> AI RESET
+                    AI RESET
                 </button>
             </div>
         </div>
@@ -77,8 +101,8 @@
 </div>
 
 <!-- AI Engine Status -->
-<div class="ai-status mb-3">
-    <span class="ai-status-text">[AI ENGINE] Running multimodal analysis for IDEAS-2025-08-27T00:39:57.245Z_7af2af68 with image</span>
+<div class="status-bar mb-3">
+    <span class="status-bar-text">[AI ENGINE] Running multimodal analysis for IDEAS-2025-08-27T00:39:57.245Z_7af2af68 with image</span>
 </div>
 
 {% if insights %}

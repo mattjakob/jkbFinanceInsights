@@ -69,9 +69,10 @@ function initializeApp() {
  */
 function initializeControlPanel() {
     const updateBtn = document.querySelector('.update-btn');
-    const aiCheckbox = document.getElementById('aiCheck');
     const aiResetBtn = document.getElementById('aiResetBtn');
     const resetInsightIdInput = document.getElementById('resetInsightId');
+    const symbolInput = document.getElementById('symbolInput');
+    const typeFilter = document.getElementById('typeFilter');
     const selects = document.querySelectorAll('select');
     
     if (updateBtn) {
@@ -80,10 +81,16 @@ function initializeControlPanel() {
         });
     }
     
-    if (aiCheckbox) {
-        aiCheckbox.addEventListener('change', function() {
-            updateAIStatus();
+    // Initialize type filter
+    if (typeFilter) {
+        typeFilter.addEventListener('change', function() {
+            applyTypeFilter(this.value);
         });
+    }
+    
+    // Initialize symbol validation
+    if (symbolInput) {
+        initializeSymbolValidation(symbolInput);
     }
     
     if (aiResetBtn && resetInsightIdInput) {
@@ -96,7 +103,7 @@ function initializeControlPanel() {
     selects.forEach(select => {
         if (select) {
             select.addEventListener('change', function() {
-                updateAIStatus();
+                // Select changed - could add logic here if needed
             });
         }
     });
@@ -336,9 +343,9 @@ function calculateAge(timePosted) {
  */
 function updateData() {
     const updateBtn = document.querySelector('.update-btn');
-    const aiStatus = document.querySelector('.ai-status-text');
+    const statusBar = document.querySelector('.status-bar-text');
     
-    if (!updateBtn || !aiStatus) {
+    if (!updateBtn || !statusBar) {
         console.warn('Required elements not found for updateData');
         return;
     }
@@ -363,7 +370,7 @@ function updateData() {
                 const updateText = data.updated_insights > 0 
                     ? `${data.updated_insights} insights analyzed` 
                     : 'No insights to update';
-                aiStatus.textContent = `[AI ENGINE] ${updateText} - ${timestamp}`;
+                statusBar.textContent = `[AI ENGINE] ${updateText} - ${timestamp}`;
                 
                 // Reload the page to show new data if any updates were made
                 if (data.updated_insights > 0) {
@@ -372,7 +379,7 @@ function updateData() {
                     }, 1000);
                 }
             } else {
-                aiStatus.textContent = `[AI ENGINE] Update failed: ${data.message || 'Unknown error'}`;
+                statusBar.textContent = `[AI ENGINE] Update failed: ${data.message || 'Unknown error'}`;
             }
             
             // Reset button
@@ -381,7 +388,7 @@ function updateData() {
         })
         .catch(error => {
             console.error('Error updating data:', error);
-            aiStatus.textContent = '[AI ENGINE] Update failed: Network error';
+            statusBar.textContent = '[AI ENGINE] Update failed: Network error';
             
             // Reset button
             updateBtn.innerHTML = 'UPDATE';
@@ -399,40 +406,326 @@ function updateData() {
 
 /**
  * 
- * ┌─────────────────────────────────────┐
- * │         UPDATE AI STATUS            │
- * └─────────────────────────────────────┘
- * Updates the AI engine status display
+ *  ┌─────────────────────────────────────┐
+ *  │        APPLY TYPE FILTER            │
+ *  └─────────────────────────────────────┘
+ *  Apply type filter to insights display
  * 
- * Reflects changes in control panel settings and shows current AI processing state.
+ *  Reloads the page with the selected type filter applied to show
+ *  only insights matching the selected feed type.
  * 
- * Parameters:
- * - None
+ *  Parameters:
+ *  - filterValue: The type filter value (empty string for "ALL")
  * 
- * Returns:
- * - None
+ *  Returns:
+ *  - None (reloads page)
  * 
- * Notes:
- * - Updates status based on AI checkbox state
- * - Shows different messages for enabled/disabled AI
+ *  Notes:
+ *  - Uses URL parameters to maintain filter state
  */
-function updateAIStatus() {
-    const aiCheckbox = document.getElementById('aiCheck');
-    const aiStatus = document.querySelector('.ai-status-text');
+function applyTypeFilter(filterValue) {
+    const url = new URL(window.location);
     
-    if (!aiCheckbox || !aiStatus) {
-        console.warn('Required elements not found for updateAIStatus');
-        return;
+    if (filterValue && filterValue.trim() !== '') {
+        // Set the type_filter parameter
+        url.searchParams.set('type_filter', filterValue);
+    } else {
+        // Remove the type_filter parameter for "ALL"
+        url.searchParams.delete('type_filter');
     }
     
-    try {
-        if (aiCheckbox.checked) {
-            aiStatus.textContent = '[AI ENGINE] Active - Processing new data streams';
-        } else {
-            aiStatus.textContent = '[AI ENGINE] Disabled - Manual mode active';
+    // Reload the page with the new filter
+    window.location.href = url.toString();
+}
+
+/**
+* 
+*  ┌─────────────────────────────────────┐
+*  │       INITIALIZE SYMBOL VALIDATION  │
+*  └─────────────────────────────────────┘
+*  Sets up autocomplete and validation for symbol input field.
+* 
+*  Provides real-time autocomplete suggestions using TradingView API
+*  and validates symbols with visual feedback using Bootstrap classes.
+* 
+*  Parameters:
+*  - symbolInput: The symbol input element
+* 
+*  Returns:
+*  - Nothing
+* 
+*  Notes:
+*  - Uses TradingView API for real symbol validation
+*  - Converts input to uppercase automatically
+*  - Shows autocomplete suggestions with keyboard navigation
+*/
+function initializeSymbolValidation(symbolInput) {
+    const autocompleteDropdown = document.getElementById('symbolAutocomplete');
+    const exchangeInput = document.getElementById('exchangeInput');
+    let currentSuggestions = [];
+    let selectedIndex = -1;
+    let searchTimeout = null;
+    let userModifiedExchange = false;
+    
+    // Auto-uppercase input and trigger search
+    symbolInput.addEventListener('input', function() {
+        this.value = this.value.toUpperCase();
+        
+        // Clear previous timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
         }
-    } catch (error) {
-        console.error('Error in updateAIStatus:', error);
+        
+        // Clear exchange when searching for new symbol
+        if (this.value.trim().length > 0) {
+            clearExchangeInput();
+            setValidationIcon('default');
+            userModifiedExchange = false; // Reset when user changes symbol
+        }
+        
+        // Debounce search requests
+        searchTimeout = setTimeout(() => {
+            searchSymbols(this.value.trim());
+        }, 300);
+    });
+    
+    // Handle keyboard navigation
+    symbolInput.addEventListener('keydown', function(e) {
+        if (!autocompleteDropdown.classList.contains('show')) {
+            return;
+        }
+        
+        switch(e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, currentSuggestions.length - 1);
+                updateHighlight();
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                updateHighlight();
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (selectedIndex >= 0 && selectedIndex < currentSuggestions.length) {
+                    selectSuggestion(currentSuggestions[selectedIndex]);
+                }
+                break;
+            case 'Escape':
+                hideAutocomplete();
+                break;
+        }
+    });
+    
+    // Hide autocomplete when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!symbolInput.contains(e.target) && !autocompleteDropdown.contains(e.target)) {
+            hideAutocomplete();
+        }
+    });
+    
+    // Validate on blur only if symbol has reasonable length
+    symbolInput.addEventListener('blur', function() {
+        // Delay to allow for suggestion selection
+        setTimeout(() => {
+            if (!autocompleteDropdown.classList.contains('show')) {
+                const symbolValue = this.value.trim();
+                if (symbolValue.length >= 2) {  // Only validate if symbol has at least 2 characters
+                    validateSymbolWithAPI(symbolValue);
+                } else if (symbolValue.length === 0) {
+                    // Clear everything if symbol is empty
+                    clearExchangeInput();
+                    setValidationIcon('default');
+                }
+                // For 1 character, do nothing (don't clear exchange or set invalid)
+            }
+        }, 200);
+    });
+    
+    // Auto-uppercase exchange input and track user modifications
+    if (exchangeInput) {
+        exchangeInput.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+            userModifiedExchange = true; // Track that user manually modified exchange
+        });
+    }
+    
+    // Initial validation
+    if (symbolInput.value.trim()) {
+        validateSymbolWithAPI(symbolInput.value.trim());
+    } else {
+        setValidationIcon('default');
+    }
+    
+    // Search for symbol suggestions
+    async function searchSymbols(query) {
+        if (!query || query.length < 1) {
+            hideAutocomplete();
+            return;
+        }
+        
+        try {
+            showLoading();
+            
+            const response = await fetch(`/api/symbol-search?q=${encodeURIComponent(query)}&limit=8`);
+            const data = await response.json();
+            
+            if (data.symbols && data.symbols.length > 0) {
+                showSuggestions(data.symbols);
+            } else {
+                showNoResults();
+            }
+        } catch (error) {
+            console.error('Error searching symbols:', error);
+            hideAutocomplete();
+        }
+    }
+    
+    // Show loading state
+    function showLoading() {
+        autocompleteDropdown.innerHTML = '<div class="autocomplete-loading">SEARCHING...</div>';
+        autocompleteDropdown.classList.add('show');
+        selectedIndex = -1;
+    }
+    
+    // Show suggestions
+    function showSuggestions(symbols) {
+        currentSuggestions = symbols;
+        selectedIndex = -1;
+        
+        const html = symbols.map((symbol, index) => `
+            <div class="autocomplete-item" data-index="${index}">
+                <span class="symbol">${symbol.symbol}</span>
+                <span class="exchange">${symbol.exchange}</span>
+                <div class="description">${symbol.description}</div>
+            </div>
+        `).join('');
+        
+        autocompleteDropdown.innerHTML = html;
+        autocompleteDropdown.classList.add('show');
+        
+        // Add click handlers
+        autocompleteDropdown.querySelectorAll('.autocomplete-item').forEach((item, index) => {
+            item.addEventListener('click', () => {
+                selectSuggestion(symbols[index]);
+            });
+        });
+    }
+    
+    // Show no results
+    function showNoResults() {
+        autocompleteDropdown.innerHTML = '<div class="autocomplete-no-results">NO SYMBOLS FOUND</div>';
+        autocompleteDropdown.classList.add('show');
+        selectedIndex = -1;
+    }
+    
+    // Hide autocomplete
+    function hideAutocomplete() {
+        autocompleteDropdown.classList.remove('show');
+        selectedIndex = -1;
+    }
+    
+    // Update highlight
+    function updateHighlight() {
+        const items = autocompleteDropdown.querySelectorAll('.autocomplete-item');
+        items.forEach((item, index) => {
+            item.classList.toggle('highlighted', index === selectedIndex);
+        });
+    }
+    
+    // Select a suggestion
+    function selectSuggestion(symbol) {
+        symbolInput.value = symbol.symbol;
+        hideAutocomplete();
+        
+        // Immediately populate exchange with the suggestion's exchange
+        populateExchangeFromSuggestion(symbol);
+        setValidationIcon('valid');
+        
+        symbolInput.focus();
+    }
+    
+    // Populate exchange from autocomplete suggestion
+    function populateExchangeFromSuggestion(symbolData) {
+        const exchangeInput = document.getElementById('exchangeInput');
+        
+        if (symbolData.exchange) {
+            exchangeInput.value = symbolData.exchange;
+            userModifiedExchange = false; // Reset flag when populated from suggestion
+        }
+    }
+    
+    // Validate symbol with API
+    async function validateSymbolWithAPI(symbol) {
+        const iconElement = document.getElementById('symbolIcon');
+        
+        if (!symbol) {
+            setValidationIcon('invalid');
+            return false;
+        }
+        
+        try {
+            setValidationIcon('loading');
+            
+            const response = await fetch(`/api/validate-symbol?symbol=${encodeURIComponent(symbol)}`);
+            
+            const data = await response.json();
+            
+            if (data.valid) {
+                setValidationIcon('valid');
+                populateExchangeOptions(data);
+                return true;
+            } else {
+                setValidationIcon('invalid');
+                clearExchangeInput();
+                return false;
+            }
+        } catch (error) {
+            console.error('Error validating symbol:', error);
+            setValidationIcon('invalid');
+            return false;
+        }
+    }
+    
+    // Set validation icon state
+    function setValidationIcon(state) {
+        const iconElement = document.getElementById('symbolIcon');
+        
+        // Remove all possible classes
+        iconElement.className = iconElement.className.replace(/bi-[a-zA-Z-]+/g, '');
+        
+        switch(state) {
+            case 'loading':
+                iconElement.classList.add('bi', 'bi-arrow-clockwise');
+                break;
+            case 'valid':
+                iconElement.classList.add('bi', 'bi-check');
+                break;
+            case 'invalid':
+                iconElement.classList.add('bi', 'bi-x');
+                break;
+            default:
+                iconElement.classList.add('bi', 'bi-search');
+                break;
+        }
+    }
+    
+    // Populate exchange input (only if empty or user hasn't manually set it)
+    function populateExchangeOptions(validationData) {
+        const exchangeInput = document.getElementById('exchangeInput');
+        
+        // Only populate if exchange field is empty and user hasn't manually modified it
+        if (validationData.exchange && !exchangeInput.value.trim() && !userModifiedExchange) {
+            exchangeInput.value = validationData.exchange;
+        }
+    }
+    
+    // Clear exchange input
+    function clearExchangeInput() {
+        const exchangeInput = document.getElementById('exchangeInput');
+        exchangeInput.value = '';
+        userModifiedExchange = false; // Reset flag when clearing
     }
 }
 
