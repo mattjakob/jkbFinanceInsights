@@ -245,6 +245,41 @@ def update_insight_ai_fields(
     
     return update_insight(insight_id, **update_data)
 
+def reset_insight_ai_fields(insight_id: int) -> bool:
+    """
+     ┌─────────────────────────────────────┐
+     │     RESET_INSIGHT_AI_FIELDS         │
+     └─────────────────────────────────────┘
+     Reset all AI-related fields of an insight to null/empty
+     
+     Resets AISummary, AIAction, AIConfidence, AIEventTime, and AILevels
+     to NULL or empty string values for the specified insight.
+     
+     Parameters:
+     - insight_id: The ID of the insight to reset AI fields for
+     
+     Returns:
+     - bool: True if reset successfully, False if not found
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        UPDATE insights 
+        SET AISummary = NULL,
+            AIAction = NULL,
+            AIConfidence = NULL,
+            AIEventTime = NULL,
+            AILevels = NULL
+        WHERE id = ?
+    ''', (insight_id,))
+    
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    
+    return success
+
 def delete_insight(insight_id: int) -> bool:
     """
      ┌─────────────────────────────────────┐
