@@ -107,7 +107,7 @@
                         <span class="age-text" data-time-posted="{{ insight.timePosted }}">-</span>
                     </td>
                     <td class="title-col">
-                        <div class="title-content">
+                        <div class="title-content" title="Insight ID: {{ insight.id }}">
                             <strong>{{ insight.title[:80] }}{% if insight.title|length > 80 %}...{% endif %}</strong>
                         </div>
                     </td>
