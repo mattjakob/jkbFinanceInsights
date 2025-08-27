@@ -12,6 +12,7 @@ import random
 import items_management
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
+from debugger import debug_info, debug_warning, debug_error, debug_success
 
 # Sample data pools
 TITLES = [
@@ -165,9 +166,9 @@ def add_random_insights(count: int = 5) -> List[int]:
         try:
             insight_id = items_management.add_insight(**insight_data)
             created_ids.append(insight_id)
-            print(f"Created insight #{insight_id}: {insight_data['title']}")
+            debug_success(f"Created insight #{insight_id}: {insight_data['title']}")
         except Exception as e:
-            print(f"Error creating insight: {e}")
+            debug_error(f"Error creating insight: {e}")
     
     return created_ids
 
@@ -188,16 +189,16 @@ def fake_do_ai_analysis() -> int:
     insights = items_management.get_insights_for_ai()
     
     if not insights:
-        print("No insights need AI data - all insights already have AISummary")
+        debug_info("No insights need AI data - all insights already have AISummary")
         return 0
     
-    print(f"Found {len(insights)} insights with empty AISummary")
+    debug_info(f"Found {len(insights)} insights with empty AISummary")
     
     # Choose a random subset (3-5 insights, or all if fewer than 3)
     num_to_update = min(random.randint(3, 5), len(insights))
     selected_insights = random.sample(insights, num_to_update)
     
-    print(f"Selected {num_to_update} insights to update with AI data")
+    debug_info(f"Selected {num_to_update} insights to update with AI data")
     
     updated_count = 0
     
@@ -214,9 +215,9 @@ def fake_do_ai_analysis() -> int:
         success = items_management.update_insight_ai_fields(insight['id'], **ai_data)
         if success:
             updated_count += 1
-            print(f"Updated insight #{insight['id']} ({insight['title'][:30]}...) with AI data")
+            debug_success(f"Updated insight #{insight['id']} ({insight['title'][:30]}...) with AI data")
     
-    print(f"Successfully updated {updated_count} insights with AI data")
+    debug_success(f"Successfully updated {updated_count} insights with AI data")
     return updated_count
 
 def populate_database_with_sample_data() -> None:
@@ -232,24 +233,24 @@ def populate_database_with_sample_data() -> None:
     current_insights = items_management.get_all_insights()
     
     if len(current_insights) < 10:
-        print("Database has few entries, adding initial sample data...")
+        debug_info("Database has few entries, adding initial sample data...")
         add_random_insights(10 - len(current_insights))
     else:
-        print(f"Database already has {len(current_insights)} insights")
+        debug_info(f"Database already has {len(current_insights)} insights")
 
 # Test functions
 if __name__ == "__main__":
-    print("Testing fake data generation...")
+    debug_info("Testing fake data generation...")
     
     # Add some random insights
-    print("\n1. Adding random insights:")
+    debug_info("1. Adding random insights:")
     created_ids = add_random_insights(3)
     
     # Update insights with AI data
-    print("\n2. Updating insights with AI data:")
+    debug_info("2. Updating insights with AI data:")
     updated = fake_do_ai_analysis()
     
     
     # Populate database with sample data
-    print("\n4. Populating database with sample data:")
+    debug_info("4. Populating database with sample data:")
     populate_database_with_sample_data()

@@ -12,6 +12,7 @@ import os
 import asyncio
 from openai import OpenAI
 from config import OPENAI_API_KEY, OPENAI_SUMMARY_MODEL, OPENAI_PROMPT1_ID, OPENAI_PROMPT1_VERSION_ID, OPENAI_PROMPT2_ID, OPENAI_PROMPT2_VERSION_ID
+from debugger import debug_info, debug_warning, debug_error, debug_success
 
 # Global OpenAI client instance
 openai_client = None
@@ -37,15 +38,16 @@ def openai_init() -> Optional[OpenAI]:
         return openai_client
     
     if not OPENAI_API_KEY:
-        print("Warning: OPENAI_API_KEY not found in environment variables")
+        debug_warning("Environment variable 'OPENAI_API_KEY' not found.")
         return None
     
     try:
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
-        print("OpenAI client initialized successfully")
+        debug_success("OpenAI client initialized.")
         return openai_client
     except Exception as e:
-        print(f"Error initializing OpenAI client: {str(e)}")
+        debug_error(f"Failed to initialize OpenAI client: {str(e)}")
+        debug_error("OpenAI client not initialized. Check 'OPENAI_API_KEY'.")
         return None
 
 
@@ -72,16 +74,16 @@ def do_ai_text_analysis(symbol: Optional[str], item_type: str, title: str, conte
     # Initialize OpenAI client if not already done
     client = openai_init()
     if not client:
-        print("    Error: OpenAI client not initialized - check OPENAI_API_KEY")
+        debug_error("OpenAI client not initialized. Check 'OPENAI_API_KEY'.")
         return None
     
     # Check if prompt configuration is available
     if not OPENAI_PROMPT1_ID or not OPENAI_PROMPT1_VERSION_ID:
-        print("    Error: OPENAI_PROMPT1_ID or OPENAI_PROMPT1_VERSION_ID not configured in .env")
+        debug_error("Missing 'OPENAI_PROMPT1_ID' or 'OPENAI_PROMPT1_VERSION_ID' in configuration.")
         return None
     
     try:
-        print(f"    Making OpenAI API call with prompt ID: {OPENAI_PROMPT1_ID}")
+        debug_info(f"OpenAI API Text Analysis initiated with prompt ID: {OPENAI_PROMPT1_ID} for {symbol} {item_type} {title}")
         
         # Create the API request using the template format
         response = client.responses.create(
@@ -98,22 +100,22 @@ def do_ai_text_analysis(symbol: Optional[str], item_type: str, title: str, conte
         )
         
         # Debug: Print response structure
-        print(f"    Response received: {type(response)}")
+        debug_info(f"OpenAI API Text Analysis response type: {type(response)}")
         
         # Extract and return the analysis
         if hasattr(response, 'output_text') and response.output_text:
             analysis = response.output_text
-            print(f"    Analysis content length: {len(analysis)}")
-            print(f"    Analysis preview: {analysis[:100]}...")
+            debug_info(f"OpenAI API Text Analysis received ({len(analysis)} chars)")
+            #debug_info(f"Analysis preview: {analysis[:100]}...")
             return analysis
         else:
-            print(f"    Error: No output_text in response")
-            print(f"    Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')][:10]}")
+            debug_error("OpenAI API Text Analysis failed: No 'output_text' in response.")
+            #debug_error(f"OpenAI API Text Analysis response attributes: {[attr for attr in dir(response) if not attr.startswith('_')][:10]}")
             return None
             
     except Exception as e:
         error_msg = str(e)
-        print(f"    Error during text analysis: {error_msg}")
+        debug_error(f"OpenAI API Text Analysis error: {error_msg}")
         return None
 
 
@@ -161,7 +163,7 @@ def do_ai_image_analysis(symbol: str, imageURL: str) -> str:
     # Initialize OpenAI client if not already done
     client = openai_init()
     if not client:
-        print("Error: OpenAI client not initialized - check OPENAI_API_KEY")
+        debug_error("OpenAI client not initialized. Check 'OPENAI_API_KEY'.")
         return None
     
     try:
@@ -194,46 +196,46 @@ Return a {symbol} trading brief with:
         }
         
         # Make the API call
-        print(f"    Making OpenAI API call to {OPENAI_SUMMARY_MODEL}...")
+        debug_info(f"OpenAI API Image Analysis initiated with model: {OPENAI_SUMMARY_MODEL} for imageURL: {imageURL}")
         response = client.chat.completions.create(**api_request)
         
         # Debug: Print response structure
-        print(f"    Response received: {type(response)}")
-        print(f"    Response choices: {len(response.choices) if response.choices else 0}")
+        debug_info(f"OpenAI API Image Analysis response type: {type(response)}")
+        #debug_info(f"Response choices: {len(response.choices) if response.choices else 0}")
         
         # Extract and return the analysis
         if response.choices and len(response.choices) > 0:
             choice = response.choices[0]
-            print(f"    First choice type: {type(choice)}")
-            print(f"    Choice message: {choice.message if hasattr(choice, 'message') else 'No message'}")
+            #debug_info(f"First choice type: {type(choice)}")
+            #debug_info(f"Choice message: {choice.message if hasattr(choice, 'message') else 'No message'}")
             
             if hasattr(choice, 'message') and choice.message:
                 if hasattr(choice.message, 'content'):
                     analysis = choice.message.content
-                    print(f"    Analysis content length: {len(analysis) if analysis else 0}")
-                    print(f"    Analysis preview: {analysis[:100] if analysis else 'None'}...")
+                    debug_info(f"OpenAI API Image Analysis responce ({len(analysis) if analysis else 0} chars)")
+                    #debug_info(f"Analysis preview: {analysis[:100] if analysis else 'None'}...")
                     return analysis
                 else:
-                    print(f"    Error: Message has no content attribute")
+                    debug_error("OpenAI API Image Analysis failed: Message has no 'content' attribute.")
                     return None
             else:
-                print(f"    Error: Choice has no message")
+                debug_error("OpenAI API Image Analysis failed: Choice has no 'message'.")
                 return None
         else:
-            print(f"    Error: No choices in response")
+            debug_error("OpenAI API Image Analysis failed: No choices in response.")
             return None
             
     except Exception as e:
         error_msg = str(e)
-        print(f"    Error during image analysis: {error_msg}")
+        debug_error(f"OpenAI API Image Analysis error: {error_msg}")
         
         # Handle specific error types
         if "429" in error_msg or "quota" in error_msg.lower():
-            print(f"    ⚠ OpenAI quota exceeded - check billing")
+            debug_info("OpenAI quota exceeded. Check billing.")
         elif "401" in error_msg or "unauthorized" in error_msg.lower():
-            print(f"    ⚠ OpenAI API key invalid or expired")
+            debug_info("OpenAI API key invalid or expired.")
         elif "400" in error_msg:
-            print(f"    ⚠ Bad request - check image URL format")
+            debug_info("Bad request. Check image URL format.")
         
         return None
 
@@ -297,7 +299,7 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
         from config import OPENAI_PROMPT2_ID, OPENAI_PROMPT2_VERSION_ID
         
         if not OPENAI_PROMPT2_ID or not OPENAI_PROMPT2_VERSION_ID:
-            print("  ✗ Missing OpenAI prompt configuration")
+            debug_error("OpenAI API Summary failed: Missing OpenAI prompt configuration.")
             return None
         
         # Prepare variables for the API call
@@ -308,7 +310,7 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
         }
         
         # Make the OpenAI Response API call
-        print(f"    Making OpenAI API call with prompt ID: {OPENAI_PROMPT2_ID}")
+        debug_info(f"OpenAI API Summary initiated with prompt ID: {OPENAI_PROMPT2_ID}")
         response = client.responses.create(
             prompt={
                 "id": OPENAI_PROMPT2_ID,
@@ -321,11 +323,11 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
         if hasattr(response, 'output_text') and response.output_text:
             summary_content = response.output_text
         else:
-            print("  ✗ No output_text in OpenAI response")
+            debug_error("OpenAI API Summary failed: No 'output_text' in response.")
             return None
         
-        print(f"    Response content length: {len(summary_content)}")
-        print(f"    Response preview: {summary_content[:100]}...")
+        debug_info(f"OpenAI API Summary received ({len(summary_content)} chars)")
+        #debug_info(f"Response preview: {summary_content[:100]}...")
         
         # Parse the JSON response according to the schema
         try:
@@ -364,13 +366,13 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
                 "AILevels": ai_levels
             }
             
-            print(f"    Parsed data: Summary length={len(summary)}, Action={action}, Confidence={confidence}")
+            debug_success("OpenAI API Summary parsed successfully.")
             
             return result_data
             
         except json.JSONDecodeError as e:
-            print(f"  ✗ Failed to parse JSON response: {str(e)}")
-            print(f"  Raw response: {summary_content[:200]}...")
+            debug_error(f"OpenAI API Summary failed to parse JSON: {str(e)}")
+            debug_error(f"OpenAI API Summary raw response: {summary_content[:200]}...")
             
             # Fallback to basic structure if JSON parsing fails
             return {
@@ -382,7 +384,7 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
             }
         
     except Exception as e:
-        print(f"  ✗ Error in do_ai_summary: {str(e)}")
+        debug_error(f"OpenAI API Summary error in do_ai_summary: {str(e)}")
         return None
 
 
@@ -411,17 +413,17 @@ async def do_ai_analysis() -> Tuple[int, int]:
         insights = items_management.get_insights_for_ai()
         
         if not insights:
-            print("No insights need AI analysis - all insights already have AISummary")
+            debug_info("No insights need AI analysis. All insights have AISummary.")
             return processed_count, success_count
         
-        print(f"Found {len(insights)} insights needing AI analysis")
+        debug_info(f"Found {len(insights)} insights needing AI analysis.")
         
         # Process insights in parallel clusters
         async def process_insight_cluster(insight):
             """Process a single insight with parallel text and image analysis"""
             insight_id = insight['id']
             try:
-                print(f"\nProcessing insight #{insight_id}: {insight.get('title', 'Untitled')[:50]}...")
+                debug_error(f"Processing insight #{insight_id}: {insight.get('title', 'Untitled')[:50]}...")
                 
                 # Get values from insight, ensuring they're strings
                 symbol = insight.get('symbol') or ""
@@ -430,7 +432,7 @@ async def do_ai_analysis() -> Tuple[int, int]:
                 content = insight.get('content') or ""
                 image_url = insight.get('imageURL')
                 
-                print(f"    Symbol: {symbol}, Type: {item_type}")
+                debug_info(f"Symbol: {symbol}, Type: {item_type}")
                 
                 # Run text and image analysis in parallel
                 tasks = []
@@ -443,13 +445,13 @@ async def do_ai_analysis() -> Tuple[int, int]:
                 
                 # Run image analysis only if imageURL is valid
                 if image_url and image_url != "" and image_url != "None":
-                    print(f"  Running image analysis for URL: {image_url}")
+                    debug_info(f"Running image analysis for URL: {image_url}")
                     image_task = asyncio.create_task(
                         do_ai_image_analysis_async(symbol, image_url)
                     )
                     tasks.append(('image', image_task))
                 else:
-                    print(f"  ⏭ Skipping image analysis (no valid imageURL)")
+                    debug_info("Skipping image analysis. No valid imageURL.")
                 
                 # Wait for all analysis tasks to complete
                 results = {}
@@ -461,19 +463,19 @@ async def do_ai_analysis() -> Tuple[int, int]:
                         # Save individual analysis results
                         if task_type == 'text' and result:
                             items_management.update_insight(insight_id, AITextSummary=result)
-                            print(f"  ✓ Text analysis complete")
+                            debug_success(f"Text analysis complete. for insight #{insight_id}")
                         elif task_type == 'image' and result:
                             items_management.update_insight(insight_id, AIImageSummary=result)
-                            print(f"  ✓ Image analysis complete")
+                            debug_success(f"Image analysis complete. for insight #{insight_id}")
                         elif task_type == 'image' and not result:
-                            print(f"  ⚠ Image analysis failed or returned None")
+                            debug_error(f"Image analysis failed or returned for insight #{insight_id}")
                             
                     except Exception as e:
-                        print(f"  ✗ {task_type.capitalize()} analysis failed: {str(e)}")
+                        debug_error(f"{task_type.capitalize()} analysis failed: {str(e)}")
                         results[task_type] = None
                 
                 # Generate comprehensive summary after both analyses complete
-                print(f"  Generating AI summary...")
+                debug_info(f"Generating AI summary for insight #{insight_id}...")
                 text_analysis = results.get('text', "")
                 image_analysis = results.get('image')
                 
@@ -496,17 +498,17 @@ async def do_ai_analysis() -> Tuple[int, int]:
                     )
                     
                     if update_success:
-                        print(f"  ✓ AI analysis complete for insight #{insight_id}")
+                        debug_success(f"AI analysis complete for insight #{insight_id}")
                         return True
                     else:
-                        print(f"  ✗ Failed to save AI analysis for insight #{insight_id}")
+                        debug_error(f"Failed to save AI analysis for insight #{insight_id}")
                         return False
                 else:
-                    print(f"  ✗ Failed to generate AI summary for insight #{insight_id}")
+                    debug_error(f"Failed to generate AI summary for insight #{insight_id}")
                     return False
                     
             except Exception as e:
-                print(f"  ✗ Error processing insight #{insight_id}: {str(e)}")
+                debug_error(f"Error processing insight #{insight_id}: {str(e)}")
                 return False
         
         # Process all insights in parallel
@@ -517,19 +519,19 @@ async def do_ai_analysis() -> Tuple[int, int]:
         processed_count = len(insights)
         success_count = sum(1 for result in results if result is True)
         
-        print(f"\nAI analysis complete: {success_count}/{processed_count} insights successfully analyzed")
+        debug_success(f"AI analysis complete: {success_count}/{processed_count} insights successfully analyzed.")
         
     except Exception as e:
-        print(f"Error during AI analysis: {str(e)}")
+        debug_error(f"Error during AI analysis: {str(e)}")
     
     return processed_count, success_count
 
 
 # Test function
 if __name__ == "__main__":
-    print("Testing AI Worker module...")
-    print("Note: AI methods are not yet implemented and will return None")
+    debug_info("Testing AI Worker module...")
+    debug_info("Note: AI methods are not yet implemented and will return None.")
     
     # Test the main analysis function
     processed, successful = do_ai_analysis()
-    print(f"\nResults: {processed} processed, {successful} successful")
+    debug_info(f"\nResults: {processed} processed, {successful} successful.")

@@ -8,12 +8,14 @@ A simple web application for managing finance-related insights with AI-generated
 summaries and actions. Provides both API endpoints and web interface.
 """
 
-from fastapi import FastAPI, Request, Form, HTTPException, Depends
+from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import sqlite3
 from datetime import datetime
+import json
 from typing import Optional, List
 import uvicorn
 from pydantic import BaseModel
@@ -21,6 +23,8 @@ import items_management
 import fake_data
 import os
 from symbol_validator import exchange_manager
+from debugger import debugger, debug_info, debug_warning, debug_error, debug_success
+from scrapers.tdNews_scraper import TdNewsScraper
 
 # Initialize FastAPI app
 app = FastAPI(title="Finance Insights", description="Simple Finance Insights Management App")
@@ -114,6 +118,10 @@ async def home(request: Request, type_filter: Optional[str] = None):
     """
     insights = items_management.get_all_insights(type_filter=type_filter)
     feed_names = items_management.get_feed_names()
+    
+    # Send debug message about page load
+    filter_text = f" (filtered by: {type_filter})" if type_filter else ""
+    debug_info(f"Home page loaded with {len(insights)} insights{filter_text}")
     
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -232,7 +240,7 @@ async def edit_insight_form(request: Request, insight_id: int):
             "feed_names": feed_names
         })
     except Exception as e:
-        print(f"Error in edit_insight_form: {str(e)}")
+        debug_error(f"Error in edit_insight_form: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 @app.post("/edit-insight/{insight_id}")
@@ -354,8 +362,7 @@ async def delete_insight(insight_id: int):
 @app.get("/debug/stream")
 async def debug_stream(request: Request):
     """Debug endpoint to catch stream requests and log them"""
-    import logging
-    logging.warning(f"DEBUG STREAM REQUEST from {request.client.host}:{request.client.port}")
+    debug_warning(f"DEBUG STREAM REQUEST from {request.client.host}:{request.client.port}")
     return {"message": "Stream endpoint not implemented", "status": "debug"}  # Auto-reload test - working!
 
 # Feed Names Management
@@ -421,8 +428,8 @@ async def create_insight(insight: InsightCreate):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/api/update-market-data")
-async def update_market_data():
+@app.post("/api/insights/analyze")
+async def analyze_insights():
     """
      ┌─────────────────────────────────────┐
      │       UPDATE_MARKET_DATA            │
@@ -436,7 +443,14 @@ async def update_market_data():
     try:
         from ai_worker import do_ai_analysis
         
+        debug_info("Starting AI analysis for insights...")
         processed_count, success_count = await do_ai_analysis()
+        
+        if success_count > 0:
+            debug_success(f"AI analysis completed: {success_count}/{processed_count} insights analyzed")
+        else:
+            debug_info("No insights needed AI analysis - all insights already processed")
+        
         return {
             "success": True,
             "message": f"AI analysis complete: {success_count}/{processed_count} insights successfully analyzed",
@@ -444,12 +458,41 @@ async def update_market_data():
             "updated_insights": success_count
         }
     except Exception as e:
+        debug_error(f"AI analysis failed: {str(e)}")
         return {
             "success": False,
             "message": f"Error during AI analysis: {str(e)}"
         }
 
-@app.post("/api/reset-insight-ai/{insight_id}")
+@app.get("/api/insights/analyze/stream")
+async def analyze_insights_stream():
+    """Stream AI analysis progress in real-time"""
+    async def event_generator():
+        try:
+            from ai_worker import do_ai_analysis
+            
+            debug_info("Starting AI analysis stream...")
+            processed_count, success_count = await do_ai_analysis()
+            
+            # Send final result
+            yield f"data: {json.dumps({'type': 'complete', 'processed': processed_count, 'success': success_count})}\n\n"
+            
+        except Exception as e:
+            debug_error(f"AI analysis stream failed: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control"
+        }
+    )
+
+@app.post("/api/insights/{insight_id}/reset-ai")
 async def reset_insight_ai(insight_id: int):
     """
      ┌─────────────────────────────────────┐
@@ -495,7 +538,7 @@ async def reset_insight_ai(insight_id: int):
             "message": f"Error resetting AI fields: {str(e)}"
         }
 
-@app.get("/api/symbol-search")
+@app.get("/api/symbols/search")
 async def search_symbols(q: str, limit: int = 10):
     """
      ┌─────────────────────────────────────┐
@@ -536,15 +579,15 @@ async def search_symbols(q: str, limit: int = 10):
         return {"symbols": formatted_results}
         
     except Exception as e:
-        print(f"Error searching symbols: {e}")
+        debug_error(f"Error searching symbols: {e}")
         return {"symbols": [], "error": str(e)}
 
 class SymbolValidationRequest(BaseModel):
     symbol: str
     exchange: Optional[str] = None
 
-@app.get("/api/validate-symbol")
-async def validate_symbol_endpoint(symbol: str, exchange: Optional[str] = None):
+@app.get("/api/symbols/validate")
+async def validate_symbol(symbol: str, exchange: Optional[str] = None):
     """
      ┌─────────────────────────────────────┐
      │        VALIDATE_SYMBOL              │
@@ -573,10 +616,138 @@ async def validate_symbol_endpoint(symbol: str, exchange: Optional[str] = None):
         return validation_result
         
     except Exception as e:
-        print(f"Error validating symbol: {e}")
+        debug_error(f"Error validating symbol: {e}")
         return {"valid": False, "error": str(e)}
+
+@app.get("/api/debug-status")
+async def get_debug_status():
+    """
+     ┌─────────────────────────────────────┐
+     │        GET_DEBUG_STATUS             │
+     └─────────────────────────────────────┘
+     Get current debug status for frontend display
+     
+     Returns the current debug message and status from the debugger
+     for display in the frontend status bar.
+     
+     Returns:
+     - JSON response with current debug message and metadata
+    """
+    return debugger.get_current_status()
+
+@app.delete("/api/insights")
+async def delete_insights(type: str):
+    """Delete insights by type"""
+    try:
+        # Handle empty type (delete all)
+        if not type or type.strip() == "":
+            debug_warning("Delete request for ALL insights")
+            return {
+                "success": False,
+                "message": "Deleting all insights not implemented for safety"
+            }
+        
+        debug_info(f"Delete request for type: {type}")
+        result = items_management.delete_select_insights(type)
+        
+        if result["success"] and result["deleted_count"] > 0:
+            debug_success(f"Deleted {result['deleted_count']} insights of type '{type}'")
+        elif result["success"] and result["deleted_count"] == 0:
+            debug_info(f"No insights found to delete for type '{type}'")
+        else:
+            debug_error(f"Delete operation failed: {result.get('message', 'Unknown error')}")
+        
+        return result
+        
+    except Exception as e:
+        debug_error(f"Delete insights API failed: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Delete failed: {str(e)}"
+        }
+
+
+
+@app.post("/api/insights/fetch")
+async def fetch_insights(
+    symbol: str = "BTCUSD",
+    exchange: str = "BINANCE", 
+    feedType: str = "TD NEWS",
+    maxItems: int = 10
+):
+    """
+     ┌─────────────────────────────────────┐
+     │         FETCH_DATA                  │
+     └─────────────────────────────────────┘
+     Fetch new insights from external data sources
+     
+     Uses the appropriate scraper based on feed type to retrieve new
+     insights and create database entries.
+     
+     Parameters:
+     - symbol: Trading symbol to fetch data for
+     - exchange: Exchange name for the symbol
+     - feedType: Type of feed to fetch (determines scraper to use)
+     - maxItems: Maximum number of items to fetch
+     
+     Returns:
+     - JSON response with fetch results and created insights
+    """
+    try:
+        debug_info(f"Fetch data request: {feedType} for {exchange}:{symbol} (max: {maxItems})")
+        
+        # Initialize appropriate scraper based on feed type
+        if feedType == "TD NEWS" or feedType == "" or feedType is None:
+            scraper = TdNewsScraper()
+        else:
+            # For now, only TD NEWS is implemented
+            debug_warning(f"Feed type '{feedType}' not implemented, using TD NEWS")
+            scraper = TdNewsScraper()
+        
+        # Fetch data using the scraper
+        results = scraper.fetch(
+            symbol=symbol,
+            exchange=exchange,
+            maxItems=maxItems,
+            sinceLast=None  # Not implemented yet
+        )
+        
+        # Count successful creations
+        successful_count = len([r for r in results if r.get("status") == "created"])
+        failed_count = len(results) - successful_count
+        
+        if successful_count > 0:
+            debug_success(f"Fetch completed: {successful_count} insights created")
+        else:
+            debug_warning(f"Fetch completed: no insights created ({failed_count} failed)")
+        
+        return {
+            "success": True,
+            "message": f"Fetch completed: {successful_count} insights created, {failed_count} failed",
+            "processed_items": len(results),
+            "created_insights": successful_count,
+            "failed_items": failed_count,
+            "results": results,
+            "scraper_type": scraper.type,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        debug_error(f"Fetch data failed: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Fetch failed: {str(e)}",
+            "processed_items": 0,
+            "created_insights": 0,
+            "failed_items": 0,
+            "results": [],
+            "timestamp": datetime.now().isoformat()
+        }
 
 if __name__ == "__main__":
     from config import SERVER_HOST, SERVER_PORT
+    
+    # Send initial debug message
+    debug_success("Finance Insights server starting up...")
     
     uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)

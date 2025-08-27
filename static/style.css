@@ -168,8 +168,10 @@ option:checked {
 .btn-primary,
 .update-btn,
 .add-entry-btn,
-#aiResetBtn,
+#resetBtn,
 .btn-success,
+.btn-danger,
+.delete-btn,
 .btn-secondary,
 .btn-outline-light,
 .btn-outline-warning {
@@ -194,8 +196,10 @@ option:checked {
 .btn-primary:hover,
 .update-btn:hover,
 .add-entry-btn:hover,
-#aiResetBtn:hover,
+#resetBtn:hover,
 .btn-success:hover,
+.btn-danger:hover,
+.delete-btn:hover,
 .btn-secondary:hover,
 .btn-outline-light:hover,
 .btn-outline-warning:hover {

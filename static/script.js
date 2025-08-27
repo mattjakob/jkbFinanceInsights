@@ -38,6 +38,9 @@ function initializeApp() {
         // Initialize age calculations
         initializeAgeCalculations();
         
+        // Initialize status bar updates
+        initializeStatusUpdates();
+        
         // Auto-refresh functionality
         startAutoRefresh();
         
@@ -69,7 +72,9 @@ function initializeApp() {
  */
 function initializeControlPanel() {
     const updateBtn = document.querySelector('.update-btn');
-    const aiResetBtn = document.getElementById('aiResetBtn');
+    const fetchBtn = document.querySelector('.fetch-btn');
+    const deleteBtn = document.querySelector('.delete-btn');
+    const resetBtn = document.getElementById('resetBtn');
     const resetInsightIdInput = document.getElementById('resetInsightId');
     const symbolInput = document.getElementById('symbolInput');
     const typeFilter = document.getElementById('typeFilter');
@@ -78,6 +83,18 @@ function initializeControlPanel() {
     if (updateBtn) {
         updateBtn.addEventListener('click', function() {
             updateData();
+        });
+    }
+    
+    if (fetchBtn) {
+        fetchBtn.addEventListener('click', function() {
+            fetchData();
+        });
+    }
+    
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function() {
+            deleteSelectedInsights();
         });
     }
     
@@ -93,8 +110,8 @@ function initializeControlPanel() {
         initializeSymbolValidation(symbolInput);
     }
     
-    if (aiResetBtn && resetInsightIdInput) {
-        aiResetBtn.addEventListener('click', function() {
+    if (resetBtn && resetInsightIdInput) {
+        resetBtn.addEventListener('click', function() {
             resetInsightAI(parseInt(resetInsightIdInput.value));
         });
     }
@@ -355,51 +372,288 @@ function updateData() {
         updateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>UPDATING...';
         updateBtn.disabled = true;
         
-        // Call the update market data API
-        fetch('/api/update-market-data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Update AI status with results
-                const timestamp = new Date().toLocaleTimeString();
-                const updateText = data.updated_insights > 0 
-                    ? `${data.updated_insights} insights analyzed` 
-                    : 'No insights to update';
-                statusBar.textContent = `[AI ENGINE] ${updateText} - ${timestamp}`;
+        // Use SSE for real-time updates
+        const eventSource = new EventSource('/api/insights/analyze/stream');
+        
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'complete') {
+                // Update individual insight rows with new AI data
+                updateInsightRows(data.processed, data.success);
                 
-                // Reload the page to show new data if any updates were made
-                if (data.updated_insights > 0) {
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1000);
-                }
-            } else {
-                statusBar.textContent = `[AI ENGINE] Update failed: ${data.message || 'Unknown error'}`;
+                // Reset button
+                updateBtn.innerHTML = 'UPDATE';
+                updateBtn.disabled = false;
+                eventSource.close();
+            } else if (data.type === 'error') {
+                console.error('AI analysis error:', data.message);
+                updateBtn.innerHTML = 'UPDATE';
+                updateBtn.disabled = false;
+                eventSource.close();
             }
-            
-            // Reset button
+        };
+        
+        eventSource.onerror = function(error) {
+            console.error('SSE error:', error);
             updateBtn.innerHTML = 'UPDATE';
             updateBtn.disabled = false;
-        })
-        .catch(error => {
-            console.error('Error updating data:', error);
-            statusBar.textContent = '[AI ENGINE] Update failed: Network error';
-            
-            // Reset button
-            updateBtn.innerHTML = 'UPDATE';
-            updateBtn.disabled = false;
-        });
+            eventSource.close();
+        };
     } catch (error) {
         console.error('Error in updateData:', error);
         // Reset button on error
         if (updateBtn) {
             updateBtn.innerHTML = 'UPDATE';
             updateBtn.disabled = false;
+        }
+    }
+}
+
+/**
+ * Update individual insight rows with new AI analysis data
+ */
+function updateInsightRows(processed, success) {
+    // Fetch updated insights data and update rows
+    fetch('/api/insights')
+        .then(response => response.json())
+        .then(insights => {
+            insights.forEach(insight => {
+                const row = document.querySelector(`tr[data-insight-id="${insight.id}"]`);
+                if (row) {
+                    // Update AI summary
+                    const summaryCell = row.querySelector('.summary-col');
+                    if (summaryCell && insight.AISummary) {
+                        summaryCell.innerHTML = insight.AISummary.length > 100 
+                            ? insight.AISummary.substring(0, 100) + '...' 
+                            : insight.AISummary;
+                    }
+                    
+                    // Update AI action
+                    const actionCell = row.querySelector('.action-col');
+                    if (actionCell && insight.AIAction) {
+                        let actionClass = 'action-neutral';
+                        if (insight.AIAction.toUpperCase().includes('SELL')) actionClass = 'action-sell';
+                        else if (insight.AIAction.toUpperCase().includes('BUY')) actionClass = 'action-buy';
+                        else if (insight.AIAction.toUpperCase().includes('HOLD')) actionClass = 'action-hold';
+                        
+                        actionCell.innerHTML = `<span class="action-badge ${actionClass}">${insight.AIAction.substring(0, 4).toUpperCase()}</span>`;
+                    }
+                    
+                    // Update AI confidence
+                    const confidenceCell = row.querySelector('.confidence-col');
+                    if (confidenceCell && insight.AIConfidence) {
+                        confidenceCell.innerHTML = `<span class="confidence-value">${Math.round(insight.AIConfidence * 100)}%</span>`;
+                    }
+                    
+                    // Update AI event time
+                    const timeCell = row.querySelector('.time-col');
+                    if (timeCell && insight.AIEventTime) {
+                        timeCell.innerHTML = insight.AIEventTime.includes(':') 
+                            ? insight.AIEventTime.slice(-5) 
+                            : insight.AIEventTime.substring(0, 5);
+                    }
+                    
+                    // Update AI levels
+                    const levelsCell = row.querySelector('.levels-col');
+                    if (levelsCell && insight.AILevels) {
+                        levelsCell.innerHTML = `<span class="levels-text">${insight.AILevels.length > 30 
+                            ? insight.AILevels.substring(0, 30) + '...' 
+                            : insight.AILevels}</span>`;
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error updating insight rows:', error);
+        });
+}
+
+/**
+ * 
+ *  ┌─────────────────────────────────────┐
+ *  │           FETCH DATA                │
+ *  └─────────────────────────────────────┘
+ *  Triggers data fetching from external sources
+ * 
+ *  Initiates the feed scraper to fetch new insights from configured
+ *  data sources based on current symbol/exchange/type settings.
+ * 
+ *  Parameters:
+ *  - None (uses current form values)
+ * 
+ *  Returns:
+ *  - None (updates interface and shows results)
+ * 
+ *  Notes:
+ *  - Shows loading state during fetch operation
+ *  - Uses feedScraper system for data retrieval
+ */
+function fetchData() {
+    const fetchBtn = document.querySelector('.fetch-btn');
+    const symbolInput = document.getElementById('symbolInput');
+    const exchangeInput = document.getElementById('exchangeInput');
+    const typeFilter = document.getElementById('typeFilter');
+    const itemsSelect = document.querySelector('select[title="Number of Items"]');
+    
+    if (!fetchBtn) {
+        console.warn('Fetch button not found');
+        return;
+    }
+    
+    // Get current form values
+    const symbol = symbolInput ? symbolInput.value.trim().toUpperCase() : 'BTCUSD';
+    const exchange = exchangeInput ? exchangeInput.value.trim().toUpperCase() : 'BINANCE';
+    const feedType = typeFilter ? typeFilter.value : '';
+    const maxItems = itemsSelect ? parseInt(itemsSelect.value) || 10 : 10;
+    
+    try {
+        // Show loading state
+        fetchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>FETCHING...';
+        fetchBtn.disabled = true;
+        
+        // Call the fetch API endpoint
+        const params = new URLSearchParams({
+            symbol,
+            exchange,
+            feedType,
+            maxItems
+        });
+        
+        fetch(`/api/insights/fetch?${params}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Fetch operation completed:', data);
+            
+            if (data.success) {
+                // Show success message with details
+                const message = `${data.created_insights} insights created, ${data.failed_items} failed`;
+                console.log(`✓ Fetch successful: ${message}`);
+                
+                // Reload page if insights were created
+                if (data.created_insights > 0) {
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                }
+        } else {
+                console.error('Fetch failed:', data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Fetch error:', error);
+        })
+        .finally(() => {
+            // Reset button
+            fetchBtn.innerHTML = 'FETCH';
+            fetchBtn.disabled = false;
+        });
+        
+    } catch (error) {
+        console.error('Error in fetchData:', error);
+        // Reset button on error
+        if (fetchBtn) {
+            fetchBtn.innerHTML = 'FETCH';
+            fetchBtn.disabled = false;
+        }
+    }
+}
+
+/**
+ * 
+ *  ┌─────────────────────────────────────┐
+ *  │     DELETE SELECTED INSIGHTS        │
+ *  └─────────────────────────────────────┘
+ *  Delete all insights of the selected type
+ * 
+ *  Gets the current type filter value and deletes all insights
+ *  matching that type using the delete_select_insights API.
+ * 
+ *  Parameters:
+ *  - None (uses current TYPE dropdown value)
+ * 
+ *  Returns:
+ *  - None (shows confirmation and reloads page)
+ * 
+ *  Notes:
+ *  - Shows confirmation dialog before deletion
+ *  - Uses type from TYPE dropdown as filter
+ *  - Reloads page after successful deletion
+ */
+function deleteSelectedInsights() {
+    const deleteBtn = document.querySelector('.delete-btn');
+    const typeFilter = document.getElementById('typeFilter');
+    
+    if (!deleteBtn) {
+        console.warn('Delete button not found');
+        return;
+    }
+    
+    // Get the selected type from the dropdown
+    const selectedType = typeFilter ? typeFilter.value : '';
+    
+    // Determine what will be deleted
+    let deleteMessage;
+    if (!selectedType || selectedType === '') {
+        deleteMessage = 'This will delete ALL insights in the database. This action cannot be undone.';
+    } else {
+        deleteMessage = `This will delete all insights of type "${selectedType}". This action cannot be undone.`;
+    }
+    
+    // Show confirmation dialog
+    if (!confirm(`⚠️ DELETE CONFIRMATION\n\n${deleteMessage}\n\nAre you sure you want to proceed?`)) {
+        return;
+    }
+    
+    try {
+        // Show loading state
+        deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>DELETING...';
+        deleteBtn.disabled = true;
+        
+        // Call the delete API endpoint
+        const params = new URLSearchParams({
+            type: selectedType
+        });
+        
+        fetch(`/api/insights?${params}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Delete operation completed:', data);
+            
+            if (data.success) {
+                // Show success message with details
+                const message = `${data.deleted_count} insights deleted, ${data.failed_count} failed`;
+                console.log(`✓ Delete successful: ${message}`);
+                
+                // Reload page to show updated insights list
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                console.error('Delete failed:', data.message);
+                alert(`Delete failed: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('Delete error:', error);
+            alert('Network error during deletion. Please try again.');
+        })
+        .finally(() => {
+            // Reset button
+            deleteBtn.innerHTML = 'DELETE';
+            deleteBtn.disabled = false;
+        });
+        
+    } catch (error) {
+        console.error('Error in deleteSelectedInsights:', error);
+        // Reset button on error
+        if (deleteBtn) {
+            deleteBtn.innerHTML = 'DELETE';
+            deleteBtn.disabled = false;
         }
     }
 }
@@ -436,6 +690,84 @@ function applyTypeFilter(filterValue) {
     
     // Reload the page with the new filter
     window.location.href = url.toString();
+}
+
+/**
+ * 
+ *  ┌─────────────────────────────────────┐
+ *  │      FETCH DEBUG STATUS             │
+ *  └─────────────────────────────────────┘
+ *  Fetch current debug status from server
+ * 
+ *  Retrieves the current debug message and status from the debugger
+ *  API and updates the status bar with the latest information.
+ * 
+ *  Parameters:
+ *  - None
+ * 
+ *  Returns:
+ *  - None (updates status bar)
+ * 
+ *  Notes:
+ *  - Called periodically to keep status bar updated
+ */
+async function fetchDebugStatus() {
+    try {
+        const response = await fetch('/api/debug-status');
+        if (response.ok) {
+            const status = await response.json();
+            updateStatusBar(status.full_message);
+        }
+    } catch (error) {
+        console.error('Error fetching debug status:', error);
+        updateStatusBar('[SYSTEM] Connection error');
+    }
+}
+
+/**
+ * 
+ *  ┌─────────────────────────────────────┐
+ *  │       UPDATE STATUS BAR             │
+ *  └─────────────────────────────────────┘
+ *  Update the status bar with a message
+ * 
+ *  Updates the status bar text content with the provided message.
+ * 
+ *  Parameters:
+ *  - message: The message to display in the status bar
+ * 
+ *  Returns:
+ *  - None
+ */
+function updateStatusBar(message) {
+    const statusBarText = document.getElementById('statusBarText');
+    if (statusBarText) {
+        statusBarText.textContent = message;
+    }
+}
+
+/**
+ * 
+ *  ┌─────────────────────────────────────┐
+ *  │    INITIALIZE STATUS UPDATES        │
+ *  └─────────────────────────────────────┘
+ *  Initialize periodic status bar updates
+ * 
+ *  Sets up periodic fetching of debug status to keep the status bar
+ *  updated with the latest system messages.
+ * 
+ *  Parameters:
+ *  - None
+ * 
+ *  Returns:
+ *  - None
+ */
+function initializeStatusUpdates() {
+    // Fetch initial status
+    fetchDebugStatus();
+    
+    // Set up periodic updates every 2 seconds
+    setInterval(fetchDebugStatus, 2000);
 }
 
 /**
@@ -568,7 +900,7 @@ function initializeSymbolValidation(symbolInput) {
         try {
             showLoading();
             
-            const response = await fetch(`/api/symbol-search?q=${encodeURIComponent(query)}&limit=8`);
+            const response = await fetch(`/api/symbols/search?q=${encodeURIComponent(query)}&limit=8`);
             const data = await response.json();
             
             if (data.symbols && data.symbols.length > 0) {
@@ -668,7 +1000,7 @@ function initializeSymbolValidation(symbolInput) {
         try {
             setValidationIcon('loading');
             
-            const response = await fetch(`/api/validate-symbol?symbol=${encodeURIComponent(symbol)}`);
+            const response = await fetch(`/api/symbols/validate?symbol=${encodeURIComponent(symbol)}`);
             
             const data = await response.json();
             
@@ -854,7 +1186,7 @@ async function deleteInsight(insightId, redirectToHome = false) {
  * - None
  * 
  * Notes:
- * - Makes POST request to /api/reset-insight-ai/{id} endpoint
+ * - Makes POST request to /api/insights/{id}/reset-ai endpoint
  * - Shows success/error feedback to user
  * - Reloads page to reflect changes
  */
@@ -866,16 +1198,13 @@ async function resetInsightAI(insightId) {
     
     try {
         // Show loading state
-        const aiResetBtn = document.getElementById('aiResetBtn');
-        const originalText = aiResetBtn.innerHTML;
-        aiResetBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Resetting...';
-        aiResetBtn.disabled = true;
+        const resetBtn = document.getElementById('resetBtn');
+        const originalText = resetBtn.innerHTML;
+        resetBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Resetting...';
+        resetBtn.disabled = true;
         
-        const response = await fetch(`/api/reset-insight-ai/${insightId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+        const response = await fetch(`/api/insights/${insightId}/reset-ai`, {
+            method: 'POST'
         });
 
         if (response.ok) {
@@ -896,8 +1225,8 @@ async function resetInsightAI(insightId) {
         alert('Network error while resetting AI fields. Please try again.');
     } finally {
         // Restore button state
-        const aiResetBtn = document.getElementById('aiResetBtn');
-        aiResetBtn.innerHTML = originalText;
-        aiResetBtn.disabled = false;
+        const resetBtn = document.getElementById('resetBtn');
+        resetBtn.innerHTML = originalText;
+        resetBtn.disabled = false;
     }
 }

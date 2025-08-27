@@ -7,15 +7,13 @@ The existing scrapers remain independent but can use these utilities for
 consistent symbol and exchange handling.
 """
 
-import logging
 import requests
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import re
 import json
 from functools import lru_cache
-
-logger = logging.getLogger(__name__)
+from debugger import debug_info, debug_warning, debug_error, debug_success
 
 @dataclass
 class ExchangeInfo:
@@ -233,11 +231,11 @@ class ExchangeManager:
                 
                 return results
             else:
-                logger.error(f"Failed to search symbol: {response.status_code}")
+                debug_error(f"Failed to search symbol: {response.status_code}")
                 return []
-                
+        
         except Exception as e:
-            logger.error(f"Error searching symbol '{query}': {e}")
+            debug_error(f"Error searching symbol '{query}': {e}")
             return []
     
     def find_best_exchange_for_symbol(self, symbol: str) -> Optional[str]:

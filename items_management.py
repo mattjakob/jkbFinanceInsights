@@ -11,6 +11,7 @@
 import sqlite3
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from debugger import debug_error
 
 DATABASE = "finance_insights.db"
 
@@ -71,11 +72,11 @@ def add_insight(
     cursor = conn.cursor()
     
     # Set timeFetched to current time
-    time_fetched = datetime.now().isoformat()
+    timeFetched = datetime.now().isoformat()
     
     # Use provided timePosted or default to current time
     if timePosted is None:
-        timePosted = time_fetched
+        timePosted = timeFetched
     
     # Validate type against feed_names
     valid_type = cursor.execute('SELECT name FROM feed_names WHERE name = ?', (type,)).fetchone()
@@ -91,7 +92,7 @@ def add_insight(
             AIConfidence, AIEventTime, AILevels
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        time_fetched, timePosted, type, title, content, symbol, exchange, imageURL,
+        timeFetched, timePosted, type, title, content, symbol, exchange, imageURL,
         AITextSummary, AIImageSummary, AISummary, AIAction,
         AIConfidence, AIEventTime, AILevels
     ))
@@ -358,3 +359,89 @@ def get_feed_names() -> List[Dict[str, str]]:
     conn.close()
     
     return [dict(feed) for feed in feeds]
+
+def delete_select_insights(type: str) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │    DELETE_SELECT_INSIGHTS           │
+     └─────────────────────────────────────┘
+     Delete all insights of a specific type
+     
+     Finds all insights with the specified type and deletes each one
+     using the delete_insight function.
+     
+     Parameters:
+     - type: Feed type to filter and delete (e.g., "TD NEWS")
+     
+     Returns:
+     - Dictionary with deletion results and statistics
+     
+     Notes:
+     - Calls delete_insight for each matching insight
+     - Returns detailed statistics of the operation
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Find all insights with the specified type
+        insights = cursor.execute(
+            'SELECT id, title FROM insights WHERE type = ? ORDER BY id',
+            (type,)
+        ).fetchall()
+        
+        if not insights:
+            conn.close()
+            return {
+                "success": True,
+                "message": f"No insights found with type '{type}'",
+                "total_found": 0,
+                "deleted_count": 0,
+                "failed_count": 0,
+                "deleted_ids": [],
+                "failed_ids": []
+            }
+        
+        total_found = len(insights)
+        deleted_ids = []
+        failed_ids = []
+        
+        # Delete each insight using the existing delete_insight function
+        for insight in insights:
+            insight_id = insight[0]
+            try:
+                # Use the existing delete_insight function
+                if delete_insight(insight_id):
+                    deleted_ids.append(insight_id)
+                else:
+                    failed_ids.append(insight_id)
+            except Exception as e:
+                debug_error(f"Error deleting insight {insight_id}: {e}")
+                failed_ids.append(insight_id)
+        
+        conn.close()
+        
+        deleted_count = len(deleted_ids)
+        failed_count = len(failed_ids)
+        
+        return {
+            "success": True,
+            "message": f"Deleted {deleted_count}/{total_found} insights of type '{type}'",
+            "total_found": total_found,
+            "deleted_count": deleted_count,
+            "failed_count": failed_count,
+            "deleted_ids": deleted_ids,
+            "failed_ids": failed_ids
+        }
+        
+    except Exception as e:
+        conn.close()
+        return {
+            "success": False,
+            "message": f"Error deleting insights: {str(e)}",
+            "total_found": 0,
+            "deleted_count": 0,
+            "failed_count": 0,
+            "deleted_ids": [],
+            "failed_ids": []
+        }

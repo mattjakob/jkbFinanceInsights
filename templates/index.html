@@ -87,12 +87,18 @@
             </a>
         </div>
         <div class="col-auto">
+            <button class="btn btn-success btn-sm fetch-btn">FETCH</button>
+        </div>
+        <div class="col-auto">
             <button class="btn btn-primary btn-sm update-btn">UPDATE</button>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-danger btn-sm delete-btn">DELETE</button>
         </div>
         <div class="col-auto">
             <div class="d-flex align-items-center gap-1">
                 <input type="number" class="form-control form-control-sm reset-id-input" id="resetInsightId" placeholder="ID" min="1">
-                <button class="btn btn-outline-warning btn-sm" id="aiResetBtn" title="Reset AI fields for the specified insight ID">
+                <button class="btn btn-outline-warning btn-sm" id="resetBtn" title="Reset AI fields for the specified insight ID">
                     AI RESET
                 </button>
             </div>
@@ -100,9 +106,9 @@
     </div>
 </div>
 
-<!-- AI Engine Status -->
+<!-- System Status -->
 <div class="status-bar mb-3">
-    <span class="status-bar-text">[AI ENGINE] Running multimodal analysis for IDEAS-2025-08-27T00:39:57.245Z_7af2af68 with image</span>
+    <span class="status-bar-text" id="statusBarText">[SYSTEM] Loading...</span>
 </div>
 
 {% if insights %}

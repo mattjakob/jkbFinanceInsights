@@ -13,6 +13,7 @@ import os
 from datetime import datetime
 from typing import List, Tuple
 from config import DATABASE_URL as DATABASE
+from debugger import debug_info, debug_warning, debug_error, debug_success
 
 def get_db_connection():
     """Get database connection with row factory"""
@@ -84,15 +85,15 @@ def migrate_existing_insights(cursor: sqlite3.Cursor) -> None:
         # Add symbol column if it doesn't exist
         if 'symbol' not in columns:
             cursor.execute("ALTER TABLE insights ADD COLUMN symbol TEXT")
-            print("Added symbol column to insights table")
+            debug_success("Added symbol column to insights table")
         
         # Add exchange column if it doesn't exist
         if 'exchange' not in columns:
             cursor.execute("ALTER TABLE insights ADD COLUMN exchange TEXT")
-            print("Added exchange column to insights table")
+            debug_success("Added exchange column to insights table")
             
     except sqlite3.OperationalError as e:
-        print(f"Migration error: {e}")
+        debug_error(f"Migration error: {e}")
 
 def init_database() -> None:
     """
@@ -119,10 +120,10 @@ def init_database() -> None:
         migrate_existing_insights(cursor)
         
         conn.commit()
-        print("Database initialized successfully")
+        debug_success("Database initialized successfully")
         
     except Exception as e:
-        print(f"Database initialization error: {e}")
+        debug_error(f"Database initialization error: {e}")
         conn.rollback()
         raise
     finally:
@@ -137,25 +138,25 @@ def check_database_structure() -> None:
         # Check insights table structure
         cursor.execute("PRAGMA table_info(insights)")
         insights_columns = cursor.fetchall()
-        print("Insights table structure:")
+        debug_info("Insights table structure:")
         for col in insights_columns:
-            print(f"  {col[1]} ({col[2]}) - {'NOT NULL' if col[3] else 'NULLABLE'}")
+            debug_info(f"  {col[1]} ({col[2]}) - {'NOT NULL' if col[3] else 'NULLABLE'}")
         
         # Check feed_names table structure
         cursor.execute("PRAGMA table_info(feed_names)")
         feed_columns = cursor.fetchall()
-        print("Feed_names table structure:")
+        debug_info("Feed_names table structure:")
         for col in feed_columns:
-            print(f"  {col[1]} ({col[2]}) - {'NOT NULL' if col[3] else 'NULLABLE'}")
+            debug_info(f"  {col[1]} ({col[2]}) - {'NOT NULL' if col[3] else 'NULLABLE'}")
         
         # Check sample data
         cursor.execute("SELECT COUNT(*) FROM insights")
         insights_count = cursor.fetchone()[0]
-        print(f"Total insights in database: {insights_count}")
+        debug_info(f"Total insights in database: {insights_count}")
         
         cursor.execute("SELECT COUNT(*) FROM feed_names")
         feeds_count = cursor.fetchone()[0]
-        print(f"Total feed names in database: {feeds_count}")
+        debug_info(f"Total feed names in database: {feeds_count}")
         
         if insights_count > 0:
             # Check if symbol and exchange columns exist
@@ -165,24 +166,24 @@ def check_database_structure() -> None:
             if 'symbol' in columns and 'exchange' in columns:
                 cursor.execute("SELECT id, timeFetched, timePosted, type, title, symbol, exchange FROM insights ORDER BY id DESC LIMIT 1")
                 latest = cursor.fetchone()
-                print(f"Latest insight:")
-                print(f"  ID: {latest[0]}")
-                print(f"  timeFetched: {latest[1]}")
-                print(f"  timePosted: {latest[2]}")
-                print(f"  type: {latest[3]}")
-                print(f"  title: {latest[4]}")
-                print(f"  symbol: {latest[5]}")
-                print(f"  exchange: {latest[6]}")
+                debug_info(f"Latest insight:")
+                debug_info(f"  ID: {latest[0]}")
+                debug_info(f"  timeFetched: {latest[1]}")
+                debug_info(f"  timePosted: {latest[2]}")
+                debug_info(f"  type: {latest[3]}")
+                debug_info(f"  title: {latest[4]}")
+                debug_info(f"  symbol: {latest[5]}")
+                debug_info(f"  exchange: {latest[6]}")
             else:
                 cursor.execute("SELECT id, timeFetched, timePosted, type, title FROM insights ORDER BY id DESC LIMIT 1")
                 latest = cursor.fetchone()
-                print(f"Latest insight:")
-                print(f"  ID: {latest[0]}")
-                print(f"  timeFetched: {latest[1]}")
-                print(f"  timePosted: {latest[2]}")
-                print(f"  type: {latest[3]}")
-                print(f"  title: {latest[4]}")
-                print(f"  symbol/exchange: Columns not yet added")
+                debug_info(f"Latest insight:")
+                debug_info(f"  ID: {latest[0]}")
+                debug_info(f"  timeFetched: {latest[1]}")
+                debug_info(f"  timePosted: {latest[2]}")
+                debug_info(f"  type: {latest[3]}")
+                debug_info(f"  title: {latest[4]}")
+                debug_info(f"  symbol/exchange: Columns not yet added")
     
     finally:
         conn.close()
@@ -198,31 +199,31 @@ def reset_database() -> None:
         cursor.execute("DROP TABLE IF EXISTS feed_names")
         
         conn.commit()
-        print("Database tables dropped")
+        debug_success("Database tables dropped")
         
         # Reinitialize
         init_database()
         
     except Exception as e:
-        print(f"Database reset error: {e}")
+        debug_error(f"Database reset error: {e}")
         conn.rollback()
         raise
     finally:
         conn.close()
 
 if __name__ == "__main__":
-    print("Database Schema Management")
-    print("=" * 50)
+    debug_info("Database Schema Management")
+    debug_info("=" * 50)
     
     # Check current structure
-    print("\nCurrent database structure:")
+    debug_info("\nCurrent database structure:")
     check_database_structure()
     
     # Option to reset database
-    print("\nOptions:")
-    print("1. Check structure (current)")
-    print("2. Initialize database")
-    print("3. Reset database (WARNING: This will delete all data)")
+    debug_info("\nOptions:")
+    debug_info("1. Check structure (current)")
+    debug_info("2. Initialize database")
+    debug_info("3. Reset database (WARNING: This will delete all data)")
     
     choice = input("\nEnter choice (1-3): ").strip()
     
@@ -233,6 +234,6 @@ if __name__ == "__main__":
         if confirm == "yes":
             reset_database()
         else:
-            print("Database reset cancelled")
+            debug_info("Database reset cancelled")
     else:
-        print("No changes made")
+        debug_info("No changes made")
