@@ -105,9 +105,32 @@ function initializeControlPanel() {
         });
     }
     
-    // Initialize symbol validation
+    // Initialize symbol validation and chart updates
     if (symbolInput) {
         initializeSymbolValidation(symbolInput);
+        
+        // Add debounced TradingView chart update on symbol change
+        let chartUpdateTimeout;
+        symbolInput.addEventListener('input', function() {
+            console.log('TradingView: Symbol input changed to:', this.value);
+            clearTimeout(chartUpdateTimeout);
+            chartUpdateTimeout = setTimeout(() => {
+                TradingViewChart.updateFromInputs();
+            }, 1000); // 1 second debounce
+        });
+    }
+    
+    // Add debounced TradingView chart update on exchange change
+    const exchangeInput = document.getElementById('exchangeInput');
+    if (exchangeInput) {
+        let exchangeUpdateTimeout;
+        exchangeInput.addEventListener('input', function() {
+            console.log('TradingView: Exchange input changed to:', this.value);
+            clearTimeout(exchangeUpdateTimeout);
+            exchangeUpdateTimeout = setTimeout(() => {
+                TradingViewChart.updateFromInputs();
+            }, 1000); // 1 second debounce
+        });
     }
     
     if (resetBtn && resetInsightIdInput) {
@@ -1234,3 +1257,7 @@ async function resetInsightAI(insightId) {
         resetBtn.disabled = false;
     }
 }
+
+// TradingView chart functions moved to separate file: /static/tradingview-chart.js
+
+

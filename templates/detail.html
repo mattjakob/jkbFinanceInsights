@@ -29,25 +29,25 @@
                 <span class="info-value age-text" data-time-posted="{{ insight.timePosted }}">-</span>
             </div>
         </div>
+        {% if insight.AIAction %}
+        <div class="col-auto">
+            {% if 'SELL' in insight.AIAction|upper %}
+                <span class="action-btn action-sell">SELL <i class="bi bi-graph-down-arrow"></i></span>
+            {% elif 'BUY' in insight.AIAction|upper %}
+                <span class="action-btn action-buy">BUY <i class="bi bi-graph-up-arrow"></i></span>
+            {% elif 'HOLD' in insight.AIAction|upper %}
+                <span class="action-btn action-hold">HOLD <i class="bi bi-hourglass-split"></i></span>
+            {% else %}
+                <span class="action-btn action-neutral">{{ insight.AIAction[:4]|upper }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
         {% if insight.AIConfidence %}
         <div class="col-auto">
             <div class="info-button">
                 <span class="info-label">CONF</span>
                 <span class="info-value">{{ "%.0f"|format(insight.AIConfidence * 100) }}%</span>
             </div>
-        </div>
-        {% endif %}
-        {% if insight.AIAction %}
-        <div class="col-auto">
-            {% if 'SELL' in insight.AIAction|upper %}
-                <span class="action-btn action-sell">SELL</span>
-            {% elif 'BUY' in insight.AIAction|upper %}
-                <span class="action-btn action-buy">BUY</span>
-            {% elif 'HOLD' in insight.AIAction|upper %}
-                <span class="action-btn action-hold">HOLD</span>
-            {% else %}
-                <span class="action-btn action-neutral">{{ insight.AIAction[:4]|upper }}</span>
-            {% endif %}
         </div>
         {% endif %}
         <div class="col-auto ms-auto">
@@ -57,13 +57,13 @@
         </div>
         <div class="col-auto">
             <button class="btn btn-secondary btn-sm" onclick="performAITextAnalysis({{ insight.id }}, this)">
-                <i class="bi bi-robot"></i> AI TEXT
+                <i class="bi bi-stars"></i> AI TEXT
             </button>
         </div>
         {% if insight.imageURL %}
         <div class="col-auto">
             <button class="btn btn-secondary btn-sm" onclick="performAIImageAnalysis({{ insight.id }}, this)">
-                <i class="bi bi-image"></i> AI IMAGE
+                <i class="bi bi-stars"></i> AI IMAGE
             </button>
         </div>
         {% endif %}
@@ -126,7 +126,6 @@
 <div class="terminal-section mb-4">
     <div class="section-header">
         <span class="section-label">AI ANALYSIS</span>
-        <i class="bi bi-robot ms-2"></i>
     </div>
     <div class="section-content">
         {% if insight.AITextSummary %}
@@ -150,22 +149,7 @@
         </div>
         {% endif %}
 
-        {% if insight.AIAction %}
-        <div class="ai-subsection mb-3">
-            <div class="ai-subsection-header">RECOMMENDED_ACTION:</div>
-            <div class="ai-content ai-action">
-                {% if 'SELL' in insight.AIAction|upper %}
-                    <span class="action-badge action-sell">{{ insight.AIAction }}</span>
-                {% elif 'BUY' in insight.AIAction|upper %}
-                    <span class="action-badge action-buy">{{ insight.AIAction }}</span>
-                {% elif 'HOLD' in insight.AIAction|upper %}
-                    <span class="action-badge action-hold">{{ insight.AIAction }}</span>
-                {% else %}
-                    <span class="action-badge action-neutral">{{ insight.AIAction }}</span>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
+
 
         <!-- AI Metadata -->
         <div class="ai-metadata">
@@ -179,10 +163,26 @@
                 </div>
                 {% endif %}
                 {% if insight.AILevels %}
-                <div class="col-md-6">
+                <div class="col-12">
                     <div class="metadata-item">
                         <span class="metadata-key">LEVELS:</span>
-                        <span class="metadata-value">{{ insight.AILevels }}</span>
+                        <div class="ai-levels-container mt-2">
+                            {% set levels_parts = insight.AILevels.split(' | ') %}
+                            <div class="row g-2">
+                                {% for level_part in levels_parts %}
+                                    {% set level_type = level_part.split(':')[0].strip() %}
+                                    {% set level_values = level_part.split(':')[1].strip() if ':' in level_part else '' %}
+                                    {% if level_type and level_values %}
+                                    <div class="col-auto">
+                                        <div class="level-badge level-{{ level_type.lower() }}">
+                                            <div class="level-type">{{ level_type }}</div>
+                                            <div class="level-values">{{ level_values }}</div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
                     </div>
                 </div>
                 {% endif %}
@@ -200,7 +200,7 @@ async function performAITextAnalysis(insightId, buttonElement) {
     
     try {
         // Disable button and show loading state
-        button.innerHTML = '<i class="bi bi-hourglass-split"></i> ANALYZING...';
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>ANALYZING...';
         button.disabled = true;
         
         // Call AI text analysis API
@@ -238,7 +238,7 @@ async function performAIImageAnalysis(insightId, buttonElement) {
     
     try {
         // Disable button and show loading state
-        button.innerHTML = '<i class="bi bi-hourglass-split"></i> ANALYZING...';
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>ANALYZING...';
         button.disabled = true;
         
         // Call AI image analysis API

@@ -3,12 +3,19 @@
 {% block title %}JKB Finance Terminal{% endblock %}
 
 {% block content %}
-<div class="terminal-header mb-4">
-    <div class="d-flex justify-content-between align-items-center">
-        <h1 class="terminal-title mb-0">
-            JKB Finance Terminal
-        </h1>
+<div class="trading-chart-section mb-4">
+    <!-- TradingView Widget BEGIN -->
+    <div class="tradingview-widget-container">
+        <div class="tradingview-widget-container__widget" id="tradingview_widget_container"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+        <script type="text/javascript" src="/static/tradingview-chart.js"></script>
+        <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function() {
+            TradingViewChart.initialize('tradingview_widget_container', 'BTCUSD');
+        });
+        </script>
     </div>
+    <!-- TradingView Widget END -->
 </div>
 
 <!-- Control Panel -->
@@ -117,9 +124,9 @@
             <thead>
                 <tr>
                     <th>TYPE</th>
+                    <th>SYMBOL</th>
                     <th>AGE</th>
                     <th>TITLE</th>
-                    <th>SYMBOL</th>
                     <th>AI SUMMARY</th>
                     <th>ACTION</th>
                     <th>CONF%</th>
@@ -132,13 +139,20 @@
                 <tr class="insight-row" data-insight-id="{{ insight.id }}">
                     <td class="type-col">
                         {% if insight.type == 'TD NEWS' %}
-                            <i class="bi bi-newspaper type-icon type-document" title="{{ insight.feed_description or insight.type }}"></i>
+                            <i class="bi bi-file-text type-icon type-document" title="{{ insight.feed_description or insight.type }}"></i>
                         {% elif insight.type == 'TD OPINIONS' %}
-                            <i class="bi bi-chat-quote type-icon type-analysis" title="{{ insight.feed_description or insight.type }}"></i>
+                            <i class="bi bi-chat-text type-icon type-analysis" title="{{ insight.feed_description or insight.type }}"></i>
                         {% elif 'IDEAS' in insight.type %}
                             <i class="bi bi-lightbulb type-icon type-document" title="{{ insight.feed_description or insight.type }}"></i>
                         {% else %}
                             <i class="bi bi-geo-alt type-icon type-location" title="{{ insight.feed_description or insight.type }}"></i>
+                        {% endif %}
+                    </td>
+                    <td class="symbol-col">
+                        {% if insight.symbol %}
+                            <strong class="symbol">{{ insight.symbol }}</strong>
+                        {% else %}
+                            <span class="text-muted">-</span>
                         {% endif %}
                     </td>
                     <td class="age-col">
@@ -148,20 +162,6 @@
                         <div class="title-content" title="Insight ID: {{ insight.id }}">
                             <strong>{{ insight.title[:80] }}{% if insight.title|length > 80 %}...{% endif %}</strong>
                         </div>
-                    </td>
-                    <td class="symbol-exchange-col">
-                        {% if insight.symbol or insight.exchange %}
-                            <div class="symbol-exchange-content">
-                                {% if insight.symbol %}
-                                    <strong class="symbol">{{ insight.symbol }}</strong>
-                                {% endif %}
-                                {% if insight.exchange %}
-                                    <span class="exchange text-muted">/ {{ insight.exchange }}</span>
-                                {% endif %}
-                            </div>
-                        {% else %}
-                            <span class="text-muted">-</span>
-                        {% endif %}
                     </td>
                     <td class="summary-col">
                         {% if insight.AISummary %}
@@ -173,11 +173,11 @@
                     <td class="action-col">
                         {% if insight.AIAction %}
                             {% if 'SELL' in insight.AIAction|upper %}
-                                <span class="action-badge action-sell">SELL</span>
+                                <span class="action-badge action-sell">SELL <i class="bi bi-graph-down-arrow"></i></span>
                             {% elif 'BUY' in insight.AIAction|upper %}
-                                <span class="action-badge action-buy">BUY</span>
+                                <span class="action-badge action-buy">BUY <i class="bi bi-graph-up-arrow"></i></span>
                             {% elif 'HOLD' in insight.AIAction|upper %}
-                                <span class="action-badge action-hold">HOLD</span>
+                                <span class="action-badge action-hold">HOLD <i class="bi bi-hourglass-split"></i></span>
                             {% else %}
                                 <span class="action-badge action-neutral">{{ insight.AIAction[:4]|upper }}</span>
                             {% endif %}

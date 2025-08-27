@@ -61,18 +61,26 @@
     background-color: transparent;
 }
 
-.terminal-header {
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 1.5rem;
+/* TradingView Chart Section */
+.trading-chart-section {
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: var(--bg-color);
     margin-bottom: 2rem;
 }
 
-.terminal-title {
-    color: var(--text-color);
-    font-size: 1.8rem;
-    font-weight: bold;
-    font-family: var(--mono-font);
-    letter-spacing: 0.5px;
+.tradingview-widget-container {
+    height: 400px;
+    width: 100%;
+    background-color: rgba(30, 33, 40, 1);
+    border: 1px solid #333333;
+    border-radius: 4px;
+}
+
+.tradingview-widget-container__widget {
+    height: 100% !important;
+    width: 100% !important;
 }
 
 /* Control Panel */
@@ -298,12 +306,19 @@ option:checked {
 
 /* Center align specific column headers */
 .finance-table thead th:nth-child(1), /* TYPE */
-.finance-table thead th:nth-child(2), /* AGE */
-.finance-table thead th:nth-child(4), /* SYMBOL/EXCHANGE */
+.finance-table thead th:nth-child(2), /* SYMBOL */
+.finance-table thead th:nth-child(3), /* AGE */
 .finance-table thead th:nth-child(6), /* ACTION */
 .finance-table thead th:nth-child(7), /* CONF% */
 .finance-table thead th:nth-child(8) { /* EVENT TIME */
     text-align: center !important;
+}
+
+/* Left align content headers */
+.finance-table thead th:nth-child(4), /* TITLE */
+.finance-table thead th:nth-child(5), /* AI SUMMARY */
+.finance-table thead th:nth-child(9) { /* LEVELS */
+    text-align: left !important;
 }
 
 .finance-table thead th:last-child {
@@ -390,10 +405,11 @@ option:checked {
     line-height: 1.4;
 }
 
-.symbol-exchange-col {
-    width: 160px;
-    text-align: left !important;
+.symbol-col {
+    width: 80px;
+    text-align: center !important;
     font-size: 11px;
+    font-weight: bold;
 }
 
 .action-col {
@@ -432,16 +448,20 @@ option:checked {
 
 /* Action Badges for Table (Index Page) */
 .action-badge {
-    display: inline-block;
-    padding: 3px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 8px;
     border-radius: 4px;
     font-size: 10px;
     font-weight: bold;
     text-transform: uppercase;
     font-family: var(--mono-font);
     letter-spacing: 0.5px;
-    min-width: 50px;
+    min-width: 80px;
+    width: 80px;
     text-align: center;
+    box-sizing: border-box;
 }
 
 /* Action Buttons for Detail Page Menu Bar */
@@ -461,6 +481,16 @@ option:checked {
     height: 32px;
     line-height: 1;
     width: 140px;
+}
+
+/* Add spacing between action text and icon */
+.action-btn i {
+    margin-left: 0.75rem;
+}
+
+/* Add spacing between action text and icon in table badges */
+.action-badge i {
+    margin-left: 0.5rem;
 }
 
 /* Info Button Styling - Like individual buttons */
@@ -1025,6 +1055,67 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     background-color: transparent;
     border-left: 3px solid var(--border-color);
     padding-left: 1rem;
+}
+
+/* AI Levels Styling */
+.ai-levels-container {
+    margin-left: 1rem;
+    margin-top: 0.5rem;
+}
+
+.level-badge {
+    background: rgba(40, 44, 52, 0.9);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    text-align: center;
+    min-width: 100px;
+    transition: all 0.2s ease;
+    cursor: default;
+}
+
+.level-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+    border-color: var(--hover-color);
+}
+
+.level-type {
+    font-family: var(--mono-font);
+    font-weight: bold;
+    font-size: 10px;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.level-values {
+    font-family: var(--mono-font);
+    font-size: 11px;
+    color: var(--text-color);
+    font-weight: normal;
+    line-height: 1.2;
+}
+
+/* Level type specific colors */
+.level-s .level-type {
+    color: #00ff88; /* Support - Bright Green */
+}
+
+.level-r .level-type {
+    color: #ff6b6b; /* Resistance - Red */
+}
+
+.level-t .level-type {
+    color: #4ecdc4; /* Targets - Cyan */
+}
+
+.level-sl .level-type {
+    color: #ffd93d; /* Stop Loss - Yellow */
+}
+
+.level-inv .level-type {
+    color: #ff8a65; /* Invalidation - Orange */
 }
 
 .ai-action {

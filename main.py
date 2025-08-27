@@ -801,18 +801,41 @@ async def ai_text_analysis(insight_id: int):
         )
         
         if analysis:
-            # Update the insight with AI analysis results
+            # Update the insight with AI text analysis results
             items_management.update_insight(
                 insight_id=insight_id,
                 AITextSummary=analysis
             )
             
-            debug_success(f"AI text analysis completed for insight {insight_id}")
+            # Run comprehensive AI summary with text analysis
+            from ai_worker import do_ai_summary
+            ai_summary_result = do_ai_summary(
+                text=analysis,
+                technical=None,  # No technical analysis for text-only
+                symbol=insight.get('symbol', ''),
+                item_type=insight.get('type', '')
+            )
+            
+            if ai_summary_result:
+                # Update AI fields with comprehensive summary
+                items_management.update_insight_ai_fields(
+                    insight_id=insight_id,
+                    AISummary=ai_summary_result.get('AISummary'),
+                    AIAction=ai_summary_result.get('AIAction'),
+                    AIConfidence=ai_summary_result.get('AIConfidence'),
+                    AIEventTime=ai_summary_result.get('AIEventTime'),
+                    AILevels=ai_summary_result.get('AILevels')
+                )
+                debug_success(f"✓ AI text analysis and summary completed for insight {insight_id}")
+            else:
+                debug_warning(f"AI text analysis completed but summary generation failed for insight {insight_id}")
+            
             return {
                 "success": True,
                 "message": "AI text analysis completed successfully",
                 "AITextSummary": analysis,
-                "insight_id": insight_id
+                "insight_id": insight_id,
+                "summary": ai_summary_result
             }
         else:
             debug_error(f"AI text analysis failed for insight {insight_id}")
@@ -869,18 +892,44 @@ async def ai_image_analysis(insight_id: int):
         )
         
         if analysis:
-            # Update the insight with AI analysis results
+            # Update the insight with AI image analysis results
             items_management.update_insight(
                 insight_id=insight_id,
                 AIImageSummary=analysis
             )
             
-            debug_success(f"AI image analysis completed for insight {insight_id}")
+            # Get existing text analysis for comprehensive summary
+            existing_text_analysis = insight.get('AITextSummary', '')
+            
+            # Run comprehensive AI summary with both text and image analysis
+            from ai_worker import do_ai_summary
+            ai_summary_result = do_ai_summary(
+                text=existing_text_analysis,
+                technical=analysis,  # Image analysis as technical analysis
+                symbol=insight.get('symbol', ''),
+                item_type=insight.get('type', '')
+            )
+            
+            if ai_summary_result:
+                # Update AI fields with comprehensive summary
+                items_management.update_insight_ai_fields(
+                    insight_id=insight_id,
+                    AISummary=ai_summary_result.get('AISummary'),
+                    AIAction=ai_summary_result.get('AIAction'),
+                    AIConfidence=ai_summary_result.get('AIConfidence'),
+                    AIEventTime=ai_summary_result.get('AIEventTime'),
+                    AILevels=ai_summary_result.get('AILevels')
+                )
+                debug_success(f"✓ AI image analysis and summary completed for insight {insight_id}")
+            else:
+                debug_warning(f"AI image analysis completed but summary generation failed for insight {insight_id}")
+            
             return {
                 "success": True,
                 "message": "AI image analysis completed successfully",
                 "AIImageSummary": analysis,
-                "insight_id": insight_id
+                "insight_id": insight_id,
+                "summary": ai_summary_result
             }
         else:
             debug_error(f"AI image analysis failed for insight {insight_id}")
