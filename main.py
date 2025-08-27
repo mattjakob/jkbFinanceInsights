@@ -766,6 +766,139 @@ async def fetch_insights(request: FetchRequest):
             "timestamp": datetime.now().isoformat()
         }
 
+@app.post("/api/insights/{insight_id}/ai-text-analysis")
+async def ai_text_analysis(insight_id: int):
+    """
+     ┌─────────────────────────────────────┐
+     │         AI_TEXT_ANALYSIS            │
+     └─────────────────────────────────────┘
+     Perform AI text analysis on an insight
+     
+     Analyzes the text content of an insight using OpenAI's
+     text analysis capabilities and updates the AI fields.
+     
+     Parameters:
+     - insight_id: ID of the insight to analyze
+     
+     Returns:
+     - JSON response with analysis results
+    """
+    try:
+        debug_info(f"AI text analysis requested for insight {insight_id}")
+        
+        # Get the insight from database
+        insight = items_management.get_insight_by_id(insight_id)
+        if not insight:
+            raise HTTPException(status_code=404, detail="Insight not found")
+        
+        # Perform AI text analysis
+        from ai_worker import do_ai_text_analysis
+        analysis = do_ai_text_analysis(
+            symbol=insight.get('symbol'),
+            item_type=insight.get('type'),
+            title=insight.get('title'),
+            content=insight.get('content')
+        )
+        
+        if analysis:
+            # Update the insight with AI analysis results
+            items_management.update_insight(
+                insight_id=insight_id,
+                AITextSummary=analysis
+            )
+            
+            debug_success(f"AI text analysis completed for insight {insight_id}")
+            return {
+                "success": True,
+                "message": "AI text analysis completed successfully",
+                "AITextSummary": analysis,
+                "insight_id": insight_id
+            }
+        else:
+            debug_error(f"AI text analysis failed for insight {insight_id}")
+            return {
+                "success": False,
+                "message": "AI text analysis failed",
+                "insight_id": insight_id
+            }
+            
+    except Exception as e:
+        debug_error(f"AI text analysis error: {str(e)}")
+        return {
+            "success": False,
+            "message": f"AI text analysis error: {str(e)}",
+            "insight_id": insight_id,
+            "error": str(e)
+        }
+
+@app.post("/api/insights/{insight_id}/ai-image-analysis")
+async def ai_image_analysis(insight_id: int):
+    """
+     ┌─────────────────────────────────────┐
+     │         AI_IMAGE_ANALYSIS           │
+     └─────────────────────────────────────┘
+     Perform AI image analysis on an insight
+     
+     Analyzes the image content of an insight using OpenAI's
+     multimodal capabilities and updates the AI fields.
+     
+     Parameters:
+     - insight_id: ID of the insight to analyze
+     
+     Returns:
+     - JSON response with analysis results
+    """
+    try:
+        debug_info(f"AI image analysis requested for insight {insight_id}")
+        
+        # Get the insight from database
+        insight = items_management.get_insight_by_id(insight_id)
+        if not insight:
+            raise HTTPException(status_code=404, detail="Insight not found")
+        
+        # Check if insight has an image
+        image_url = insight.get('imageURL')
+        if not image_url:
+            raise HTTPException(status_code=400, detail="Insight has no image to analyze")
+        
+        # Perform AI image analysis
+        from ai_worker import do_ai_image_analysis
+        analysis = do_ai_image_analysis(
+            symbol=insight.get('symbol', ''),
+            imageURL=image_url
+        )
+        
+        if analysis:
+            # Update the insight with AI analysis results
+            items_management.update_insight(
+                insight_id=insight_id,
+                AIImageSummary=analysis
+            )
+            
+            debug_success(f"AI image analysis completed for insight {insight_id}")
+            return {
+                "success": True,
+                "message": "AI image analysis completed successfully",
+                "AIImageSummary": analysis,
+                "insight_id": insight_id
+            }
+        else:
+            debug_error(f"AI image analysis failed for insight {insight_id}")
+            return {
+                "success": False,
+                "message": "AI image analysis failed",
+                "insight_id": insight_id
+            }
+            
+    except Exception as e:
+        debug_error(f"AI image analysis error: {str(e)}")
+        return {
+            "success": False,
+            "message": f"AI image analysis error: {str(e)}",
+            "insight_id": insight_id,
+            "error": str(e)
+        }
+
 if __name__ == "__main__":
     from config import SERVER_HOST, SERVER_PORT
     

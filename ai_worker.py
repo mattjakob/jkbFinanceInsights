@@ -488,7 +488,7 @@ async def do_ai_analysis() -> Tuple[int, int]:
                 
                 # Save all AI-generated fields
                 if summary_data:
-                    update_success = items_management.update_insight_ai_fields(
+                    update_success = items_management.update_insight(
                         insight_id,
                         AISummary=summary_data.get('AISummary'),
                         AIAction=summary_data.get('AIAction'),

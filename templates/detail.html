@@ -3,125 +3,271 @@
 {% block title %}{{ insight.title }} - JKB Finance Terminal{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-10">
-        <div class="card bg-dark border-secondary">
-            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
-                <h3 class="mb-0">
-                    <i class="bi bi-eye"></i> Terminal Entry Details
-                </h3>
-                <div>
-                    <span class="type-badge type-{{ insight.type|lower|replace(' ', '-') }}">{{ insight.type }}</span>
-                    {% if insight.AIConfidence %}
-                    <span class="badge" style="background-color: var(--terminal-accent); color: black;">{{ "%.0f"|format(insight.AIConfidence * 100) }}% Confidence</span>
-                    {% endif %}
+<div class="title-table mb-4">
+    <div class="title-row-1">
+        <div class="type-cell">{{ insight.type }}</div>
+        <div class="empty-cell"></div>
+    </div>
+    <div class="title-row-2">
+        <div class="symbol-exchange-cell">{{ insight.symbol or '-' }} / {{ insight.exchange or '-' }}</div>
+        <div class="title-cell">{{ insight.title }}</div>
+    </div>
+</div>
+
+<!-- Control Panel for Actions -->
+<div class="control-panel mb-4">
+    <div class="row g-2 align-items-center">
+        <div class="col-auto">
+            <div class="info-button">
+                <span class="info-label">ID</span>
+                <span class="info-value">{{ insight.id }}</span>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="info-button">
+                <span class="info-label">AGE</span>
+                <span class="info-value age-text" data-time-posted="{{ insight.timePosted }}">-</span>
+            </div>
+        </div>
+        {% if insight.AIConfidence %}
+        <div class="col-auto">
+            <div class="info-button">
+                <span class="info-label">CONF</span>
+                <span class="info-value">{{ "%.0f"|format(insight.AIConfidence * 100) }}%</span>
+            </div>
+        </div>
+        {% endif %}
+        {% if insight.AIAction %}
+        <div class="col-auto">
+            {% if 'SELL' in insight.AIAction|upper %}
+                <span class="action-btn action-sell">SELL</span>
+            {% elif 'BUY' in insight.AIAction|upper %}
+                <span class="action-btn action-buy">BUY</span>
+            {% elif 'HOLD' in insight.AIAction|upper %}
+                <span class="action-btn action-hold">HOLD</span>
+            {% else %}
+                <span class="action-btn action-neutral">{{ insight.AIAction[:4]|upper }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        <div class="col-auto ms-auto">
+            <a href="/" class="btn btn-success btn-sm">
+                <i class="bi bi-arrow-left"></i> TERMINAL
+            </a>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-secondary btn-sm" onclick="performAITextAnalysis({{ insight.id }}, this)">
+                <i class="bi bi-robot"></i> AI TEXT
+            </button>
+        </div>
+        {% if insight.imageURL %}
+        <div class="col-auto">
+            <button class="btn btn-secondary btn-sm" onclick="performAIImageAnalysis({{ insight.id }}, this)">
+                <i class="bi bi-image"></i> AI IMAGE
+            </button>
+        </div>
+        {% endif %}
+        <div class="col-auto">
+            <a href="/edit-insight/{{ insight.id }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-pencil"></i> EDIT
+            </a>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-danger btn-sm" onclick="deleteInsight({{ insight.id }}, true)">
+                <i class="bi bi-trash"></i> DELETE
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Image Section -->
+{% if insight.imageURL %}
+<div class="terminal-section mb-4">
+    <div class="section-header">
+        <span class="section-label">IMAGE</span>
+    </div>
+    <img src="{{ insight.imageURL }}" class="img-fluid terminal-image" alt="Insight image">
+</div>
+{% endif %}
+
+<!-- Content Section -->
+<div class="mb-4">
+    <div class="section-header">
+        <span class="section-label">CONTENT</span>
+    </div>
+    <div class="terminal-content">{{ insight.content }}</div>
+</div>
+
+<!-- Metadata Section -->
+<div class="terminal-section mb-4">
+    <div class="section-header">
+        <span class="section-label">METADATA</span>
+    </div>
+    <div class="section-content">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="metadata-item">
+                    <span class="metadata-key">TIME_FETCHED:</span>
+                    <span class="metadata-value">{{ insight.timeFetched[:19].replace('T', ' ') }}</span>
                 </div>
             </div>
-            <div class="card-body">
-                <h2 class="mb-3 text-light">{{ insight.title }}</h2>
-
-                {% if insight.imageURL %}
-                <div class="mb-4">
-                    <img src="{{ insight.imageURL }}" class="img-fluid rounded border" alt="Insight image" style="max-height: 400px; border-color: var(--terminal-border) !important;">
-                </div>
-                {% endif %}
-
-                <div class="mb-4">
-                    <h5 class="text-light">Content</h5>
-                    <p class="lead text-light">{{ insight.content }}</p>
-                </div>
-
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <small class="text-muted">
-                            <i class="bi bi-clock"></i> Time Fetched: {{ insight.timeFetched[:19].replace('T', ' ') }}
-                        </small>
-                    </div>
-                    <div class="col-md-6">
-                        <small class="text-muted">
-                            <i class="bi bi-calendar"></i> Time Posted: {{ insight.timePosted[:19].replace('T', ' ') }}
-                        </small>
-                    </div>
-                </div>
-
-                {% if insight.AITextSummary or insight.AIImageSummary or insight.AISummary or insight.AIAction %}
-                <div class="card bg-dark border-secondary mt-4">
-                    <div class="card-header bg-secondary">
-                        <h5 class="mb-0 text-light">
-                            <i class="bi bi-robot"></i> AI Analysis
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        {% if insight.AITextSummary %}
-                        <div class="mb-3">
-                            <h6 class="text-light">AI Text Summary</h6>
-                            <div class="alert alert-dark border" style="border-color: var(--terminal-info) !important; border-left: 4px solid var(--terminal-info) !important;">
-                                {{ insight.AITextSummary }}
-                            </div>
-                        </div>
-                        {% endif %}
-
-                        {% if insight.AIImageSummary %}
-                        <div class="mb-3">
-                            <h6 class="text-light">AI Image Summary</h6>
-                            <div class="alert alert-dark border" style="border-color: var(--terminal-accent) !important; border-left: 4px solid var(--terminal-accent) !important;">
-                                {{ insight.AIImageSummary }}
-                            </div>
-                        </div>
-                        {% endif %}
-
-                        {% if insight.AISummary %}
-                        <div class="mb-3">
-                            <h6 class="text-light">Overall AI Summary</h6>
-                            <div class="alert alert-info bg-dark border-info">
-                                {{ insight.AISummary }}
-                            </div>
-                        </div>
-                        {% endif %}
-
-                        {% if insight.AIAction %}
-                        <div class="mb-3">
-                            <h6 class="text-light">Recommended Action</h6>
-                            <div class="alert alert-warning bg-dark border-warning">
-                                <i class="bi bi-exclamation-triangle"></i>
-                                <strong>{{ insight.AIAction }}</strong>
-                            </div>
-                        </div>
-                        {% endif %}
-
-                        <div class="row">
-                            {% if insight.AIEventTime %}
-                            <div class="col-md-4">
-                                <small class="text-muted">
-                                    <i class="bi bi-calendar-event"></i> AI Event Time: {{ insight.AIEventTime[:19].replace('T', ' ') }}
-                                </small>
-                            </div>
-                            {% endif %}
-                            {% if insight.AILevels %}
-                            <div class="col-md-8">
-                                <small class="text-muted">
-                                    <i class="bi bi-bar-chart"></i> AI Levels: {{ insight.AILevels }}
-                                </small>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-
-                <div class="d-flex gap-2 mt-4">
-                    <a href="/" class="btn btn-success">
-                        <i class="bi bi-arrow-left"></i> Back to Terminal
-                    </a>
-                    <a href="/edit-insight/{{ insight.id }}" class="btn btn-outline-warning">
-                        <i class="bi bi-pencil"></i> Edit Entry
-                    </a>
-                    <button class="btn btn-outline-danger" onclick="deleteInsight({{ insight.id }}, true)">
-                        <i class="bi bi-trash"></i> Delete Entry
-                    </button>
+            <div class="col-md-6">
+                <div class="metadata-item">
+                    <span class="metadata-key">TIME_POSTED:</span>
+                    <span class="metadata-value">{{ insight.timePosted[:19].replace('T', ' ') }}</span>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- AI Analysis Section -->
+{% if insight.AITextSummary or insight.AIImageSummary or insight.AISummary or insight.AIAction %}
+<div class="terminal-section mb-4">
+    <div class="section-header">
+        <span class="section-label">AI ANALYSIS</span>
+        <i class="bi bi-robot ms-2"></i>
+    </div>
+    <div class="section-content">
+        {% if insight.AITextSummary %}
+        <div class="ai-subsection mb-3">
+            <div class="ai-subsection-header">TEXT_SUMMARY:</div>
+            <div class="ai-content">{{ insight.AITextSummary }}</div>
+        </div>
+        {% endif %}
+
+        {% if insight.AIImageSummary %}
+        <div class="ai-subsection mb-3">
+            <div class="ai-subsection-header">IMAGE_SUMMARY:</div>
+            <div class="ai-content">{{ insight.AIImageSummary }}</div>
+        </div>
+        {% endif %}
+
+        {% if insight.AISummary %}
+        <div class="ai-subsection mb-3">
+            <div class="ai-subsection-header">OVERALL_SUMMARY:</div>
+            <div class="ai-content">{{ insight.AISummary }}</div>
+        </div>
+        {% endif %}
+
+        {% if insight.AIAction %}
+        <div class="ai-subsection mb-3">
+            <div class="ai-subsection-header">RECOMMENDED_ACTION:</div>
+            <div class="ai-content ai-action">
+                {% if 'SELL' in insight.AIAction|upper %}
+                    <span class="action-badge action-sell">{{ insight.AIAction }}</span>
+                {% elif 'BUY' in insight.AIAction|upper %}
+                    <span class="action-badge action-buy">{{ insight.AIAction }}</span>
+                {% elif 'HOLD' in insight.AIAction|upper %}
+                    <span class="action-badge action-hold">{{ insight.AIAction }}</span>
+                {% else %}
+                    <span class="action-badge action-neutral">{{ insight.AIAction }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- AI Metadata -->
+        <div class="ai-metadata">
+            <div class="row">
+                {% if insight.AIEventTime %}
+                <div class="col-md-6">
+                    <div class="metadata-item">
+                        <span class="metadata-key">EVENT_TIME:</span>
+                        <span class="metadata-value">{{ insight.AIEventTime[:19].replace('T', ' ') }}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if insight.AILevels %}
+                <div class="col-md-6">
+                    <div class="metadata-item">
+                        <span class="metadata-key">LEVELS:</span>
+                        <span class="metadata-value">{{ insight.AILevels }}</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+async function performAITextAnalysis(insightId, buttonElement) {
+    // Declare variables at function level for access in finally block
+    const button = buttonElement;
+    const originalText = button.innerHTML;
+    
+    try {
+        // Disable button and show loading state
+        button.innerHTML = '<i class="bi bi-hourglass-split"></i> ANALYZING...';
+        button.disabled = true;
+        
+        // Call AI text analysis API
+        const response = await fetch(`/api/insights/${insightId}/ai-text-analysis`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        console.log('AI text analysis response:', result);
+        
+        if (result.success) {
+            // Reload the page to show updated AI fields
+            location.reload();
+        } else {
+            const errorMessage = result.message || 'Unknown error occurred';
+            console.error(`AI text analysis failed: ${errorMessage}`);
+        }
+    } catch (error) {
+        console.error('AI text analysis error:', error);
+    } finally {
+        // Re-enable button
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+async function performAIImageAnalysis(insightId, buttonElement) {
+    // Declare variables at function level for access in finally block
+    const button = buttonElement;
+    const originalText = button.innerHTML;
+    
+    try {
+        // Disable button and show loading state
+        button.innerHTML = '<i class="bi bi-hourglass-split"></i> ANALYZING...';
+        button.disabled = true;
+        
+        // Call AI image analysis API
+        const response = await fetch(`/api/insights/${insightId}/ai-image-analysis`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        console.log('AI image analysis response:', result);
+        
+        if (result.success) {
+            // Reload the page to show updated AI fields
+            location.reload();
+        } else {
+            const errorMessage = result.message || 'Unknown error occurred';
+            console.error(`AI image analysis failed: ${errorMessage}`);
+        }
+    } catch (error) {
+        console.error('AI image analysis error:', error);
+    } finally {
+        // Re-enable button
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+</script>
+
 {% endblock %}
