@@ -9,6 +9,7 @@ including text analysis, image analysis, and comprehensive summary generation.
 from typing import Optional, Dict, Any, Tuple
 import items_management
 import os
+import asyncio
 from openai import OpenAI
 from config import OPENAI_API_KEY, OPENAI_SUMMARY_MODEL, OPENAI_PROMPT1_ID, OPENAI_PROMPT1_VERSION_ID, OPENAI_PROMPT2_ID, OPENAI_PROMPT2_VERSION_ID
 
@@ -116,6 +117,30 @@ def do_ai_text_analysis(symbol: Optional[str], item_type: str, title: str, conte
         return None
 
 
+async def do_ai_text_analysis_async(symbol: Optional[str], item_type: str, title: str, content: str) -> str:
+    """
+     ┌─────────────────────────────────────┐
+     │   DO_AI_TEXT_ANALYSIS_ASYNC         │
+     └─────────────────────────────────────┘
+     Async wrapper for AI text analysis
+     
+     Wraps the synchronous text analysis function for use in async contexts.
+     
+     Parameters:
+     - symbol: Stock symbol/ticker (optional)
+     - item_type: Type of insight (e.g., TD IDEAS RECENT)
+     - title: Title of the insight
+     - content: Main content text to analyze
+     
+     Returns:
+     - str: AI-generated text analysis summary
+    """
+    # Run the synchronous function in a thread pool to avoid blocking
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, do_ai_text_analysis, symbol, item_type, title, content)
+
+
 def do_ai_image_analysis(symbol: str, imageURL: str) -> str:
     """
      ┌─────────────────────────────────────┐
@@ -211,6 +236,33 @@ Return a {symbol} trading brief with:
             print(f"    ⚠ Bad request - check image URL format")
         
         return None
+
+
+async def do_ai_image_analysis_async(symbol: str, imageURL: str) -> str:
+    """
+     ┌─────────────────────────────────────┐
+     │   DO_AI_IMAGE_ANALYSIS_ASYNC        │
+     └─────────────────────────────────────┘
+     Async wrapper for AI image analysis
+     
+     Wraps the synchronous image analysis function for use in async contexts.
+     Returns None immediately if imageURL is empty/null to avoid unnecessary processing.
+     
+     Parameters:
+     - symbol: Stock symbol/ticker
+     - imageURL: URL of the image to analyze
+     
+     Returns:
+     - str: AI-generated image analysis summary, or None if imageURL is invalid
+    """
+    # Early exit if imageURL is empty/null
+    if not imageURL or imageURL == "" or imageURL == "None":
+        return None
+    
+    # Run the synchronous function in a thread pool to avoid blocking
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, do_ai_image_analysis, symbol, imageURL)
 
 
 def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: str) -> Dict[str, Any]:
@@ -334,19 +386,19 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
         return None
 
 
-def do_ai_analysis() -> Tuple[int, int]:
+async def do_ai_analysis() -> Tuple[int, int]:
     """
      ┌─────────────────────────────────────┐
      │         DO_AI_ANALYSIS              │
      └─────────────────────────────────────┘
-     Main AI analysis orchestrator
+     Main AI analysis orchestrator with parallel execution
      
      Processes all insights that need AI analysis by:
      1. Finding insights with empty/null AISummary
-     2. Running text analysis on each insight
-     3. Running image analysis if imageURL exists
-     4. Generating comprehensive summary
-     5. Updating database with results
+     2. Running text and image analysis in parallel within each insight cluster
+     3. Generating comprehensive summary after both analyses complete
+     4. Updating database with results
+     5. Processing multiple insights in parallel clusters
      
      Returns:
      - Tuple of (processed_count, success_count)
@@ -364,56 +416,67 @@ def do_ai_analysis() -> Tuple[int, int]:
         
         print(f"Found {len(insights)} insights needing AI analysis")
         
-        for insight in insights:
-            processed_count += 1
+        # Process insights in parallel clusters
+        async def process_insight_cluster(insight):
+            """Process a single insight with parallel text and image analysis"""
             insight_id = insight['id']
-            
             try:
                 print(f"\nProcessing insight #{insight_id}: {insight.get('title', 'Untitled')[:50]}...")
                 
-                # Step 1: Perform text analysis
-                print(f"  Running text analysis...")
                 # Get values from insight, ensuring they're strings
-                symbol = insight.get('symbol') or ""  # Use empty string if None
-                item_type = insight.get('type') or ""  # This should already be a string like "TD IDEAS RECENT"
+                symbol = insight.get('symbol') or ""
+                item_type = insight.get('type') or ""
                 title = insight.get('title') or ""
                 content = insight.get('content') or ""
+                image_url = insight.get('imageURL')
                 
                 print(f"    Symbol: {symbol}, Type: {item_type}")
                 
-                text_analysis = do_ai_text_analysis(
-                    symbol=symbol,
-                    item_type=item_type,
-                    title=title,
-                    content=content
+                # Run text and image analysis in parallel
+                tasks = []
+                
+                # Always run text analysis
+                text_task = asyncio.create_task(
+                    do_ai_text_analysis_async(symbol, item_type, title, content)
                 )
+                tasks.append(('text', text_task))
                 
-                # Save text analysis result
-                if text_analysis:
-                    items_management.update_insight(insight_id, AITextSummary=text_analysis)
-                    print(f"  ✓ Text analysis complete")
-                
-                # Step 2: Perform image analysis if imageURL exists
-                image_analysis = None
-                image_url = insight.get('imageURL')
+                # Run image analysis only if imageURL is valid
                 if image_url and image_url != "" and image_url != "None":
                     print(f"  Running image analysis for URL: {image_url}")
-                    image_analysis = do_ai_image_analysis(
-                        symbol=insight.get('symbol'),
-                        imageURL=image_url
+                    image_task = asyncio.create_task(
+                        do_ai_image_analysis_async(symbol, image_url)
                     )
-                    
-                    # Save image analysis result
-                    if image_analysis:
-                        items_management.update_insight(insight_id, AIImageSummary=image_analysis)
-                        print(f"  ✓ Image analysis complete")
-                    else:
-                        print(f"  ⚠ Image analysis failed or returned None")
+                    tasks.append(('image', image_task))
                 else:
                     print(f"  ⏭ Skipping image analysis (no valid imageURL)")
                 
-                # Step 3: Generate comprehensive summary
+                # Wait for all analysis tasks to complete
+                results = {}
+                for task_type, task in tasks:
+                    try:
+                        result = await task
+                        results[task_type] = result
+                        
+                        # Save individual analysis results
+                        if task_type == 'text' and result:
+                            items_management.update_insight(insight_id, AITextSummary=result)
+                            print(f"  ✓ Text analysis complete")
+                        elif task_type == 'image' and result:
+                            items_management.update_insight(insight_id, AIImageSummary=result)
+                            print(f"  ✓ Image analysis complete")
+                        elif task_type == 'image' and not result:
+                            print(f"  ⚠ Image analysis failed or returned None")
+                            
+                    except Exception as e:
+                        print(f"  ✗ {task_type.capitalize()} analysis failed: {str(e)}")
+                        results[task_type] = None
+                
+                # Generate comprehensive summary after both analyses complete
                 print(f"  Generating AI summary...")
+                text_analysis = results.get('text', "")
+                image_analysis = results.get('image')
+                
                 summary_data = do_ai_summary(
                     text=text_analysis or "",
                     technical=image_analysis,
@@ -421,7 +484,7 @@ def do_ai_analysis() -> Tuple[int, int]:
                     item_type=item_type
                 )
                 
-                # Step 4: Save all AI-generated fields
+                # Save all AI-generated fields
                 if summary_data:
                     update_success = items_management.update_insight_ai_fields(
                         insight_id,
@@ -433,14 +496,26 @@ def do_ai_analysis() -> Tuple[int, int]:
                     )
                     
                     if update_success:
-                        success_count += 1
                         print(f"  ✓ AI analysis complete for insight #{insight_id}")
+                        return True
                     else:
                         print(f"  ✗ Failed to save AI analysis for insight #{insight_id}")
-                
+                        return False
+                else:
+                    print(f"  ✗ Failed to generate AI summary for insight #{insight_id}")
+                    return False
+                    
             except Exception as e:
                 print(f"  ✗ Error processing insight #{insight_id}: {str(e)}")
-                continue
+                return False
+        
+        # Process all insights in parallel
+        cluster_tasks = [process_insight_cluster(insight) for insight in insights]
+        results = await asyncio.gather(*cluster_tasks, return_exceptions=True)
+        
+        # Count results
+        processed_count = len(insights)
+        success_count = sum(1 for result in results if result is True)
         
         print(f"\nAI analysis complete: {success_count}/{processed_count} insights successfully analyzed")
         

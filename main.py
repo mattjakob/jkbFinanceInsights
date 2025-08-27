@@ -412,12 +412,12 @@ async def update_market_data():
      
      Uses AI worker to analyze insights with empty AISummary,
      performing text analysis, image analysis, and generating
-     comprehensive AI summaries.
+     comprehensive AI summaries with parallel execution.
     """
     try:
         from ai_worker import do_ai_analysis
         
-        processed_count, success_count = do_ai_analysis()
+        processed_count, success_count = await do_ai_analysis()
         return {
             "success": True,
             "message": f"AI analysis complete: {success_count}/{processed_count} insights successfully analyzed",
