@@ -27,6 +27,7 @@ from debugger import debugger, debug_info, debug_warning, debug_error, debug_suc
 from scrapers.tdNews_scraper import TradingViewNewsScraper
 from scrapers.tdIdeasRecent_scraper import TradingViewIdeasRecentScraper
 from scrapers.tdIdeasPopular_scraper import TradingViewIdeasPopularScraper
+from scrapers.tdOpinions_scraper import TradingViewOpinionsScraper
 
 class FetchRequest(BaseModel):
     symbol: str
@@ -711,11 +712,14 @@ async def fetch_insights(request: FetchRequest):
         elif request.feedType == "TD IDEAS POPULAR":
             debug_info("Using TradingViewIdeasPopularScraper")
             scraper = TradingViewIdeasPopularScraper()
+        elif request.feedType == "TD OPINIONS":
+            debug_info("Using TradingViewOpinionsScraper")
+            scraper = TradingViewOpinionsScraper()
         else:
             debug_error(f"Feed type '{request.feedType}' not implemented")
             return {
                 "success": False,
-                "message": f"Feed type '{request.feedType}' is not supported. Available types: TD NEWS, TD IDEAS RECENT, TD IDEAS POPULAR",
+                "message": f"Feed type '{request.feedType}' is not supported. Available types: TD NEWS, TD IDEAS RECENT, TD IDEAS POPULAR, TD OPINIONS",
                 "processed_items": 0,
                 "created_insights": 0,
                 "failed_items": 0,
