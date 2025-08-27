@@ -513,15 +513,19 @@ function fetchData() {
         fetchBtn.disabled = true;
         
         // Call the fetch API endpoint
-        const params = new URLSearchParams({
+        const requestBody = {
             symbol,
             exchange,
             feedType,
-            maxItems
-        });
+            maxItems: parseInt(maxItems)
+        };
         
-        fetch(`/api/insights/fetch?${params}`, {
-            method: 'POST'
+        fetch('/api/insights/fetch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
         })
         .then(response => response.json())
         .then(data => {

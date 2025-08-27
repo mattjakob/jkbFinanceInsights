@@ -25,6 +25,14 @@ import os
 from symbol_validator import exchange_manager
 from debugger import debugger, debug_info, debug_warning, debug_error, debug_success
 from scrapers.tdNews_scraper import TradingViewNewsScraper
+from scrapers.tdIdeasRecent_scraper import TradingViewIdeasRecentScraper
+from scrapers.tdIdeasPopular_scraper import TradingViewIdeasPopularScraper
+
+class FetchRequest(BaseModel):
+    symbol: str
+    exchange: str
+    feedType: str
+    maxItems: int
 
 # Initialize FastAPI app
 app = FastAPI(title="Finance Insights", description="Simple Finance Insights Management App")
@@ -121,7 +129,7 @@ async def home(request: Request, type_filter: Optional[str] = None):
     
     # Send debug message about page load
     filter_text = f" (filtered by: {type_filter})" if type_filter else ""
-    debug_info(f"Home page loaded with {len(insights)} insights{filter_text}")
+    #debug_info(f"Home page loaded with {len(insights)} insights{filter_text}")
     
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -539,7 +547,7 @@ async def reset_insight_ai(insight_id: int):
         }
 
 @app.get("/api/symbols/search")
-async def search_symbols(q: str, limit: int = 10):
+async def search_symbols(q: str, limit: int):
     """
      ┌─────────────────────────────────────┐
      │         SYMBOL_SEARCH               │
@@ -668,13 +676,10 @@ async def delete_insights(type: str):
 
 
 
+
+
 @app.post("/api/insights/fetch")
-async def fetch_insights(
-    symbol: str = "BTCUSD",
-    exchange: str = "BINANCE", 
-    feedType: str = "TD NEWS",
-    maxItems: int = 10
-):
+async def fetch_insights(request: FetchRequest):
     """
      ┌─────────────────────────────────────┐
      │         FETCH_DATA                  │
@@ -694,21 +699,34 @@ async def fetch_insights(
      - JSON response with fetch results and created insights
     """
     try:
-        debug_info(f"Fetch data request: {feedType} for {exchange}:{symbol} (max: {maxItems})")
+        debug_info(f"Fetch data request: feedType='{request.feedType}' for {request.exchange}:{request.symbol} (max: {request.maxItems})")
         
-        # Initialize appropriate scraper based on feed type
-        if feedType == "TD NEWS" or feedType == "" or feedType is None:
+        # Select the correct scraper based on feedType
+        if request.feedType == "TD NEWS":
+            debug_info("Using TradingViewNewsScraper")
             scraper = TradingViewNewsScraper()
+        elif request.feedType == "TD IDEAS RECENT":
+            debug_info("Using TradingViewIdeasRecentScraper")
+            scraper = TradingViewIdeasRecentScraper()
+        elif request.feedType == "TD IDEAS POPULAR":
+            debug_info("Using TradingViewIdeasPopularScraper")
+            scraper = TradingViewIdeasPopularScraper()
         else:
-            # For now, only TD NEWS is implemented
-            debug_warning(f"Feed type '{feedType}' not implemented, using TD NEWS")
-            scraper = TradingViewNewsScraper()
+            debug_error(f"Feed type '{request.feedType}' not implemented")
+            return {
+                "success": False,
+                "message": f"Feed type '{request.feedType}' is not supported. Available types: TD NEWS, TD IDEAS RECENT, TD IDEAS POPULAR",
+                "processed_items": 0,
+                "created_insights": 0,
+                "failed_items": 0,
+                "results": []
+            }
         
         # Fetch data using the scraper
         results = scraper.fetch(
-            symbol=symbol,
-            exchange=exchange,
-            maxItems=maxItems,
+            symbol=request.symbol,
+            exchange=request.exchange,
+            maxItems=request.maxItems,
             sinceLast=None  # Not implemented yet
         )
         
