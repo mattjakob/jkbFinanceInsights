@@ -1,59 +1,58 @@
 """
 ┌─────────────────────────────────────┐
-│       TD NEWS SCRAPER               │
+│       TRADINGVIEW NEWS SCRAPER      │
 └─────────────────────────────────────┘
+Dedicated scraper for TradingView News feed
 
-TradingView News scraper implementation.
-
-This module provides a specialized scraper for TradingView News feed,
-inheriting from the base FeedScraper class and implementing the fetch
-method to retrieve and process news data.
+This module handles scraping and processing of TradingView News feed,
+providing real news data from TradingView's news API.
 """
 
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import requests
-import json
-import sys
-from pathlib import Path
-
-# Add current directory to Python path for imports
-sys.path.append(str(Path(__file__).parent.parent))
+from bs4 import BeautifulSoup
 
 from .feed_scraper import FeedScraper
 import items_management
 from debugger import debug_info, debug_error, debug_success, debug_warning
 
-class TdNewsScraper(FeedScraper):
+
+class TradingViewNewsScraper(FeedScraper):
     """
+    
      ┌─────────────────────────────────────┐
-     │         TD NEWS SCRAPER             │
+     │     TRADINGVIEW NEWS SCRAPER        │
      └─────────────────────────────────────┘
-     Specialized scraper for TradingView News feed
+     Scraper for TradingView News feed
      
-     Inherits from FeedScraper and implements the fetch method to retrieve
-     news data from TradingView sources and convert them to insights.
+     This class handles scraping of TradingView News feed by accessing
+     TradingView's news headlines API and extracting real news data.
      
-     Features:
-     - Fetches news data based on symbol and exchange
-     - Converts news items to standardized insight format
-     - Integrates with items_management for database operations
-     - Provides comprehensive error handling and logging
+     Parameters:
+     - None (inherits from FeedScraper)
+     
+     Returns:
+     - TradingViewNewsScraper instance ready for scraping operations
+     
+     Notes:
+     - Inherits shared functionality from FeedScraper
+     - Implements direct TradingView news API access
+     - Fetches real news headlines and content
     """
-    
+
     def __init__(self):
-        """
-         ┌─────────────────────────────────────┐
-         │             INIT                    │
-         └─────────────────────────────────────┘
-         Initialize TD News scraper
-         
-         Sets up the scraper with TD NEWS feed type from the feed_names table.
-        """
         super().__init__("TD NEWS")
-        debug_info(f"TD News scraper initialized for feed type: {self.type}")
-    
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Referer': 'https://www.tradingview.com/',
+        }
+        debug_info("TradingView News scraper initialized")
+
     def fetch(self, symbol: str, exchange: str, maxItems: int, sinceLast: Optional[str] = None) -> List[Dict[str, Any]]:
         """
          ┌─────────────────────────────────────┐
@@ -61,14 +60,14 @@ class TdNewsScraper(FeedScraper):
          └─────────────────────────────────────┘
          Fetch TradingView news data and create insights
          
-         Retrieves news data from TradingView for the specified symbol/exchange,
+         Retrieves real news data from TradingView for the specified symbol/exchange,
          processes each item, and creates database insights using items_management.
          
          Parameters:
          - symbol: Trading symbol (e.g., "BTCUSD", "AAPL")
          - exchange: Exchange name (e.g., "BINANCE", "NASDAQ")
          - maxItems: Maximum number of items to retrieve
-         - sinceLast: Optional timestamp to fetch only items since this time (not implemented yet)
+         - sinceLast: Optional timestamp to fetch only items since this time (not used currently)
          
          Returns:
          - List of processed news items with insight IDs
@@ -79,27 +78,37 @@ class TdNewsScraper(FeedScraper):
          - Returns empty list on failure with error logging
         """
         try:
-            debug_info(f"Starting TD News fetch for {exchange}:{symbol} (max: {maxItems})")
+            debug_info(f"Starting TradingView News fetch for {exchange}:{symbol} (max: {maxItems})")
             
-            # Prepare symbol for TradingView API
-            formatted_symbol = self._format_symbol_for_api(symbol, exchange)
+            # Fetch news headlines from TradingView API
+            headlines = self._scrape_headlines(symbol, exchange, maxItems)
             
-            # Fetch news data from TradingView-like source
-            news_data = self._fetch_news_data(formatted_symbol, maxItems, sinceLast)
-            
-            if not news_data:
-                debug_warning(f"No news data retrieved for {formatted_symbol}")
+            if not headlines:
+                debug_warning(f"No news headlines retrieved for {exchange}:{symbol}")
                 return []
             
             processed_items = []
             successful_inserts = 0
             
-            for item in news_data:
+            # Process each headline and create insights
+            for headline in headlines:
                 try:
-                    # Extract and standardize news item data
-                    insight_data = self._extract_insight_data(item, symbol, exchange)
+                    # Extract news content if story path is available
+                    full_content = None
+                    if headline.get('storyPath'):
+                        try:
+                            full_content = self._scrape_news_content(headline['storyPath'])
+                        except Exception as e:
+                            debug_error(f"Failed to fetch full content: {e}")
                     
-                    # Create insight in database using items_management
+                    # Prepare insight data
+                    insight_data = self._prepare_insight_data(headline, full_content, symbol, exchange)
+                    
+                    if not insight_data:
+                        debug_warning(f"Skipping news item due to insufficient data: {headline.get('title', 'Unknown')}")
+                        continue
+                    
+                    # Create insight in database
                     insight_id = items_management.add_insight(
                         type=self.type,
                         title=insight_data["title"],
@@ -110,7 +119,7 @@ class TdNewsScraper(FeedScraper):
                         imageURL=insight_data.get("imageURL")
                     )
                     
-                    # Add insight ID to processed item
+                    # Add to processed items
                     processed_item = {
                         **insight_data,
                         "insight_id": insight_id,
@@ -121,9 +130,8 @@ class TdNewsScraper(FeedScraper):
                     
                 except Exception as e:
                     debug_error(f"Failed to process news item: {str(e)}")
-                    # Add failed item to results for debugging
                     processed_items.append({
-                        "title": item.get("title", "Unknown"),
+                        "title": headline.get("title", "Unknown"),
                         "status": "failed",
                         "error": str(e)
                     })
@@ -132,178 +140,210 @@ class TdNewsScraper(FeedScraper):
             # Update fetch timestamp on successful completion
             self.update_fetch_time()
             
-            debug_success(f"TD News fetch completed: {successful_inserts}/{len(news_data)} items processed successfully")
+            debug_success(f"TradingView News fetch completed: {successful_inserts}/{len(headlines)} items processed successfully")
             
             return processed_items
             
         except Exception as e:
-            debug_error(f"TD News fetch failed: {str(e)}")
+            debug_error(f"TradingView News fetch failed: {str(e)}")
             return []
-    
-    def _format_symbol_for_api(self, symbol: str, exchange: str) -> str:
+
+    def _scrape_headlines(self, symbol: str, exchange: str, max_items: int) -> List[Dict[str, Any]]:
         """
          ┌─────────────────────────────────────┐
-         │      FORMAT SYMBOL FOR API          │
+         │        SCRAPE HEADLINES             │
          └─────────────────────────────────────┘
-         Format symbol for TradingView API calls
+         Scrape news headlines from TradingView API
          
          Parameters:
-         - symbol: Raw trading symbol
+         - symbol: Trading symbol
          - exchange: Exchange name
+         - max_items: Maximum number of headlines to fetch
          
          Returns:
-         - Formatted symbol string for API
-        """
-        # Format as EXCHANGE:SYMBOL for TradingView API
-        return f"{exchange.upper()}:{symbol.upper()}"
-    
-    def _fetch_news_data(self, formatted_symbol: str, max_items: int, since_last: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-         ┌─────────────────────────────────────┐
-         │        FETCH NEWS DATA              │
-         └─────────────────────────────────────┘
-         Fetch raw news data from TradingView-like source
-         
-         This is a simplified implementation that generates sample news data.
-         In a real implementation, this would connect to TradingView API or
-         use the tradingview_scraper library as shown in the provided code.
-         
-         Parameters:
-         - formatted_symbol: Symbol formatted for API (e.g., "BINANCE:BTCUSD")
-         - max_items: Maximum number of items to fetch
-         - since_last: Optional timestamp filter
-         
-         Returns:
-         - List of raw news data dictionaries
+         - List of headline dictionaries
         """
         try:
-            debug_info(f"Fetching news data for {formatted_symbol}")
+            # Construct the TradingView news API URL
+            url = f"https://news-headlines.tradingview.com/v2/view/headlines/symbol?client=web&lang=en&area=&provider=&section=&streaming=&symbol={exchange}:{symbol}"
             
-            # For now, generate sample news data
-            # TODO: Replace with actual TradingView API integration
-            sample_news = self._generate_sample_news_data(formatted_symbol, max_items)
+            debug_info(f"Fetching headlines from: {url}")
             
-            debug_info(f"Retrieved {len(sample_news)} news items for {formatted_symbol}")
-            return sample_news
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
             
-        except Exception as e:
-            debug_error(f"Failed to fetch news data: {str(e)}")
+            response_json = response.json()
+            items = response_json.get('items', [])
+            
+            if not items:
+                debug_info("No news items found in API response")
+                return []
+            
+            # Sort by latest published date
+            items = sorted(items, key=lambda x: x.get('published', 0), reverse=True)
+            
+            # Limit to requested number of items
+            if max_items and len(items) > max_items:
+                items = items[:max_items]
+            
+            debug_info(f"Retrieved {len(items)} news headlines")
+            return items
+            
+        except requests.exceptions.HTTPError as http_err:
+            if response.status_code == 400:
+                debug_error(f"Bad request: The server could not understand the request. {http_err}")
+            else:
+                debug_error(f"HTTP error occurred: {http_err}")
             return []
-    
-    def _generate_sample_news_data(self, formatted_symbol: str, max_items: int) -> List[Dict[str, Any]]:
+        except Exception as err:
+            debug_error(f"Error scraping headlines: {err}")
+            return []
+
+    def _scrape_news_content(self, story_path: str) -> Dict[str, Any]:
         """
          ┌─────────────────────────────────────┐
-         │    GENERATE SAMPLE NEWS DATA        │
+         │      SCRAPE NEWS CONTENT            │
          └─────────────────────────────────────┘
-         Generate sample news data for testing
-         
-         This creates realistic sample news data for development and testing.
-         Replace this with actual API integration in production.
+         Scrape full article content from TradingView
          
          Parameters:
-         - formatted_symbol: Formatted symbol string
-         - max_items: Number of sample items to generate
+         - story_path: Path to the news article
          
          Returns:
-         - List of sample news dictionaries
+         - Dictionary containing article content
         """
-        from datetime import timedelta
-        import random
-        
-        # Extract symbol from formatted string
-        symbol_part = formatted_symbol.split(":")[-1] if ":" in formatted_symbol else formatted_symbol
-        
-        sample_titles = [
-            f"{symbol_part} Shows Strong Technical Momentum",
-            f"Breaking: {symbol_part} Reaches New Support Level",
-            f"Market Analysis: {symbol_part} Trading Volume Increases",
-            f"{symbol_part} Technical Indicators Signal Potential Movement",
-            f"Expert Opinion: {symbol_part} Price Action Analysis",
-            f"{symbol_part} Market Update: Key Resistance Levels",
-            f"Trading Alert: {symbol_part} Breaks Important Trend Line",
-            f"{symbol_part} Weekly Review: Price Patterns Emerge"
-        ]
-        
-        sample_content_templates = [
-            f"Technical analysis shows {symbol_part} displaying interesting price action with increased trading volume. Key support and resistance levels are being tested.",
-            f"Market experts are watching {symbol_part} closely as it approaches critical technical levels. Volume patterns suggest potential movement ahead.",
-            f"Recent {symbol_part} price action indicates strong momentum building. Traders are monitoring key chart patterns for potential opportunities.",
-            f"{symbol_part} technical indicators are showing convergence at important price levels. Market sentiment appears to be shifting.",
-            f"Analysis of {symbol_part} reveals interesting patterns in price movement and volume. Key levels to watch in the coming sessions."
-        ]
-        
-        news_items = []
-        base_time = datetime.now()
-        
-        for i in range(min(max_items, len(sample_titles))):
-            # Generate timestamp (recent news, within last 24 hours)
-            hours_ago = random.randint(1, 24)
-            news_time = base_time - timedelta(hours=hours_ago)
+        try:
+            # Construct the full URL
+            url = f"https://tradingview.com{story_path}"
             
-            news_item = {
-                "id": f"news_{formatted_symbol}_{i}_{int(news_time.timestamp())}",
-                "title": sample_titles[i],
-                "content": random.choice(sample_content_templates),
-                "timestamp": news_time.isoformat(),
-                "published": int(news_time.timestamp()),
-                "source": "TradingView Analysis",
-                "provider": "TD News",
-                "url": f"https://tradingview.com/news/{symbol_part.lower()}-{i}",
-                "image_url": None,  # No sample images for now
-                "symbol": symbol_part,
-                "exchange": formatted_symbol.split(":")[0] if ":" in formatted_symbol else "UNKNOWN"
+            debug_info(f"Fetching article content from: {url}")
+            
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+            
+            # Parse the HTML
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            article_tag = soup.find('article')
+            if not article_tag:
+                debug_warning("No article tag found in response")
+                return {}
+            
+            article_json = {
+                "title": None,
+                "published_datetime": None,
+                "body": [],
+                "tags": []
             }
-            news_items.append(news_item)
-        
-        return news_items
-    
-    def _extract_insight_data(self, news_item: Dict[str, Any], symbol: str, exchange: str) -> Dict[str, Any]:
+            
+            # Extract title
+            title = article_tag.find('h1', class_='title-KX2tCBZq')
+            if title:
+                article_json['title'] = title.get_text(strip=True)
+            
+            # Extract published date
+            published_time = article_tag.find('time')
+            if published_time:
+                article_json['published_datetime'] = published_time.get('datetime')
+            
+            # Extract body content
+            body_content = article_tag.find('div', class_='body-KX2tCBZq')
+            if body_content:
+                for element in body_content.find_all(['p', 'img'], recursive=True):
+                    if element.name == 'p':
+                        text = element.get_text(strip=True)
+                        if text:
+                            article_json['body'].append({
+                                "type": "text",
+                                "content": text
+                            })
+                    elif element.name == 'img':
+                        article_json['body'].append({
+                            "type": "image",
+                            "src": element.get('src', ''),
+                            "alt": element.get('alt', '')
+                        })
+            
+            # Extract tags
+            row_tags = soup.find('div', class_=lambda x: x and x.startswith('rowTags-'))
+            if row_tags:
+                for span in row_tags.find_all('span'):
+                    tag_text = span.get_text(strip=True)
+                    if tag_text:
+                        article_json['tags'].append(tag_text)
+            
+            return article_json
+            
+        except Exception as e:
+            debug_error(f"Failed to scrape article content: {e}")
+            return {}
+
+    def _prepare_insight_data(self, headline: Dict[str, Any], full_content: Optional[Dict[str, Any]], symbol: str, exchange: str) -> Optional[Dict[str, Any]]:
         """
          ┌─────────────────────────────────────┐
-         │      EXTRACT INSIGHT DATA           │
+         │      PREPARE INSIGHT DATA           │
          └─────────────────────────────────────┘
-         Extract and standardize data for insight creation
-         
-         Converts raw news item data into the format expected by
-         the items_management.add_insight function.
+         Prepare data for insight creation
          
          Parameters:
-         - news_item: Raw news data dictionary
+         - headline: News headline data from API
+         - full_content: Full article content if available
          - symbol: Trading symbol
          - exchange: Exchange name
          
          Returns:
-         - Standardized insight data dictionary
+         - Dictionary ready for insight creation or None if insufficient data
         """
         # Extract title
-        title = news_item.get("title", "TD News Update")
-        if len(title) > 200:  # Truncate long titles
+        title = headline.get('title', '')
+        if not title:
+            return None
+        
+        # Truncate long titles
+        if len(title) > 200:
             title = title[:197] + "..."
         
         # Extract content
-        content = news_item.get("content", "")
+        content = ""
+        
+        # First, try to get content from full article
+        if full_content and full_content.get('body'):
+            text_parts = []
+            for item in full_content['body']:
+                if item.get('type') == 'text' and item.get('content'):
+                    text_parts.append(item['content'])
+            content = ' '.join(text_parts)
+        
+        # Fallback to headline description
         if not content:
-            # Fallback content if none provided
-            source = news_item.get("source", news_item.get("provider", "TradingView"))
-            content = f"News from {source} - {title}"
+            content = headline.get('description', '')
+        
+        # If still no content, use provider and title
+        if not content:
+            provider = headline.get('provider', 'TradingView')
+            content = f"News from {provider}: {title}"
         
         # Extract timestamp
         timePosted = None
-        if "timestamp" in news_item:
-            timePosted = news_item["timestamp"]
-        elif "published" in news_item:
-            # Convert Unix timestamp to ISO format
+        
+        # Try published timestamp (Unix timestamp)
+        if 'published' in headline:
             try:
-                dt = datetime.fromtimestamp(news_item["published"])
+                dt = datetime.fromtimestamp(headline['published'])
                 timePosted = dt.isoformat()
             except:
                 pass
         
+        # Fallback to full content published datetime
+        if not timePosted and full_content and full_content.get('published_datetime'):
+            timePosted = full_content['published_datetime']
+        
+        # Default to current time
         if not timePosted:
             timePosted = datetime.now().isoformat()
         
         # Extract image URL
-        imageURL = news_item.get("image_url") or news_item.get("image") or news_item.get("thumbnail")
+        imageURL = headline.get('image', headline.get('thumbnail', ''))
         
         return {
             "title": title,

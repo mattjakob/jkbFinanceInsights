@@ -383,8 +383,8 @@ option:checked {
 }
 
 .symbol-exchange-col {
-    width: 120px;
-    text-align: center !important;
+    width: 160px;
+    text-align: left !important;
     font-size: 11px;
 }
 

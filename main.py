@@ -24,7 +24,7 @@ import fake_data
 import os
 from symbol_validator import exchange_manager
 from debugger import debugger, debug_info, debug_warning, debug_error, debug_success
-from scrapers.tdNews_scraper import TdNewsScraper
+from scrapers.tdNews_scraper import TradingViewNewsScraper
 
 # Initialize FastAPI app
 app = FastAPI(title="Finance Insights", description="Simple Finance Insights Management App")
@@ -698,11 +698,11 @@ async def fetch_insights(
         
         # Initialize appropriate scraper based on feed type
         if feedType == "TD NEWS" or feedType == "" or feedType is None:
-            scraper = TdNewsScraper()
+            scraper = TradingViewNewsScraper()
         else:
             # For now, only TD NEWS is implemented
             debug_warning(f"Feed type '{feedType}' not implemented, using TD NEWS")
-            scraper = TdNewsScraper()
+            scraper = TradingViewNewsScraper()
         
         # Fetch data using the scraper
         results = scraper.fetch(
