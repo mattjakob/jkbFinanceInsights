@@ -430,6 +430,52 @@ async def update_market_data():
             "message": f"Error during AI analysis: {str(e)}"
         }
 
+@app.post("/api/reset-insight-ai/{insight_id}")
+async def reset_insight_ai(insight_id: int):
+    """
+     ┌─────────────────────────────────────┐
+     │        RESET_INSIGHT_AI             │
+     └─────────────────────────────────────┘
+     API endpoint to reset AI analysis fields for a specific insight
+     
+     Resets all AI-related fields (AISummary, AIAction, AIConfidence, 
+     AIEventTime, AILevels) to null/empty for the specified insight.
+     
+     Parameters:
+     - insight_id: The ID of the insight to reset AI fields for
+     
+     Returns:
+     - JSON response with success status and message
+    """
+    try:
+        # Check if insight exists
+        insight = items_management.get_insight_by_id(insight_id)
+        if not insight:
+            return {
+                "success": False,
+                "message": f"Insight with ID {insight_id} not found"
+            }
+        
+        # Reset the AI fields
+        success = items_management.reset_insight_ai_fields(insight_id)
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Successfully reset AI fields for insight #{insight_id}"
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Failed to reset AI fields for insight #{insight_id}"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error resetting AI fields: {str(e)}"
+        }
+
 if __name__ == "__main__":
     from config import SERVER_HOST, SERVER_PORT
     

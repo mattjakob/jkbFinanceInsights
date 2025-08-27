@@ -70,6 +70,8 @@ function initializeApp() {
 function initializeControlPanel() {
     const updateBtn = document.querySelector('.update-btn');
     const aiCheckbox = document.getElementById('aiCheck');
+    const aiResetBtn = document.getElementById('aiResetBtn');
+    const resetInsightIdInput = document.getElementById('resetInsightId');
     const selects = document.querySelectorAll('select');
     
     if (updateBtn) {
@@ -81,6 +83,12 @@ function initializeControlPanel() {
     if (aiCheckbox) {
         aiCheckbox.addEventListener('change', function() {
             updateAIStatus();
+        });
+    }
+    
+    if (aiResetBtn && resetInsightIdInput) {
+        aiResetBtn.addEventListener('click', function() {
+            resetInsightAI(parseInt(resetInsightIdInput.value));
         });
     }
     
@@ -533,5 +541,70 @@ async function deleteInsight(insightId, redirectToHome = false) {
         }
     } catch (error) {
         console.error('Error deleting insight:', error);
+    }
+}
+
+/**
+ * 
+ * ┌─────────────────────────────────────┐
+ * │         RESET INSIGHT AI            │
+ * └─────────────────────────────────────┘
+ * Resets AI analysis fields for a specific insight
+ * 
+ * Makes an API call to reset all AI-related fields (AISummary, AIAction, 
+ * AIConfidence, AIEventTime, AILevels) to null/empty for the specified insight ID.
+ * 
+ * Parameters:
+ * - insightId: The ID of the insight to reset AI fields for
+ * 
+ * Returns:
+ * - None
+ * 
+ * Notes:
+ * - Makes POST request to /api/reset-insight-ai/{id} endpoint
+ * - Shows success/error feedback to user
+ * - Reloads page to reflect changes
+ */
+async function resetInsightAI(insightId) {
+    if (!insightId || isNaN(insightId) || insightId < 1) {
+        alert('Please enter a valid insight ID (must be a positive number)');
+        return;
+    }
+    
+    try {
+        // Show loading state
+        const aiResetBtn = document.getElementById('aiResetBtn');
+        const originalText = aiResetBtn.innerHTML;
+        aiResetBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Resetting...';
+        aiResetBtn.disabled = true;
+        
+        const response = await fetch(`/api/reset-insight-ai/${insightId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                alert(`Successfully reset AI fields for insight #${insightId}`);
+                // Reload the page to show updated data
+                window.location.reload();
+            } else {
+                alert(`Failed to reset AI fields: ${result.message || 'Unknown error'}`);
+            }
+        } else {
+            const errorData = await response.json().catch(() => ({}));
+            alert(`Error resetting AI fields: ${errorData.message || `HTTP ${response.status}`}`);
+        }
+    } catch (error) {
+        console.error('Error resetting insight AI:', error);
+        alert('Network error while resetting AI fields. Please try again.');
+    } finally {
+        // Restore button state
+        const aiResetBtn = document.getElementById('aiResetBtn');
+        aiResetBtn.innerHTML = originalText;
+        aiResetBtn.disabled = false;
     }
 }
