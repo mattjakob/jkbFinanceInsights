@@ -20,7 +20,7 @@
  */
 
 import { config } from '../core/config.js';
-import { showNotification } from '../core/utils.js';
+
 import { insightsService } from '../services/insights.js';
 import { scrapingService } from '../services/scraping.js';
 import { analysisService } from '../services/analysis.js';
@@ -106,18 +106,17 @@ export class ControlPanel {
             const result = await analysisService.triggerAnalysis();
             
             if (result.success) {
-                showNotification(
-                    `AI analysis started: ${result.insights_found} insights found, ${result.tasks_created} tasks created`,
-                    'success'
+                Debugger.success(
+                    `AI analysis started: ${result.insights_found} insights found, ${result.tasks_created} tasks created`
                 );
                 
                 // Reload page after delay
                 setTimeout(() => window.location.reload(), config.defaults.reloadDelay * 2);
             } else {
-                showNotification(`AI analysis failed: ${result.message}`, 'error');
+                Debugger.error(`AI analysis failed: ${result.message}`);
             }
         } catch (error) {
-            showNotification('Network error during AI analysis', 'error');
+            Debugger.error('Network error during AI analysis');
             console.error('Update error:', error);
         } finally {
             this.resetButton(btn, 'UPDATE');
@@ -160,9 +159,8 @@ export class ControlPanel {
             });
             
             if (result.success) {
-                showNotification(
-                    `Fetch successful: ${result.created_insights} insights created, ${result.failed_items} failed`,
-                    'success'
+                Debugger.success(
+                    `Fetch successful: ${result.created_insights} insights created, ${result.failed_items} failed`
                 );
                 
                 // Reload if insights were created
@@ -170,10 +168,10 @@ export class ControlPanel {
                     setTimeout(() => window.location.reload(), config.defaults.reloadDelay);
                 }
             } else {
-                showNotification(`Fetch failed: ${result.message}`, 'error');
+                Debugger.error(`Fetch failed: ${result.message}`);
             }
         } catch (error) {
-            showNotification('Network error during fetch', 'error');
+            Debugger.error('Network error during fetch');
             console.error('Fetch error:', error);
         } finally {
             this.resetButton(btn, 'FETCH');
@@ -212,18 +210,17 @@ export class ControlPanel {
             const result = await insightsService.deleteInsights(selectedType);
             
             if (result.success) {
-                showNotification(
-                    `Delete successful: ${result.deleted_count} insights deleted, ${result.failed_count} failed`,
-                    'success'
+                Debugger.success(
+                    `Delete successful: ${result.deleted_count} insights deleted, ${result.failed_count} failed`
                 );
                 
                 // Reload page
                 setTimeout(() => window.location.reload(), config.defaults.reloadDelay);
             } else {
-                showNotification(`Delete failed: ${result.message}`, 'error');
+                Debugger.error(`Delete failed: ${result.message}`);
             }
         } catch (error) {
-            showNotification('Network error during deletion', 'error');
+            Debugger.error('Network error during deletion');
             console.error('Delete error:', error);
         } finally {
             this.resetButton(btn, 'DELETE');
@@ -247,7 +244,7 @@ export class ControlPanel {
         const btn = this.elements.generateBtn;
         if (!btn || btn.disabled) return;
         
-        showNotification('AI Megasummary generation not yet implemented', 'info');
+        Debugger.info('AI Megasummary generation not yet implemented');
         // TODO: Implement megasummary generation when API is ready
     }
 

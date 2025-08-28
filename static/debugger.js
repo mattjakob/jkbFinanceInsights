@@ -118,6 +118,9 @@ class FrontendDebugger {
             this.logs.shift();
         }
 
+        // Format message with args
+        const fullMessage = args && args.length > 0 ? `${message} ${args.join(' ')}` : message;
+
         // Output to console with appropriate method
         const consoleMethod = level === 'error' ? 'error' : 
                              level === 'warn' ? 'warn' : 
@@ -130,8 +133,25 @@ class FrontendDebugger {
             console[consoleMethod](prefix, message);
         }
 
+        // Send to status bar if available
+        this.sendToStatusBar(level, fullMessage);
+
         // Send to server debugger if available
         this.sendToServer(level, message, args);
+    }
+
+    /**
+     * Send debug message to status bar
+     */
+    sendToStatusBar(level, message) {
+        try {
+            // Check if status bar is available globally
+            if (typeof window !== 'undefined' && window.statusBar) {
+                window.statusBar.updateDebuggerStatus(level, message);
+            }
+        } catch (error) {
+            // Silently fail - don't create debug loops
+        }
     }
 
     /**

@@ -20,11 +20,12 @@
  */
 
 import { config } from './core/config.js';
-import { showNotification } from './core/utils.js';
+
 import { ControlPanel } from './components/controlPanel.js';
 import { InsightsTable } from './components/insightsTable.js';
 import { StatusBar } from './components/statusBar.js';
 import { SymbolSearch } from './components/symbolSearch.js';
+
 import { insightsService } from './services/insights.js';
 
 class App {
@@ -54,6 +55,7 @@ class App {
             this.components.controlPanel = new ControlPanel();
             this.components.insightsTable = new InsightsTable();
             this.components.statusBar = new StatusBar();
+
             
             // Initialize symbol search if input exists
             const symbolInput = document.getElementById('symbolInput');
@@ -68,10 +70,9 @@ class App {
             // Load initial data
             await this.loadInitialData();
             
-            Debugger.success('JKB Finance Terminal initialized successfully');
         } catch (error) {
             console.error('Error during initialization:', error);
-            showNotification('Failed to initialize application', 'error');
+            Debugger.error('Failed to initialize application');
         }
     }
 
@@ -97,7 +98,7 @@ class App {
             
             // Fetch insights
             const insights = await insightsService.fetchInsights(symbol, type);
-            Debugger.info(`Loaded ${insights.length} insights`);
+            //Debugger.info(`Loaded ${insights.length} insights`);
             
             // Update cache
             insightsService.updateCache(insights);
@@ -138,7 +139,7 @@ class App {
             bulkResetBtn.addEventListener('click', async () => {
                 const insightId = resetInput.value.trim();
                 if (!insightId) {
-                    showNotification('Please enter an insight ID', 'warning');
+                    Debugger.warn('Please enter an insight ID');
                     return;
                 }
                 
@@ -174,7 +175,7 @@ class App {
             const result = await insightsService.resetAIAnalysis(insightId);
             
             if (result.success) {
-                showNotification(`AI analysis reset for insight #${insightId}`, 'success');
+                Debugger.success(`AI analysis reset for insight #${insightId}`);
                 
                 // Update the row
                 const row = button.closest('tr');
@@ -185,10 +186,10 @@ class App {
                     }
                 }
             } else {
-                showNotification(`Failed to reset AI analysis: ${result.message}`, 'error');
+                Debugger.error(`Failed to reset AI analysis: ${result.message}`);
             }
         } catch (error) {
-            showNotification('Error resetting AI analysis', 'error');
+            Debugger.error('Error resetting AI analysis');
             console.error('Reset error:', error);
         } finally {
             button.textContent = originalText;
@@ -282,7 +283,7 @@ class App {
                 // Update cache
                 insightsService.updateCache(insights);
                 
-                Debugger.info(`Data refreshed successfully: ${insights.length} insights`);
+                //Debugger.info(`Data refreshed successfully: ${insights.length} insights`);
             } else {
                 console.warn('Auto-refresh received invalid data, skipping table update');
             }
@@ -336,6 +337,8 @@ class App {
         if (this.components.statusBar) {
             this.components.statusBar.destroy();
         }
+        
+
     }
 }
 

@@ -195,7 +195,6 @@
 {% block scripts %}
 <script type="module">
 import { insightsService } from '/static/js/services/insights.js';
-import { showNotification } from '/static/js/core/utils.js';
 
 // Format level values as currency
 function formatLevelValues() {
@@ -239,11 +238,11 @@ async function handleAITextAnalysis(insightId, buttonElement) {
             location.reload();
         } else {
             const errorMessage = result.message || 'Unknown error occurred';
-            showNotification(`AI text analysis failed: ${errorMessage}`, 'error');
+            Debugger.error(`AI text analysis failed: ${errorMessage}`);
         }
     } catch (error) {
         Debugger.error('AI text analysis error:', error);
-        showNotification('Error performing AI text analysis', 'error');
+        Debugger.error('Error performing AI text analysis');
     } finally {
         button.innerHTML = originalText;
         button.disabled = false;
@@ -269,11 +268,11 @@ async function handleAIImageAnalysis(insightId, buttonElement) {
             location.reload();
         } else {
             const errorMessage = result.message || 'Unknown error occurred';
-            showNotification(`AI image analysis failed: ${errorMessage}`, 'error');
+            Debugger.error(`AI image analysis failed: ${errorMessage}`);
         }
     } catch (error) {
         Debugger.error('AI image analysis error:', error);
-        showNotification('Error performing AI image analysis', 'error');
+        Debugger.error('Error performing AI image analysis');
     } finally {
         button.innerHTML = originalText;
         button.disabled = false;
@@ -289,7 +288,7 @@ async function handleDeleteInsight(insightId) {
         await insightsService.deleteInsight(insightId, true);
     } catch (error) {
         Debugger.error('Delete insight error:', error);
-        showNotification('Error deleting insight', 'error');
+        Debugger.error('Error deleting insight');
     }
 }
 

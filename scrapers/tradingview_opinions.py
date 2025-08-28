@@ -92,21 +92,23 @@ class TradingViewOpinionsScraper(BaseScraper):
         if len(title) > 100:
             title = title[:97] + "..."
         
-        # Add metadata if available
-        author = item.get('user', {}).get('username', '')
-        if author:
-            content += f"\n\nAuthor: {author}"
+        # Extract metadata for content enhancement
+        author_info = item.get('author', {})
+        author = author_info.get('username', '') if isinstance(author_info, dict) else ''
+        likes_count = item.get('total_likes', 0)
+        comments_count = item.get('total_comments', 0)
         
-        # Add engagement info
-        likes_count = item.get('likes_count', 0)
-        comments = item.get('comments', [])
-        comments_count = len(comments) if isinstance(comments, list) else 0
+        metadata = {
+            'author': author,
+            'post_type': 'opinion',
+            'likes': likes_count,
+            'comments': comments_count
+        }
         
-        if likes_count or comments_count:
-            content += "\n\n"
-            if likes_count > 0:
-                content += f"{likes_count} PEOPLE FOUND THIS USEFUL\n"
-            content += f"COMMENTS: {comments_count}"
+        # Enhance content with engagement metrics
+        engagement_summary = self._create_engagement_summary(metadata)
+        if engagement_summary:
+            content = f"{content}\n\n{engagement_summary}"
         
         # Parse timestamp
         timestamp = self._parse_timestamp(item)
@@ -139,12 +141,7 @@ class TradingViewOpinionsScraper(BaseScraper):
             exchange=exchange.upper(),
             source_url=source_url,
             image_url=image_url,
-            metadata={
-                'author': author,
-                'post_type': 'opinion',
-                'likes': item.get('likes_count', 0),
-                'comments': item.get('comments_count', 0)
-            }
+            metadata=metadata
         )
     
     def _parse_timestamp(self, item: dict) -> Optional[datetime]:
@@ -176,3 +173,44 @@ class TradingViewOpinionsScraper(BaseScraper):
                         continue
         
         return None
+
+    def _create_engagement_summary(self, metadata: dict) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │        CREATE ENGAGEMENT SUMMARY    │
+        └─────────────────────────────────────┘
+        Creates a summary of engagement metrics for content enhancement.
+        
+        Parameters:
+        - metadata: Dictionary containing engagement data
+        
+        Returns:
+        - Formatted engagement summary string
+        
+        Notes:
+        - Summarizes comments count and popularity (likes)
+        - Only includes metrics that have meaningful values
+        """
+        summary_parts = []
+        
+        # Add comments count if available
+        if metadata.get('comments', 0) > 0:
+            comments_text = f"{metadata['comments']} comment{'s' if metadata['comments'] != 1 else ''}"
+            summary_parts.append(comments_text)
+        
+        # Add likes count if available
+        if metadata.get('likes', 0) > 0:
+            likes_text = f"{metadata['likes']} like{'s' if metadata['likes'] != 1 else ''}"
+            summary_parts.append(likes_text)
+        
+        # Add author if available
+        if metadata.get('author'):
+            author_text = f"By: {metadata['author']}"
+            summary_parts.append(author_text)
+        
+        if summary_parts:
+            return " | ".join(summary_parts)
+        
+        return ""
+
+

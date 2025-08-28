@@ -113,6 +113,14 @@ class TradingViewIdeasPopularScraper(BaseScraper):
                 debug_warning(f"Skipping popular idea with insufficient content: {title}")
                 return None
             
+            # Extract metadata for content enhancement
+            metadata = self._extract_article_metadata(article)
+            
+            # Enhance content with engagement metrics
+            engagement_summary = self._create_engagement_summary(metadata)
+            if engagement_summary:
+                content = f"{content}\n\n{engagement_summary}"
+            
             # Extract timestamp
             timestamp = self._parse_article_timestamp(article)
             if not timestamp:
@@ -134,9 +142,6 @@ class TradingViewIdeasPopularScraper(BaseScraper):
             source_url = title_tag.get('href') if title_tag else None
             if source_url and not source_url.startswith('http'):
                 source_url = f"https://www.tradingview.com{source_url}"
-            
-            # Extract metadata
-            metadata = self._extract_article_metadata(article)
             
             return ScrapedItem(
                 title=title,
@@ -204,3 +209,47 @@ class TradingViewIdeasPopularScraper(BaseScraper):
             metadata['strategy'] = strategy_tag.get('title', '').strip()
         
         return metadata
+
+    def _create_engagement_summary(self, metadata: Dict[str, Any]) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │        CREATE ENGAGEMENT SUMMARY    │
+        └─────────────────────────────────────┘
+        Creates a summary of engagement metrics for content enhancement.
+        
+        Parameters:
+        - metadata: Dictionary containing engagement data
+        
+        Returns:
+        - Formatted engagement summary string
+        
+        Notes:
+        - Summarizes comments count and popularity (likes)
+        - Only includes metrics that have meaningful values
+        """
+        summary_parts = []
+        
+        # Add comments count if available
+        if metadata.get('comments', 0) > 0:
+            comments_text = f"{metadata['comments']} comment{'s' if metadata['comments'] != 1 else ''}"
+            summary_parts.append(comments_text)
+        
+        # Add likes/boosts count if available
+        if metadata.get('likes', 0) > 0:
+            likes_text = f"{metadata['likes']} like{'s' if metadata['likes'] != 1 else ''}"
+            summary_parts.append(likes_text)
+        
+        # Add strategy if available
+        if metadata.get('strategy'):
+            strategy_text = f"Strategy: {metadata['strategy']}"
+            summary_parts.append(strategy_text)
+        
+        # Add author if available
+        if metadata.get('author'):
+            author_text = f"By: {metadata['author']}"
+            summary_parts.append(author_text)
+        
+        if summary_parts:
+            return " | ".join(summary_parts)
+        
+        return ""

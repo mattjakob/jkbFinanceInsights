@@ -113,6 +113,23 @@ class TradingViewIdeasRecentScraper(BaseScraper):
             debug_warning(f"Skipping recent idea with insufficient content: {title}")
             return None
         
+        # Extract metadata for content enhancement
+        user_info = item.get('user', {})
+        author = user_info.get('username', '') if isinstance(user_info, dict) else str(user_info)
+        
+        metadata = {
+            'author': author,
+            'published': item.get('published', ''),
+            'likes': item.get('likes_count', 0),
+            'comments': item.get('comments_count', 0),
+            'strategy': item.get('strategy', '')  # Add strategy if available
+        }
+        
+        # Enhance content with engagement metrics
+        engagement_summary = self._create_engagement_summary(metadata)
+        if engagement_summary:
+            content = f"{content}\n\n{engagement_summary}"
+        
         # Parse timestamp - the API uses 'created_at' and 'date_timestamp'
         timestamp = self._parse_timestamp(item)
         if not timestamp:
@@ -127,17 +144,6 @@ class TradingViewIdeasRecentScraper(BaseScraper):
             image_url = str(image_info) if image_info else ''
         
         source_url = item.get('chart_url', item.get('link', item.get('url', '')))
-        
-        # Extract metadata - ensure all values are serializable
-        user_info = item.get('user', {})
-        author = user_info.get('username', '') if isinstance(user_info, dict) else str(user_info)
-        
-        metadata = {
-            'author': author,
-            'published': item.get('published', ''),
-            'likes': item.get('likes_count', 0),
-            'comments': item.get('comments_count', 0)
-        }
         
         return ScrapedItem(
             title=title,
@@ -180,3 +186,47 @@ class TradingViewIdeasRecentScraper(BaseScraper):
                         continue
         
         return None
+
+    def _create_engagement_summary(self, metadata: dict) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │        CREATE ENGAGEMENT SUMMARY    │
+        └─────────────────────────────────────┘
+        Creates a summary of engagement metrics for content enhancement.
+        
+        Parameters:
+        - metadata: Dictionary containing engagement data
+        
+        Returns:
+        - Formatted engagement summary string
+        
+        Notes:
+        - Summarizes comments count and popularity (likes)
+        - Only includes metrics that have meaningful values
+        """
+        summary_parts = []
+        
+        # Add comments count if available
+        if metadata.get('comments', 0) > 0:
+            comments_text = f"{metadata['comments']} comment{'s' if metadata['comments'] != 1 else ''}"
+            summary_parts.append(comments_text)
+        
+        # Add likes/boosts count if available
+        if metadata.get('likes', 0) > 0:
+            likes_text = f"{metadata['likes']} like{'s' if metadata['likes'] != 1 else ''}"
+            summary_parts.append(likes_text)
+        
+        # Add strategy if available
+        if metadata.get('strategy'):
+            strategy_text = f"Strategy: {metadata['strategy']}"
+            summary_parts.append(strategy_text)
+        
+        # Add author if available
+        if metadata.get('author'):
+            author_text = f"By: {metadata['author']}"
+            summary_parts.append(author_text)
+        
+        if summary_parts:
+            return " | ".join(summary_parts)
+        
+        return ""

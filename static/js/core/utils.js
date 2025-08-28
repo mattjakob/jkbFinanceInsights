@@ -206,47 +206,7 @@ export function debounce(func, delay) {
     };
 }
 
-/**
- * 
- *  ┌─────────────────────────────────────┐
- *  │      SHOW NOTIFICATION              │
- *  └─────────────────────────────────────┘
- *  Shows a temporary notification message
- * 
- *  Parameters:
- *  - message: Message to display
- *  - type: Message type (success, error, info, warning)
- *  - duration: Duration in milliseconds
- * 
- *  Returns:
- *  - None
- */
-export function showNotification(message, type = 'info', duration = 3000) {
-    // Find or create notification container
-    let container = document.getElementById('notification-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'notification-container';
-        container.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
-        document.body.appendChild(container);
-    }
-    
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = `alert alert-${type} alert-dismissible fade show`;
-    notification.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    // Add to container
-    container.appendChild(notification);
-    
-    // Auto-remove after duration
-    setTimeout(() => {
-        notification.remove();
-    }, duration);
-}
+
 
 /**
  * 

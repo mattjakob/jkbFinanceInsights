@@ -91,6 +91,45 @@
     background-color: #000000 !important;
 }
 
+/* Task Indicator */
+.task-indicator {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.9);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-family: var(--mono-font);
+    font-size: 11px;
+    color: var(--text-color);
+    z-index: 1000;
+    -webkit-backdrop-filter: blur(15px);
+    backdrop-filter: blur(15px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s ease;
+}
+
+.task-indicator:hover {
+    background: rgba(0, 0, 0, 0.95);
+    border-color: var(--hover-color);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.task-indicator .task-counts {
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+.task-indicator .task-counts span {
+    margin-right: 4px;
+}
+
+.task-indicator .task-counts span:last-child {
+    margin-right: 0;
+}
+
 /* Control Panel */
 .control-panel {
     background-color: transparent;
@@ -272,6 +311,9 @@ option:checked {
     border-radius: 6px;
     padding: 0.75rem 1.5rem;
     margin-bottom: 2rem;
+    min-height: 20px;
+    display: flex;
+    align-items: center;
 }
 
 .status-bar-text {
@@ -279,6 +321,11 @@ option:checked {
     font-size: 12px;
     font-family: var(--mono-font);
     letter-spacing: 0.3px;
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 0;
 }
 
 /* Table Styles */
