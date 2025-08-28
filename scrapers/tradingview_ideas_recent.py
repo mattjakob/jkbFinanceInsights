@@ -40,44 +40,65 @@ class TradingViewIdeasRecentScraper(BaseScraper):
         super().__init__(FeedType.TD_IDEAS_RECENT)
     
     def fetch_items(self, symbol: str, exchange: str, limit: int) -> List[ScrapedItem]:
-        """Fetch recent ideas from TradingView using JSON API"""
+        """Fetch recent ideas from TradingView using JSON API with pagination"""
         if not symbol:
             raise ValueError("Symbol required for fetching ideas")
         
-        # Build URL for recent ideas - uses JSON endpoint
-        url = f"https://www.tradingview.com/symbols/{symbol}/ideas/?component-data-only=1&sort=recent"
+        all_items = []
+        page = 1
+        max_pages = 10  # Safety limit to prevent infinite loops
         
-        # Fetch JSON response
-        response = self.make_request(url)
+        while len(all_items) < limit and page <= max_pages:
+            # Build URL for recent ideas with pagination
+            url = f"https://www.tradingview.com/symbols/{symbol}/ideas/?component-data-only=1&sort=recent&page={page}"
+            
+            try:
+                # Fetch JSON response
+                response = self.make_request(url)
+                
+                # Parse JSON response
+                try:
+                    data = response.json()
+                except Exception as e:
+                    debug_error(f"Failed to parse JSON response for page {page}: {str(e)}")
+                    break
+                
+                # Handle different response structures
+                if isinstance(data, str):
+                    debug_error(f"Unexpected string response on page {page}: {data}")
+                    break
+                
+                # The JSON structure is data.ideas.data.items
+                ideas_data = data.get('data', {}).get('ideas', {})
+                items = ideas_data.get('data', {}).get('items', []) if isinstance(ideas_data, dict) else []
+                
+                if not items:
+                    debug_info(f"No more items found on page {page}")
+                    break
+                
+                debug_info(f"Found {len(items)} recent ideas on page {page}")
+                
+                # Add items to collection
+                all_items.extend(items)
+                page += 1
+                
+            except Exception as e:
+                debug_error(f"Error fetching page {page}: {str(e)}")
+                break
         
-        # Parse JSON response
-        try:
-            data = response.json()
-        except Exception as e:
-            debug_error(f"Failed to parse JSON response: {str(e)}")
-            return []
-        
-        # Handle different response structures
-        if isinstance(data, str):
-            debug_error(f"Unexpected string response: {data}")
-            return []
-        
-        # The JSON structure is data.ideas.data.items
-        ideas_data = data.get('data', {}).get('ideas', {})
-        items = ideas_data.get('data', {}).get('items', []) if isinstance(ideas_data, dict) else []
-        if not items:
+        if not all_items:
             debug_warning(f"No recent ideas found for {exchange}:{symbol}")
             return []
         
-        debug_info(f"Found {len(items)} recent ideas")
+        debug_info(f"Total collected: {len(all_items)} recent ideas across {page-1} pages")
         
-        # Sort by date and limit
-        items = sorted(items, key=lambda x: x.get('published', 0), reverse=True)
-        items = items[:limit] if limit else items
+        # Sort by date and limit to requested amount
+        all_items = sorted(all_items, key=lambda x: x.get('published', 0), reverse=True)
+        items_to_process = all_items[:limit] if limit else all_items
         
         # Process each idea item
         scraped_items = []
-        for idx, item in enumerate(items):
+        for idx, item in enumerate(items_to_process):
             try:
                 scraped_item = self._process_idea_item(item, symbol, exchange)
                 if scraped_item:
