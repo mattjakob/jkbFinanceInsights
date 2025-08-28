@@ -128,19 +128,16 @@ class TradingViewOpinionsScraper(BaseScraper):
         # Use the formatted content
         content = formatted_content
         
+        # Extract image URL (check for snapshot data)
+        image_url = self._extract_image_url(item)
+        
         # Parse timestamp
         timestamp = self._parse_timestamp(item)
         if not timestamp:
             debug_warning(f"Skipping opinion with no timestamp: {title}")
             return None
         
-        # Extract image URL if available
-        image_url = ''
-        image_data = item.get('image', {})
-        if isinstance(image_data, dict):
-            image_url = image_data.get('large', image_data.get('middle', ''))
-        elif isinstance(image_data, str):
-            image_url = image_data
+        # Image URL already extracted above
         
         # Build source URL if available
         short_name = item.get('short_name', '')
@@ -340,5 +337,59 @@ class TradingViewOpinionsScraper(BaseScraper):
         comments_footer = "------------------------------------------------------------"
         
         return f"{comments_header}\n" + "\n".join(formatted_comments) + f"\n{comments_footer}"
+
+    def _extract_image_url(self, item: dict) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │          EXTRACT IMAGE URL          │
+        └─────────────────────────────────────┘
+        Extracts image URL from opinion item data.
+        
+        Parameters:
+        - item: Opinion item dictionary from API
+        
+        Returns:
+        - Image URL string or empty string if none found
+        
+        Notes:
+        - Checks for snapshot_url field (chart images)
+        - Searches text content for embedded image URLs
+        - Does not use avatar pictures per user preference
+        """
+        # First, check for snapshot_url (chart images)
+        snapshot_url = item.get('snapshot_url', '')
+        if snapshot_url and snapshot_url.startswith('http'):
+            return snapshot_url
+        
+        # Second, look for image URLs in the text content
+        text = item.get('text', '')
+        if text:
+            import re
+            urls = re.findall(r'http[s]?://[^\s]+', text)
+            for url in urls:
+                # Look for image file extensions
+                if any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']):
+                    return url
+        
+        # Third, if no snapshot_url in main item, fetch individual mind data
+        mind_uid = item.get('uid', '')
+        if mind_uid:
+            try:
+                mind_url = f"https://www.tradingview.com/api/v1/minds/{mind_uid}/"
+                response = self.make_request(mind_url)
+                mind_data = response.json()
+                
+                # Check for snapshot_url in individual mind data
+                individual_snapshot_url = mind_data.get('snapshot_url', '')
+                if individual_snapshot_url and individual_snapshot_url.startswith('http'):
+                    return individual_snapshot_url
+                    
+            except Exception as e:
+                # Don't log this as it's not critical - just return empty
+                pass
+        
+        return ""
+
+
 
 
