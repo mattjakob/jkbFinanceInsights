@@ -42,10 +42,10 @@
             {% endif %}
         </div>
         {% endif %}
-        {% if insight.AIConfidence %}
+        {% if insight.AIConfidence is not none %}
         <div class="col-auto">
             <div class="info-button">
-                <span class="info-label">CONF</span>
+                <span class="info-label">RELEVANCE</span>
                 <span class="info-value">{{ "%.0f"|format(insight.AIConfidence * 100) }}%</span>
             </div>
         </div>
@@ -80,20 +80,101 @@
     </div>
 </div>
 
+<!-- AI Summary Section -->
+{% if insight.AISummary %}
+<div class="terminal-section mb-4">
+    <div class="section-header">
+        <span class="section-label">AI SUMMARY</span>
+
+        
+    </div>
+    <div class="terminal-content">{{ insight.AISummary }}
+{% if insight.AIEventTime %}
+<div class="metadata-item">
+        <span class="metadata-key">TIME HORIZON:</span>
+        <span class="metadata-value">{{ insight.AIEventTime[:19].replace('T', ' ') }}</span>
+    </div>
+        {% endif %}</div>
+
+
+    
+    {% if insight.AILevels %}
+
+        <div class="ai-levels-container">
+            {% set levels_parts = insight.AILevels.split(' | ') %}
+            <div class="row g-2">
+                {% for level_part in levels_parts %}
+                    {% set level_type = level_part.split(':')[0].strip() %}
+                    {% set level_values = level_part.split(':')[1].strip() if ':' in level_part else '' %}
+                    {# Show all levels including Entry in detail view #}
+                    {% if level_type in ['Entry', 'TP', 'SL', 'S', 'R'] and level_values %}
+                    <div class="col-auto">
+                        <div class="level-badge level-{{ level_type.lower() }}">
+                            <div class="level-type">
+                                {% if level_type == 'TP' %}TAKE_PROFIT
+                                {% elif level_type == 'SL' %}STOP_LOSS
+                                {% elif level_type == 'S' %}SUPPORT
+                                {% elif level_type == 'R' %}RESISTANCE
+                                {% else %}{{ level_type }}
+                                {% endif %}
+                            </div>
+                            <div class="level-values">{{ level_values }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+    {% endif %}
+</div>
+{% endif %}
+
+
+
+
+
+
 <!-- Image Section -->
 {% if insight.imageURL %}
 <div class="terminal-section mb-4">
     <div class="section-header">
-        <span class="section-label">IMAGE</span>
+        <span class="section-label">CHART</span>
     </div>
     <img src="{{ insight.imageURL }}" class="img-fluid terminal-image" alt="Insight image">
+</div>
+{% endif %}
+
+<!-- AI Analysis Section -->
+{% if insight.AIImageSummary %}
+<div class="terminal-section mb-4">
+    <div class="section-header">
+        <span class="section-label">AI TECHNICAL ANALYSIS</span>
+    </div>
+    <div class="section-content">
+
+
+        {% if insight.AIImageSummary %}
+
+            <div class="ai-content">{{ insight.AIImageSummary }}</div>
+
+        {% endif %}
+
+
+        <!-- AI Metadata -->
+        <div class="ai-metadata">
+            <div class="row">
+
+            </div>
+        </div>
+    </div>
 </div>
 {% endif %}
 
 <!-- Content Section -->
 <div class="mb-4">
     <div class="section-header">
-        <span class="section-label">CONTENT</span>
+        <span class="section-label">ORIGINAL TEXT</span>
     </div>
     <div class="terminal-content">{{ insight.content }}</div>
 </div>
@@ -121,76 +202,6 @@
     </div>
 </div>
 
-<!-- AI Analysis Section -->
-{% if insight.AITextSummary or insight.AIImageSummary or insight.AISummary or insight.AIAction %}
-<div class="terminal-section mb-4">
-    <div class="section-header">
-        <span class="section-label">AI ANALYSIS</span>
-    </div>
-    <div class="section-content">
-        {% if insight.AITextSummary %}
-        <div class="ai-subsection mb-3">
-            <div class="ai-subsection-header">TEXT_SUMMARY:</div>
-            <div class="ai-content">{{ insight.AITextSummary }}</div>
-        </div>
-        {% endif %}
-
-        {% if insight.AIImageSummary %}
-        <div class="ai-subsection mb-3">
-            <div class="ai-subsection-header">IMAGE_SUMMARY:</div>
-            <div class="ai-content">{{ insight.AIImageSummary }}</div>
-        </div>
-        {% endif %}
-
-        {% if insight.AISummary %}
-        <div class="ai-subsection mb-3">
-            <div class="ai-subsection-header">OVERALL_SUMMARY:</div>
-            <div class="ai-content">{{ insight.AISummary }}</div>
-        </div>
-        {% endif %}
-
-
-
-        <!-- AI Metadata -->
-        <div class="ai-metadata">
-            <div class="row">
-                {% if insight.AIEventTime %}
-                <div class="col-md-6">
-                    <div class="metadata-item">
-                        <span class="metadata-key">EVENT_TIME:</span>
-                        <span class="metadata-value">{{ insight.AIEventTime[:19].replace('T', ' ') }}</span>
-                    </div>
-                </div>
-                {% endif %}
-                {% if insight.AILevels %}
-                <div class="col-12">
-                    <div class="metadata-item">
-                        <span class="metadata-key">LEVELS:</span>
-                        <div class="ai-levels-container mt-2">
-                            {% set levels_parts = insight.AILevels.split(' | ') %}
-                            <div class="row g-2">
-                                {% for level_part in levels_parts %}
-                                    {% set level_type = level_part.split(':')[0].strip() %}
-                                    {% set level_values = level_part.split(':')[1].strip() if ':' in level_part else '' %}
-                                    {% if level_type and level_values %}
-                                    <div class="col-auto">
-                                        <div class="level-badge level-{{ level_type.lower() }}">
-                                            <div class="level-type">{{ level_type }}</div>
-                                            <div class="level-values">{{ level_values }}</div>
-                                        </div>
-                                    </div>
-                                    {% endif %}
-                                {% endfor %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
 
 <script>
 async function performAITextAnalysis(insightId, buttonElement) {

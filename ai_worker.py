@@ -51,6 +51,9 @@ def openai_init() -> Optional[OpenAI]:
         return None
 
 
+# DEPRECATED: do_ai_text_analysis is no longer used
+# The new flow uses do_ai_image_analysis (if imageURL exists) followed by do_ai_summary
+'''
 def do_ai_text_analysis(symbol: Optional[str], item_type: str, title: str, content: str) -> str:
     """
      ┌─────────────────────────────────────┐
@@ -117,8 +120,10 @@ def do_ai_text_analysis(symbol: Optional[str], item_type: str, title: str, conte
         error_msg = str(e)
         debug_error(f"OpenAI API Text Analysis error: {error_msg}")
         return None
+'''
 
 
+'''
 async def do_ai_text_analysis_async(symbol: Optional[str], item_type: str, title: str, content: str) -> str:
     """
      ┌─────────────────────────────────────┐
@@ -141,6 +146,7 @@ async def do_ai_text_analysis_async(symbol: Optional[str], item_type: str, title
     import asyncio
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, do_ai_text_analysis, symbol, item_type, title, content)
+'''
 
 
 def do_ai_image_analysis(symbol: str, imageURL: str) -> str:
@@ -170,15 +176,17 @@ def do_ai_image_analysis(symbol: str, imageURL: str) -> str:
         # Prepare the prompt with symbol context if available
         prompt = "Analyze this financial chart/image"
         if symbol:
-            prompt = f"""You are an expert day trader. Analyze the attached image, which contains a technical analysis (TA) chart for {symbol} to extract a day trading strategy.
+            prompt = f"""You are an expert day trader. Analyze the attached image, which contains a Technical Analysis chart for {symbol} to extract a day trading strategy.
 Return a {symbol} trading brief with:
-- Focus on exressing a day trading hypothesis / strategy for {symbol} with clear indication of (bullish/bearish/neutral) in ≤30 words.  
-- Identify overall direction (trendlines, channels, patterns).  
-- Note key levels (support/resistance, breakouts, targets, stop-loss). 
-- Infer timing: short-term = intraday; medium = 1–3 days; long = >1 week.
-- Action: buy / sell / hold.
+- Focus on exressing a day trading hypothesis / strategy for {symbol} with clear indication of (buy/sell/hold) action in ≤500 words.  
+- Identify overall direction (trend lines, channels, patterns)
+- Use OCR recognition if needed to understand notes
+- Note key levels (Entry, Profit Taking, Stop-Loss, Support, Resistance)
+- Determine if there's any imminent breakouts or trend reversals
+- Infer timing: infer the most critical time to watch out for
 - Do not fabricate any information.
 - Express full numeric values eg. 97k -> 97,000 USD
+- Ensure expecially the currency / price levels and timing information is consistent and accurate
 - Go straight to the point and use a formal tone without filler words.
 - If the image is not a chart or technical analysis, return "No chart found".
 - If the technical analysis in the image is not clear or poorly executed shorten the analysis and add a note that it is not clear or poorly executed."""
@@ -212,7 +220,7 @@ Return a {symbol} trading brief with:
             if hasattr(choice, 'message') and choice.message:
                 if hasattr(choice.message, 'content'):
                     analysis = choice.message.content
-                    debug_info(f"OpenAI API Image Analysis responce ({len(analysis) if analysis else 0} chars)")
+                    debug_info(f"OpenAI API Image Analysis response ({len(analysis) if analysis else 0} chars)")
                     #debug_info(f"Analysis preview: {analysis[:100] if analysis else 'None'}...")
                     return analysis
                 else:
@@ -267,21 +275,28 @@ async def do_ai_image_analysis_async(symbol: str, imageURL: str) -> str:
     return await loop.run_in_executor(None, do_ai_image_analysis, symbol, imageURL)
 
 
-def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: str) -> Dict[str, Any]:
+def do_ai_summary(
+    symbol: str,
+    item_type: str,
+    title: str,
+    content: str,
+    technical: Optional[str] = None
+) -> Dict[str, Any]:
     """
      ┌─────────────────────────────────────┐
      │         DO_AI_SUMMARY               │
      └─────────────────────────────────────┘
      Generate comprehensive AI summary and recommendations
      
-     Combines text and technical analysis to produce actionable
-     insights including summary, action, confidence, and levels.
+     Analyzes insight content and optional technical analysis to produce
+     actionable insights including summary, action, confidence, and levels.
      
      Parameters:
-     - text: Text analysis summary from do_ai_text_analysis
-     - technical: Technical/image analysis summary from do_ai_image_analysis (optional)
      - symbol: Stock symbol/ticker for context
      - item_type: Type of insight (e.g., "TD NEWS", "TD IDEAS RECENT")
+     - title: Title of the insight
+     - content: Main content text to analyze
+     - technical: Technical/image analysis summary from do_ai_image_analysis (optional)
      
      Returns:
      - Dict containing:
@@ -304,56 +319,95 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
         
         # Prepare variables for the API call
         variables = {
-            "symbol": symbol or "",
-            "text_analysis": text or "",
+            "symbol": symbol,
+            "item_type": item_type,
+            "title": title,
+            "content": content,
             "technical_analysis": technical or ""
         }
         
+        debug_info(f"Variables prepared: symbol={symbol}, item_type={item_type}, title={title[:50]}...")
+        
         # Make the OpenAI Response API call
         debug_info(f"OpenAI API Summary initiated with prompt ID: {OPENAI_PROMPT2_ID}")
-        response = client.responses.create(
-            prompt={
-                "id": OPENAI_PROMPT2_ID,
-                "version": OPENAI_PROMPT2_VERSION_ID,
-                "variables": variables
-            }
-        )
+        
+        # Build prompt object
+        prompt = {
+            "id": OPENAI_PROMPT2_ID,
+            "version": OPENAI_PROMPT2_VERSION_ID,
+            "variables": variables
+        }
+        
+        debug_info(f"Using prompt format: id={prompt['id']}, version={prompt['version']}")
+        
+        try:
+            response = client.responses.create(prompt=prompt)
+        except Exception as api_error:
+            debug_error(f"OpenAI API call failed: {str(api_error)}")
+            return None
         
         # Extract the response content
         if hasattr(response, 'output_text') and response.output_text:
             summary_content = response.output_text
+        elif hasattr(response, 'text') and response.text:
+            # Alternative field name
+            summary_content = response.text
+        elif hasattr(response, 'content') and response.content:
+            # Another alternative field name
+            summary_content = response.content
         else:
-            debug_error("OpenAI API Summary failed: No 'output_text' in response.")
+            debug_error(f"OpenAI API Summary failed: No recognized output field in response. Response attributes: {dir(response)}")
             return None
         
         debug_info(f"OpenAI API Summary received ({len(summary_content)} chars)")
-        #debug_info(f"Response preview: {summary_content[:100]}...")
+        debug_info(f"Response preview: {summary_content[:200]}...")
         
         # Parse the JSON response according to the schema
         try:
             import json
             parsed_data = json.loads(summary_content)
             
+            # Validate required fields according to schema
+            required_fields = ['summary', 'action', 'confidence', 'event_time', 'levels']
+            missing_fields = [field for field in required_fields if field not in parsed_data]
+            if missing_fields:
+                debug_warning(f"Response missing required fields: {missing_fields}")
+            
             # Extract data according to the schema
             summary = parsed_data.get('summary', '')
-            action = parsed_data.get('action', 'hold').upper()  # Convert to uppercase to match enum
+            
+            # Handle action enum (buy, sell, hold) - convert to uppercase for database
+            action = parsed_data.get('action', 'hold').upper()
+            if action not in ['BUY', 'SELL', 'HOLD']:
+                debug_warning(f"Invalid action value: {action}, defaulting to HOLD")
+                action = 'HOLD'
+            
             confidence = parsed_data.get('confidence', 50) / 100.0  # Convert 0-100 to 0-1
             event_time = parsed_data.get('event_time')
             
-            # Process levels data
+            # Process levels data according to new schema
             levels_data = parsed_data.get('levels', {})
             levels_summary = []
             
+            # Entry level
+            if levels_data.get('entry') is not None:
+                levels_summary.append(f"E: {levels_data['entry']}")
+            
+            # Take profit level
+            if levels_data.get('take_profit') is not None:
+                levels_summary.append(f"TP: {levels_data['take_profit']}")
+            
+            # Stop loss level
+            if levels_data.get('stop_loss') is not None:
+                levels_summary.append(f"SL: {levels_data['stop_loss']}")
+            
+            # Support levels (array)
             if levels_data.get('support'):
                 levels_summary.append(f"S: {', '.join(map(str, levels_data['support']))}")
-            if levels_data.get('resistance'):
-                levels_summary.append(f"R: {', '.join(map(str, levels_data['resistance']))}")
-            if levels_data.get('targets'):
-                levels_summary.append(f"T: {', '.join(map(str, levels_data['targets']))}")
-            if levels_data.get('stop_loss'):
-                levels_summary.append(f"SL: {levels_data['stop_loss']}")
-            if levels_data.get('invalidation'):
-                levels_summary.append(f"INV: {levels_data['invalidation']}")
+            
+            # Resistance level (single value now, not array)
+            if levels_data.get('resistance') is not None:
+                levels_summary.append(f"R: {levels_data['resistance']}")
             
             ai_levels = " | ".join(levels_summary) if levels_summary else None
             
@@ -376,9 +430,9 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
             
             # Fallback to basic structure if JSON parsing fails
             return {
-                "AISummary": summary_content,
-                "AIAction": "ANALYZE",
-                "AIConfidence": 0.8,
+                "AISummary": summary_content[:500] if len(summary_content) > 500 else summary_content,
+                "AIAction": "HOLD",
+                "AIConfidence": 0.5,
                 "AIEventTime": None,
                 "AILevels": None
             }
@@ -386,6 +440,36 @@ def do_ai_summary(text: str, technical: Optional[str], symbol: str, item_type: s
     except Exception as e:
         debug_error(f"OpenAI API Summary error in do_ai_summary: {str(e)}")
         return None
+
+
+async def do_ai_summary_async(
+    symbol: str,
+    item_type: str,
+    title: str,
+    content: str,
+    technical: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+     ┌─────────────────────────────────────┐
+     │      DO_AI_SUMMARY_ASYNC            │
+     └─────────────────────────────────────┘
+     Async wrapper for AI summary generation
+     
+     Wraps the synchronous summary function for use in async contexts.
+     
+     Parameters:
+     - symbol: Stock symbol/ticker for context
+     - item_type: Type of insight (e.g., TD IDEAS RECENT)
+     - title: Title of the insight
+     - content: Main content text to analyze
+     - technical: Technical/image analysis summary (optional)
+     
+     Returns:
+     - Dict with AI analysis fields or None if error
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, do_ai_summary, symbol, item_type, title, content, technical)
 
 
 async def do_ai_analysis() -> Tuple[int, int]:
@@ -434,56 +518,34 @@ async def do_ai_analysis() -> Tuple[int, int]:
                 
                 debug_info(f"Symbol: {symbol}, Type: {item_type}")
                 
-                # Run text and image analysis in parallel
-                tasks = []
+                # New flow: first image analysis (if imageURL exists), then summary
+                technical_analysis = ""
                 
-                # Always run text analysis
-                text_task = asyncio.create_task(
-                    do_ai_text_analysis_async(symbol, item_type, title, content)
-                )
-                tasks.append(('text', text_task))
-                
-                # Run image analysis only if imageURL is valid
+                # Step 1: Run image analysis if imageURL is valid
                 if image_url and image_url != "" and image_url != "None":
                     debug_info(f"Running image analysis for URL: {image_url}")
-                    image_task = asyncio.create_task(
-                        do_ai_image_analysis_async(symbol, image_url)
-                    )
-                    tasks.append(('image', image_task))
-                else:
-                    debug_info("Skipping image analysis. No valid imageURL.")
-                
-                # Wait for all analysis tasks to complete
-                results = {}
-                for task_type, task in tasks:
                     try:
-                        result = await task
-                        results[task_type] = result
-                        
-                        # Save individual analysis results
-                        if task_type == 'text' and result:
-                            items_management.update_insight(insight_id, AITextSummary=result)
-                            debug_success(f"Text analysis complete. for insight #{insight_id}")
-                        elif task_type == 'image' and result:
-                            items_management.update_insight(insight_id, AIImageSummary=result)
-                            debug_success(f"Image analysis complete. for insight #{insight_id}")
-                        elif task_type == 'image' and not result:
-                            debug_error(f"Image analysis failed or returned for insight #{insight_id}")
-                            
+                        technical_analysis = await do_ai_image_analysis_async(symbol, image_url)
+                        if technical_analysis:
+                            items_management.update_insight(insight_id, AIImageSummary=technical_analysis)
+                            debug_success(f"Image analysis complete for insight #{insight_id}")
+                        else:
+                            debug_warning(f"Image analysis returned empty for insight #{insight_id}")
                     except Exception as e:
-                        debug_error(f"{task_type.capitalize()} analysis failed: {str(e)}")
-                        results[task_type] = None
+                        debug_error(f"Image analysis failed: {str(e)}")
+                        technical_analysis = ""
+                else:
+                    debug_info("No imageURL available, skipping image analysis")
                 
-                # Generate comprehensive summary after both analyses complete
+                # Step 2: Run AI summary (always runs, uses technical_analysis if available)
                 debug_info(f"Generating AI summary for insight #{insight_id}...")
-                text_analysis = results.get('text', "")
-                image_analysis = results.get('image')
                 
-                summary_data = do_ai_summary(
-                    text=text_analysis or "",
-                    technical=image_analysis,
+                summary_data = await do_ai_summary_async(
                     symbol=symbol,
-                    item_type=item_type
+                    item_type=item_type,
+                    title=title,
+                    content=content,
+                    technical=technical_analysis or ""  # Use empty string if no technical analysis
                 )
                 
                 # Save all AI-generated fields

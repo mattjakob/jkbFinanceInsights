@@ -11,7 +11,8 @@
 import sqlite3
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from debugger import debug_error
+from debugger import debug_error, debug_info, debug_warning
+import hashlib
 
 DATABASE = "finance_insights.db"
 
@@ -29,7 +30,7 @@ def add_insight(
     symbol: Optional[str] = None,
     exchange: Optional[str] = None,
     imageURL: Optional[str] = None,
-    AITextSummary: Optional[str] = None,
+
     AIImageSummary: Optional[str] = None,
     AISummary: Optional[str] = None,
     AIAction: Optional[str] = None,
@@ -44,6 +45,7 @@ def add_insight(
      Add a new insight to the database
      
      Creates a new insight record with provided data and returns the ID.
+     Includes duplicate checking to prevent redundant entries.
      
      Parameters:
      - type: Feed type (must match feed_names table)
@@ -53,7 +55,7 @@ def add_insight(
      - symbol: Stock symbol/ticker (optional)
      - exchange: Stock exchange (optional)
      - imageURL: URL to related image (optional)
-     - AITextSummary: AI-generated text summary (optional)
+
      - AIImageSummary: AI-generated image summary (optional)
      - AISummary: Overall AI summary (optional)
      - AIAction: Recommended action (BUY/SELL/HOLD) (optional)
@@ -62,11 +64,12 @@ def add_insight(
      - AILevels: Support/Resistance levels (optional)
      
      Returns:
-     - int: ID of the created insight
+     - int: ID of the created insight (or existing duplicate)
      
      Notes:
      - timeFetched is automatically set to current time
      - timePosted defaults to current time if not provided
+     - Checks for duplicates within 48 hour window
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -84,16 +87,65 @@ def add_insight(
         conn.close()
         raise ValueError(f"Invalid type '{type}'. Must be one of the predefined feed names.")
     
-    # Insert the insight
+    # Check for duplicates within 48 hour window
+    hours_window = 48
+    content_hash = hashlib.md5(content.encode()).hexdigest()
+    
+    # Build query to check for duplicates
+    query = '''
+        SELECT id, title, content, timePosted
+        FROM insights
+        WHERE type = ?
+        AND (
+            title = ? OR LOWER(title) = LOWER(?)
+        )
+    '''
+    
+    params = [type, title, title]
+    
+    # Add symbol check if provided
+    if symbol:
+        query += ' AND symbol = ?'
+        params.append(symbol)
+    
+    # Add time window check
+    query += '''
+        AND datetime(timePosted) > datetime(?, '-' || ? || ' hours')
+    '''
+    params.extend([timePosted, hours_window])
+    
+    cursor.execute(query, params)
+    potential_duplicates = cursor.fetchall()
+    
+    # Check each potential duplicate
+    for row in potential_duplicates:
+        # Check if content is similar
+        existing_content_hash = hashlib.md5(row['content'].encode()).hexdigest()
+        
+        # If exact content match, it's a duplicate
+        if existing_content_hash == content_hash:
+            debug_warning(f"Found exact duplicate: ID {row['id']} - {row['title']}")
+            conn.close()
+            return row['id']
+        
+        # If title is exact match and content is > 80% similar in length
+        if row['title'] == title:
+            content_len_ratio = len(content) / len(row['content'])
+            if 0.8 <= content_len_ratio <= 1.2:
+                debug_warning(f"Found likely duplicate (similar title/content): ID {row['id']}")
+                conn.close()
+                return row['id']
+    
+    # No duplicate found, insert the insight
     cursor.execute('''
         INSERT INTO insights (
             timeFetched, timePosted, type, title, content, symbol, exchange, imageURL,
-            AITextSummary, AIImageSummary, AISummary, AIAction,
+            AIImageSummary, AISummary, AIAction,
             AIConfidence, AIEventTime, AILevels
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         timeFetched, timePosted, type, title, content, symbol, exchange, imageURL,
-        AITextSummary, AIImageSummary, AISummary, AIAction,
+        AIImageSummary, AISummary, AIAction,
         AIConfidence, AIEventTime, AILevels
     ))
     
@@ -101,6 +153,7 @@ def add_insight(
     conn.commit()
     conn.close()
     
+    debug_info(f"Added new insight with ID: {insight_id}")
     return insight_id
 
 def get_all_insights(type_filter: str = None) -> List[Dict[str, Any]]:

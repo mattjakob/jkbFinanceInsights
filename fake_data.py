@@ -135,7 +135,7 @@ def generate_random_insight() -> Dict:
         'symbol': symbol,
         'exchange': exchange,
         'imageURL': f"https://example.com/chart_{random.randint(1000, 9999)}.png" if random.random() > 0.5 else None,
-        'AITextSummary': f"Text analysis: {random.choice(SUMMARIES)}",
+
         'AIImageSummary': "Chart shows " + random.choice(["bullish flag", "bearish wedge", "consolidation", "breakout"]) if random.random() > 0.3 else None,
         'AISummary': random.choice(SUMMARIES),
         'AIAction': random.choice(ACTIONS),

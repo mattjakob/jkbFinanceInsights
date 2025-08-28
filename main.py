@@ -60,7 +60,7 @@ async def serve_static_files(file_path: str, t: Optional[str] = None):
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Database schema
-from database_schema import init_database, check_database_structure
+from database_utils import init_database, check_database_structure
 
 class InsightCreate(BaseModel):
     """Data model for creating new insights"""
@@ -71,7 +71,7 @@ class InsightCreate(BaseModel):
     symbol: Optional[str] = None
     exchange: Optional[str] = None
     imageURL: Optional[str] = None
-    AITextSummary: Optional[str] = None
+
     AIImageSummary: Optional[str] = None
     AISummary: Optional[str] = None
     AIAction: Optional[str] = None
@@ -90,7 +90,7 @@ class Insight(BaseModel):
     symbol: Optional[str] = None
     exchange: Optional[str] = None
     imageURL: Optional[str] = None
-    AITextSummary: Optional[str] = None
+
     AIImageSummary: Optional[str] = None
     AISummary: Optional[str] = None
     AIAction: Optional[str] = None
@@ -166,7 +166,7 @@ async def add_insight(
     symbol: Optional[str] = Form(None),
     exchange: Optional[str] = Form(None),
     imageURL: Optional[str] = Form(None),
-    AITextSummary: Optional[str] = Form(None),
+
     AIImageSummary: Optional[str] = Form(None),
     AISummary: Optional[str] = Form(None),
     AIAction: Optional[str] = Form(None),
@@ -212,7 +212,7 @@ async def add_insight(
             symbol=symbol,
             exchange=exchange,
             imageURL=imageURL,
-            AITextSummary=AITextSummary,
+
             AIImageSummary=AIImageSummary,
             AISummary=AISummary,
             AIAction=AIAction,
@@ -263,7 +263,7 @@ async def update_insight(
     symbol: Optional[str] = Form(None),
     exchange: Optional[str] = Form(None),
     imageURL: Optional[str] = Form(None),
-    AITextSummary: Optional[str] = Form(None),
+
     AIImageSummary: Optional[str] = Form(None),
     AISummary: Optional[str] = Form(None),
     AIAction: Optional[str] = Form(None),
@@ -310,7 +310,7 @@ async def update_insight(
             symbol=symbol,
             exchange=exchange,
             imageURL=imageURL,
-            AITextSummary=AITextSummary,
+
             AIImageSummary=AIImageSummary,
             AISummary=AISummary,
             AIAction=AIAction,
@@ -421,7 +421,7 @@ async def create_insight(insight: InsightCreate):
             symbol=insight.symbol,
             exchange=insight.exchange,
             imageURL=insight.imageURL,
-            AITextSummary=insight.AITextSummary,
+
             AIImageSummary=insight.AIImageSummary,
             AISummary=insight.AISummary,
             AIAction=insight.AIAction,
@@ -702,8 +702,52 @@ async def fetch_insights(request: FetchRequest):
     try:
         debug_info(f"Fetch data request: feedType='{request.feedType}' for {request.exchange}:{request.symbol} (max: {request.maxItems})")
         
+        # Handle ALL feed type
+        if request.feedType == "" or request.feedType == "ALL":
+            debug_info("Fetching from ALL feed types")
+            
+            # Create list of all scrapers to use
+            scrapers = [
+                ("TD IDEAS RECENT", TradingViewIdeasRecentScraper()),
+                ("TD NEWS", TradingViewNewsScraper()),
+                ("TD OPINIONS", TradingViewOpinionsScraper()),
+                ("TD IDEAS POPULAR", TradingViewIdeasPopularScraper())
+            ]
+            
+            all_results = []
+            total_processed = 0
+            total_created = 0
+            total_failed = 0
+            
+            # Fetch from each scraper
+            for feed_name, scraper in scrapers:
+                debug_info(f"Fetching from {feed_name}")
+                items = scraper.fetch(
+                    symbol=request.symbol, 
+                    exchange=request.exchange, 
+                    maxItems=request.maxItems
+                )
+                
+                # The fetch method returns a list of items directly
+                for item in items:
+                    item['feedType'] = feed_name
+                
+                all_results.extend(items)
+                total_processed += len(items)
+                total_created += len(items)  # Assuming all fetched items create insights
+                total_failed += 0  # Will need to track failures separately
+            
+            return {
+                "success": True,
+                "message": f"Fetched from all feed types",
+                "processed_items": total_processed,
+                "created_insights": total_created,
+                "failed_items": total_failed,
+                "results": all_results
+            }
+        
         # Select the correct scraper based on feedType
-        if request.feedType == "TD NEWS":
+        elif request.feedType == "TD NEWS":
             debug_info("Using TradingViewNewsScraper")
             scraper = TradingViewNewsScraper()
         elif request.feedType == "TD IDEAS RECENT":
@@ -791,54 +835,42 @@ async def ai_text_analysis(insight_id: int):
         if not insight:
             raise HTTPException(status_code=404, detail="Insight not found")
         
-        # Perform AI text analysis
-        from ai_worker import do_ai_text_analysis
-        analysis = do_ai_text_analysis(
-            symbol=insight.get('symbol'),
-            item_type=insight.get('type'),
-            title=insight.get('title'),
-            content=insight.get('content')
+        # New flow: use do_ai_summary directly (no separate text analysis)
+        from ai_worker import do_ai_summary
+        
+        # Run AI summary without technical analysis
+        ai_summary_result = do_ai_summary(
+            symbol=insight.get('symbol', ''),
+            item_type=insight.get('type', ''),
+            title=insight.get('title', ''),
+            content=insight.get('content', ''),
+            technical=""  # No technical analysis for text-only
         )
         
-        if analysis:
-            # Update the insight with AI text analysis results
-            items_management.update_insight(
+        if ai_summary_result:
+            # Update AI fields with comprehensive summary
+            items_management.update_insight_ai_fields(
                 insight_id=insight_id,
-                AITextSummary=analysis
+                AISummary=ai_summary_result.get('AISummary'),
+                AIAction=ai_summary_result.get('AIAction'),
+                AIConfidence=ai_summary_result.get('AIConfidence'),
+                AIEventTime=ai_summary_result.get('AIEventTime'),
+                AILevels=ai_summary_result.get('AILevels')
             )
             
-            # Run comprehensive AI summary with text analysis
-            from ai_worker import do_ai_summary
-            ai_summary_result = do_ai_summary(
-                text=analysis,
-                technical=None,  # No technical analysis for text-only
-                symbol=insight.get('symbol', ''),
-                item_type=insight.get('type', '')
-            )
+
             
-            if ai_summary_result:
-                # Update AI fields with comprehensive summary
-                items_management.update_insight_ai_fields(
-                    insight_id=insight_id,
-                    AISummary=ai_summary_result.get('AISummary'),
-                    AIAction=ai_summary_result.get('AIAction'),
-                    AIConfidence=ai_summary_result.get('AIConfidence'),
-                    AIEventTime=ai_summary_result.get('AIEventTime'),
-                    AILevels=ai_summary_result.get('AILevels')
-                )
-                debug_success(f"✓ AI text analysis and summary completed for insight {insight_id}")
-            else:
-                debug_warning(f"AI text analysis completed but summary generation failed for insight {insight_id}")
+            debug_success(f"✓ AI text analysis (summary) completed for insight {insight_id}")
             
             return {
                 "success": True,
                 "message": "AI text analysis completed successfully",
-                "AITextSummary": analysis,
+
                 "insight_id": insight_id,
                 "summary": ai_summary_result
             }
         else:
-            debug_error(f"AI text analysis failed for insight {insight_id}")
+            debug_error(f"AI text analysis (summary) failed for insight {insight_id}")
             return {
                 "success": False,
                 "message": "AI text analysis failed",
@@ -898,16 +930,14 @@ async def ai_image_analysis(insight_id: int):
                 AIImageSummary=analysis
             )
             
-            # Get existing text analysis for comprehensive summary
-            existing_text_analysis = insight.get('AITextSummary', '')
-            
-            # Run comprehensive AI summary with both text and image analysis
+            # New flow: Run comprehensive AI summary with image analysis
             from ai_worker import do_ai_summary
             ai_summary_result = do_ai_summary(
-                text=existing_text_analysis,
-                technical=analysis,  # Image analysis as technical analysis
                 symbol=insight.get('symbol', ''),
-                item_type=insight.get('type', '')
+                item_type=insight.get('type', ''),
+                title=insight.get('title', ''),
+                content=insight.get('content', ''),
+                technical=analysis  # Use the image analysis as technical analysis
             )
             
             if ai_summary_result:
@@ -954,4 +984,4 @@ if __name__ == "__main__":
     # Send initial debug message
     debug_success("Finance Insights server starting up...")
     
-    uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)
+    uvicorn.run("main:app", host=SERVER_HOST, port=SERVER_PORT, reload=True, log_level="debug", access_log=True)

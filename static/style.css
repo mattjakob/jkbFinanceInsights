@@ -86,10 +86,7 @@
 /* Control Panel */
 .control-panel {
     background-color: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 1rem;
-    margin-bottom: 2rem;
+
 }
 
 /* Control panel layout */
@@ -127,7 +124,9 @@ select {
 .control-select:focus,
 input:focus,
 textarea:focus,
-select:focus {
+select:focus,
+.symbol-input:focus,
+.exchange-input:focus {
     background-color: transparent !important;
     border-color: var(--text-color) !important;
     color: var(--text-color) !important;
@@ -540,6 +539,8 @@ option:checked {
     color: var(--bg-color);
 }
 
+
+
 .action-hold.action-badge,
 .action-hold.action-btn {
     background-color: transparent;
@@ -746,20 +747,14 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
 /* Symbol and exchange combined input group styling */
 .control-panel .input-group:has(.symbol-input) {
     min-width: 220px;
+    border: 1px solid var(--text-color) !important;
+    border-radius: 4px;
+    overflow: hidden;
 }
 
 /* Remove all internal borders from input group elements */
 .control-panel .input-group:has(.symbol-input) > * {
-    border-left: none !important;
-    border-right: none !important;
-}
-
-.control-panel .input-group:has(.symbol-input) > *:first-child {
-    border-left: 1px solid var(--text-color) !important;
-}
-
-.control-panel .input-group:has(.symbol-input) > *:last-child {
-    border-right: 1px solid var(--text-color) !important;
+    border: none !important;
 }
 
 /* Symbol input styling */
@@ -768,6 +763,16 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     border-right: none !important;
     max-width: 80px !important;
     flex: 0 0 80px !important;
+    background-color: transparent !important;
+    border: 1px solid var(--text-color) !important;
+    color: var(--text-color) !important;
+    font-size: 13px !important;
+    font-weight: normal !important;
+    font-family: var(--mono-font) !important;
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem !important;
+    height: auto !important;
+    line-height: 1.5 !important;
 }
 
 /* Exchange input styling */
@@ -777,6 +782,16 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     border-right: none !important;
     max-width: 100px !important;
     flex: 0 0 100px !important;
+    background-color: transparent !important;
+    border: 1px solid var(--text-color) !important;
+    color: var(--text-color) !important;
+    font-size: 13px !important;
+    font-weight: normal !important;
+    font-family: var(--mono-font) !important;
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem !important;
+    height: auto !important;
+    line-height: 1.5 !important;
 }
 
 /* Validation icon styling */
@@ -1003,7 +1018,8 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     white-space: pre-wrap;
     word-wrap: break-word;
     background-color: transparent;
-    border: 1px solid var(--border-color);
+    border-left: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
     padding: 1rem;
 }
 
@@ -1058,20 +1074,26 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
 }
 
 /* AI Levels Styling */
+.levels-section {
+    margin-top: 1.5rem;
+    padding: 1rem;
+}
+
 .ai-levels-container {
-    margin-left: 1rem;
-    margin-top: 0.5rem;
+    margin: 0;
+    padding: 1rem;
 }
 
 .level-badge {
     background: rgba(40, 44, 52, 0.9);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    padding: 0.5rem 0.75rem;
+    padding: 0;
     text-align: center;
     min-width: 100px;
     transition: all 0.2s ease;
     cursor: default;
+    overflow: hidden;
 }
 
 .level-badge:hover {
@@ -1084,38 +1106,33 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     font-family: var(--mono-font);
     font-weight: bold;
     font-size: 10px;
-    margin-bottom: 0.2rem;
+    padding: 0.25rem 0.5rem;
     text-transform: uppercase;
     letter-spacing: 1px;
+    background-color: #ffffff;
+    color: #000000;
+    margin: 0;
 }
 
 .level-values {
     font-family: var(--mono-font);
     font-size: 11px;
-    color: var(--text-color);
+    color: #ffffff;
     font-weight: normal;
     line-height: 1.2;
+    background-color: #000000;
+    padding: 0.5rem 0.75rem;
+    margin: 0;
 }
 
-/* Level type specific colors */
-.level-s .level-type {
-    color: #00ff88; /* Support - Bright Green */
-}
-
-.level-r .level-type {
-    color: #ff6b6b; /* Resistance - Red */
-}
-
-.level-t .level-type {
-    color: #4ecdc4; /* Targets - Cyan */
-}
-
-.level-sl .level-type {
-    color: #ffd93d; /* Stop Loss - Yellow */
-}
-
-.level-inv .level-type {
-    color: #ff8a65; /* Invalidation - Orange */
+/* All levels now use the same monochrome styling */
+.level-s .level-type,
+.level-r .level-type,
+.level-tp .level-type,
+.level-sl .level-type,
+.level-entry .level-type {
+    background-color: #ffffff;
+    color: #000000;
 }
 
 .ai-action {

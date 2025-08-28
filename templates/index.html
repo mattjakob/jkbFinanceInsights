@@ -20,9 +20,10 @@
 
 <!-- Control Panel -->
 <div class="control-panel mb-4">
+
     <div class="row g-2 align-items-center">
         <!-- Symbol and Exchange Group -->
-        <div class="col-auto">
+                <div class="col-auto">
             <div class="symbol-autocomplete-container">
                 <div class="input-group input-group-sm">
                     <input type="text" class="form-control control-select symbol-input" 
@@ -63,7 +64,7 @@
         </div>
         
         <!-- Settings Group -->
-        <div class="col-auto ms-3">
+        <div class="col-auto">
             <div class="input-group input-group-sm">
                 <span class="input-group-text">INTERVAL</span>
                 <select class="form-select form-select-sm control-select" title="Update Interval">
@@ -86,35 +87,30 @@
             </div>
         </div>
 
-        
-        <!-- Action Group -->
-        <div class="col-auto ms-3">
-            <a href="/add" class="btn btn-outline-light btn-sm add-entry-btn">
-                <i class="bi bi-plus-circle"></i> ADD ENTRY
-            </a>
-        </div>
-        <div class="col-auto">
-            <button class="btn btn-success btn-sm fetch-btn">FETCH</button>
-        </div>
-        <div class="col-auto">
-            <button class="btn btn-primary btn-sm update-btn">UPDATE</button>
-        </div>
-        <div class="col-auto">
-            <button class="btn btn-danger btn-sm delete-btn">DELETE</button>
-        </div>
-        <div class="col-auto">
-            <div class="d-flex align-items-center gap-1">
-                <input type="number" class="form-control form-control-sm reset-id-input" id="resetInsightId" placeholder="ID" min="1">
-                <button class="btn btn-outline-warning btn-sm" id="resetBtn" title="Reset AI fields for the specified insight ID">
-                    AI RESET
-                </button>
+        <!-- Action Group - Right Aligned -->
+        <div class="col-auto ms-auto">
+            <div class="d-flex gap-2 align-items-center">
+                <a href="/add" class="btn btn-outline-light btn-sm add-entry-btn">
+                    <i class="bi bi-plus-circle"></i> ADD ENTRY
+                </a>
+                <button class="btn btn-success btn-sm fetch-btn">FETCH</button>
+                <button class="btn btn-primary btn-sm update-btn">UPDATE</button>
+                <button class="btn btn-danger btn-sm delete-btn">DELETE</button>
+                <div class="d-flex align-items-center gap-1">
+                    <input type="number" class="form-control form-control-sm reset-id-input" id="resetInsightId" placeholder="ID" min="1">
+                    <button class="btn btn-outline-warning btn-sm" id="resetBtn" title="Reset AI fields for the specified insight ID">
+                        AI RESET
+                    </button>
+                </div>
             </div>
         </div>
+    </div>
+
     </div>
 </div>
 
 <!-- System Status -->
-<div class="status-bar mb-3">
+<div class="status-bar mb-4">
     <span class="status-bar-text" id="statusBarText">[SYSTEM] Loading...</span>
 </div>
 
@@ -129,8 +125,8 @@
                     <th>TITLE</th>
                     <th>AI SUMMARY</th>
                     <th>ACTION</th>
-                    <th>CONF%</th>
-                    <th>EVENT TIME</th>
+                    <th>RELEVANCE</th>
+                    <th>HORIZON</th>
                     <th>LEVELS</th>
                 </tr>
             </thead>
@@ -186,7 +182,7 @@
                         {% endif %}
                     </td>
                     <td class="confidence-col">
-                        {% if insight.AIConfidence %}
+                        {% if insight.AIConfidence is not none %}
                             <span class="confidence-value">{{ "%.0f"|format(insight.AIConfidence * 100) }}%</span>
                         {% else %}
                             <div class="loading-spinner"></div>
@@ -201,7 +197,23 @@
                     </td>
                     <td class="levels-col">
                         {% if insight.AILevels %}
-                            <span class="levels-text">{{ insight.AILevels[:30] }}{% if insight.AILevels|length > 30 %}...{% endif %}</span>
+                            {% set levels_parts = insight.AILevels.split(' | ') %}
+                            {% set entry = '' %}
+                            {% set take_profit = '' %}
+                            {% for level_part in levels_parts %}
+                                {% if 'Entry:' in level_part %}
+                                    {% set entry = level_part.replace('Entry:', 'E:').strip() %}
+                                {% elif 'TP:' in level_part %}
+                                    {% set take_profit = level_part.replace('TP:', 'T:').strip() %}
+                                {% endif %}
+                            {% endfor %}
+                            <span class="levels-text">
+                                {% if entry %}{{ entry }}{% endif %}
+                                {% if entry and take_profit %} | {% endif %}
+                                {% if take_profit %}{{ take_profit }}{% endif %}
+                                {% if not entry and not take_profit %}{{ insight.AILevels[:50] }}{% endif %}
+                            </span>
+                            <!-- Debug: {{ insight.AILevels }} -->
                         {% else %}
                             <div class="loading-spinner"></div>
                         {% endif %}

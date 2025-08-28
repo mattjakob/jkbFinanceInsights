@@ -174,7 +174,7 @@ jkbFinanceInsights/
 
 ### Insights Table
 - **Basic Fields**: id, timeFetched, timePosted, type, title, content, symbol, exchange, imageURL
-- **AI Fields**: AITextSummary, AIImageSummary, AISummary, AIAction, AIConfidence, AIEventTime, AILevels
+- **AI Fields**: AIImageSummary, AISummary, AIAction, AIConfidence, AIEventTime, AILevels
 
 ### Feed Names Table
 - **Structure**: name, description, created_at
