@@ -15,6 +15,7 @@ import signal
 import time
 import argparse
 from pathlib import Path
+from debugger import debug_info, debug_warning, debug_error, debug_success
 from config import (
     APP_NAME, MAIN_FILE, DEFAULT_PORT, VENV_ACTIVATE,
     UVICORN_HOST, UVICORN_RELOAD, UVICORN_RELOAD_DIR, UVICORN_LOG_LEVEL,
@@ -62,13 +63,13 @@ def kill_processes(pids):
         if pid.strip():
             try:
                 os.kill(int(pid), signal.SIGTERM)
-                print(f"  Killed process {pid}")
+                debug_info(f"  Killed process {pid}")
             except Exception as e:
-                print(f"  Error killing process {pid}: {e}")
+                debug_error(f"  Error killing process {pid}: {e}")
 
 def stop_server():
     """Stop the running server"""
-    print(f"Stopping {APP_NAME}...")
+    debug_info(f"Stopping {APP_NAME}...")
     
     # First, try to kill any processes using port 8000
     try:
@@ -80,19 +81,19 @@ def stop_server():
                 if pid.strip():
                     try:
                         os.kill(int(pid), signal.SIGKILL)
-                        print(f"  Killed process {pid} using port {DEFAULT_PORT}")
+                        debug_info(f"  Killed process {pid} using port {DEFAULT_PORT}")
                     except Exception as e:
-                        print(f"  Error killing port process {pid}: {e}")
+                        debug_error(f"  Error killing port process {pid}: {e}")
     except Exception:
         pass
     
     # Then kill all Python processes related to our app
     pids = get_python_processes()
     if pids:
-        print(f"  Found {len(pids)} related process(es)")
+        debug_info(f"  Found {len(pids)} related process(es)")
         kill_processes(pids)
     else:
-        print("  No related processes found")
+        debug_info("  No related processes found")
     
     # Wait longer for processes to terminate
     time.sleep(3)
@@ -100,13 +101,13 @@ def stop_server():
     # Force kill any remaining processes
     remaining = get_python_processes()
     if remaining:
-        print("  Force killing remaining processes...")
+        debug_warning("  Force killing remaining processes...")
         for pid in remaining:
             try:
                 os.kill(int(pid), signal.SIGKILL)
-                print(f"  Force killed process {pid}")
+                debug_info(f"  Force killed process {pid}")
             except Exception as e:
-                print(f"  Error force killing process {pid}: {e}")
+                debug_error(f"  Error force killing process {pid}: {e}")
     
     # Final check - kill anything still using port 8000
     try:
@@ -118,38 +119,42 @@ def stop_server():
                 if pid.strip():
                     try:
                         os.kill(int(pid), signal.SIGKILL)
-                        print(f"  Final kill for process {pid} on port {DEFAULT_PORT}")
+                        debug_info(f"  Final kill for process {pid} on port {DEFAULT_PORT}")
                     except Exception as e:
-                        print(f"  Error in final kill for {pid}: {e}")
+                        debug_error(f"  Error in final kill for {pid}: {e}")
     except Exception:
         pass
     
-    print("Server stopped")
+    debug_success("Server stopped")
 
-def start_server(port=None, reload=False):
+def start_server(port=None, reload=None):
     """Start the server"""
     if port is None:
         port = DEFAULT_PORT
     
+    # Default to auto-reload if not specified
+    if reload is None:
+        reload = True  # Always default to auto-reload
+    
     mode = "Development (Auto-reload)" if reload else "Production"
-    print(f"Starting {APP_NAME} on port {port} in {mode} mode...")
+    debug_info(f"Starting {APP_NAME} on port {port} in {mode} mode...")
     
     # Always stop any existing server first
-    print("  Ensuring no existing server is running...")
+    debug_info("  Ensuring no existing server is running...")
     stop_server()
     time.sleep(2)
     
     # Check if virtual environment exists
     if not Path(VENV_ACTIVATE).exists():
-        print("ERROR: Virtual environment not found!")
-        print("   Please run: python3 -m venv .venv")
-        print("   Then: source .venv/bin/activate")
-        print("   And: pip install -r requirements.txt")
+        debug_error("ERROR: Virtual environment not found!")
+        debug_error("   Please run: python3 -m venv .venv")
+        debug_error("   Then: source .venv/bin/activate")
+        debug_error("   And: pip install -r requirements.txt")
         return False
     
     # Check if main.py exists
     if not Path(MAIN_FILE).exists():
-        print(f"ERROR: {MAIN_FILE} not found!")
+        debug_error(f"ERROR: {MAIN_FILE} not found!")
         return False
     
     # Double-check port is available after stopping
@@ -159,15 +164,15 @@ def start_server(port=None, reload=False):
             import socket
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind(('localhost', port))
-                print(f"  Port {port} is available")
+                debug_info(f"  Port {port} is available")
                 break
         except OSError:
             if attempt < max_attempts - 1:
-                print(f"  Port {port} still in use, waiting... (attempt {attempt + 1}/{max_attempts})")
+                debug_warning(f"  Port {port} still in use, waiting... (attempt {attempt + 1}/{max_attempts})")
                 time.sleep(1)
             else:
-                print(f"ERROR: Port {port} is still in use after multiple attempts!")
-                print("   There may be another application using this port")
+                debug_error(f"ERROR: Port {port} is still in use after multiple attempts!")
+                debug_error("   There may be another application using this port")
                 return False
     
     try:
@@ -176,11 +181,11 @@ def start_server(port=None, reload=False):
             # Development mode with auto-reload
             uvicorn_cmd = get_uvicorn_command(port)
             cmd = f"cd {os.getcwd()} && source {VENV_ACTIVATE} && {uvicorn_cmd}"
-            print(f"  Running: {cmd}")
+            debug_info(f"  Running: {cmd}")
         else:
             # Production mode
             cmd = f"cd {os.getcwd()} && source {VENV_ACTIVATE} && python {MAIN_FILE}"
-            print(f"  Running: {cmd}")
+            debug_info(f"  Running: {cmd}")
         
         # Use subprocess.Popen to start the server
         process = subprocess.Popen(
@@ -195,84 +200,84 @@ def start_server(port=None, reload=False):
         time.sleep(3)
         
         if process.poll() is None:
-            print(f"Server started successfully on port {port}")
-            print(f"  Process ID: {process.pid}")
-            print(f"  Access at: http://localhost:{port}")
+            debug_success(f"Server started successfully on port {port}")
+            debug_info(f"  Process ID: {process.pid}")
+            debug_info(f"  Access at: http://localhost:{port}")
             return True
         else:
             stdout, stderr = process.communicate()
-            print("ERROR: Server failed to start!")
+            debug_error("ERROR: Server failed to start!")
             if stderr:
-                print(f"  Error: {stderr}")
+                debug_error(f"  Error: {stderr}")
             return False
             
     except Exception as e:
-        print(f"ERROR: Error starting server: {e}")
+        debug_error(f"ERROR: Error starting server: {e}")
         return False
 
-def restart_server(port=None, reload=False):
+def restart_server(port=None, reload=None):
     """Restart the server"""
-    print(f"Restarting {APP_NAME}...")
+    debug_info(f"Restarting {APP_NAME}...")
     stop_server()
     time.sleep(1)
     return start_server(port, reload)
 
 def status():
     """Show server status"""
-    print(f"{APP_NAME}")
-    print("=" * 50)
+    debug_info(f"{APP_NAME}")
+    debug_info("=" * 50)
     
     pids = get_python_processes()
     if pids:
-        print(f"Status: Running")
-        print(f"Process IDs: {', '.join(pids)}")
-        print(f"Port: {DEFAULT_PORT}")
-        print(f"URL: http://localhost:{DEFAULT_PORT}")
+        debug_success(f"Status: Running")
+        debug_info(f"Process IDs: {', '.join(pids)}")
+        debug_info(f"Port: {DEFAULT_PORT}")
+        debug_info(f"URL: http://localhost:{DEFAULT_PORT}")
     else:
-        print("Status: Not running")
+        debug_warning("Status: Not running")
     
-    print("\nEnvironment:")
-    print(f"  main.py: {'Available' if Path(MAIN_FILE).exists() else 'Missing'}")
-    print(f"  .venv: {'Available' if Path(VENV_ACTIVATE).exists() else 'Missing'}")
+    debug_info("\nEnvironment:")
+    debug_info(f"  main.py: {'Available' if Path(MAIN_FILE).exists() else 'Missing'}")
+    debug_info(f"  venv: {'Available' if Path(VENV_ACTIVATE).exists() else 'Missing'}")
     
     # Check port availability
     try:
         import socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(('localhost', DEFAULT_PORT))
-            print(f"  Port {DEFAULT_PORT}: Available")
+            debug_info(f"  Port {DEFAULT_PORT}: Available")
     except OSError:
-        print(f"  Port {DEFAULT_PORT}: In use")
+        debug_warning(f"  Port {DEFAULT_PORT}: In use")
 
 def config():
     """Show current configuration"""
     from config import get_config_summary
     
-    print(f"{APP_NAME} Configuration")
-    print("=" * 50)
+    debug_info(f"{APP_NAME} Configuration")
+    debug_info("=" * 50)
     
     config_data = get_config_summary()
     
-    print("Server Configuration:")
-    print(f"  Host: {config_data['server']['host']}")
-    print(f"  Port: {config_data['server']['port']}")
-    print(f"  Auto-reload: {config_data['server']['reload']}")
-    print(f"  Workers: {config_data['server']['workers']}")
+    debug_info("Server Configuration:")
+    debug_info(f"  Host: {config_data['server']['host']}")
+    debug_info(f"  Port: {config_data['server']['port']}")
+    debug_info(f"  Auto-reload: {config_data['server']['reload']}")
+    debug_info(f"  Workers: {config_data['server']['workers']}")
     
-    print("\nDatabase Configuration:")
-    print(f"  URL: {config_data['database']['url']}")
+    debug_info("\nDatabase Configuration:")
+    debug_info(f"  URL: {config_data['database']['url']}")
     
-    print("\nEnvironment:")
-    print(f"  Mode: {config_data['environment']['mode']}")
-    print(f"  Debug: {config_data['environment']['debug']}")
+    debug_info("\nEnvironment:")
+    debug_info(f"  Mode: {config_data['environment']['mode']}")
+    debug_info(f"  Debug: {config_data['environment']['debug']}")
     
-    print("\nUvicorn Configuration:")
-    print(f"  Host: {config_data['uvicorn']['host']}")
-    print(f"  Log Level: {config_data['uvicorn']['log_level']}")
+    debug_info("\nUvicorn Configuration:")
+    debug_info(f"  Host: {config_data['uvicorn']['host']}")
+    debug_info(f"  Log Level: {config_data['uvicorn']['log_level']}")
     
-    print("\nConfiguration Source:")
-    print(f"  .env file: {'Found' if Path('.env').exists() else 'Not found'}")
-    print(f"  Using defaults: {'Yes' if not Path('.env').exists() else 'No'}")
+    debug_info("\nConfiguration Source:")
+    debug_info(f"  .env file: {'Found' if Path('.env').exists() else 'Not found'}")
+    debug_info(f"  Using defaults: {'Yes' if not Path('.env').exists() else 'No'}")
 
 def main():
     parser = argparse.ArgumentParser(
@@ -280,10 +285,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python server.py start     # Start server on default port 8000
+  python server.py start     # Start server with auto-reload on default port 8000
   python server.py dev       # Start server with auto-reload (development)
   python server.py stop      # Stop running server
-  python server.py restart   # Restart server
+  python server.py restart   # Restart server with auto-reload
   python server.py status    # Show server status
   python server.py config    # Show current configuration
         """
@@ -298,13 +303,13 @@ Examples:
     args = parser.parse_args()
     
     if args.action == 'start':
-        start_server(args.port, args.reload)
+        start_server(args.port, reload=True)  # Always use auto-reload for start
     elif args.action == 'dev':
         start_server(args.port, reload=True)
     elif args.action == 'stop':
         stop_server()
     elif args.action == 'restart':
-        restart_server(args.port, args.reload)
+        restart_server(args.port, reload=True)  # Always use auto-reload for restart
     elif args.action == 'status':
         status()
     elif args.action == 'config':

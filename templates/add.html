@@ -138,7 +138,8 @@
     </div>
 </div>
 
-<script>
+{% block scripts %}
+<script type="module">
 // Add form submission logging
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.querySelector('form');
@@ -147,26 +148,27 @@ document.addEventListener('DOMContentLoaded', function() {
             const timePostedValue = document.getElementById('timePosted').value;
             const aiEventTimeValue = document.getElementById('AIEventTime').value;
             
-            console.log('=== FORM SUBMISSION DEBUG ===');
-            console.log('timePosted value:', timePostedValue);
-            console.log('timePosted type:', typeof timePostedValue);
-            console.log('timePosted length:', timePostedValue ? timePostedValue.length : 0);
-            console.log('AIEventTime value:', aiEventTimeValue);
-            console.log('AIEventTime type:', typeof aiEventTimeValue);
+            Debugger.debug('=== FORM SUBMISSION DEBUG ===');
+            Debugger.debug('timePosted value:', timePostedValue);
+            Debugger.debug('timePosted type:', typeof timePostedValue);
+            Debugger.debug('timePosted length:', timePostedValue ? timePostedValue.length : 0);
+            Debugger.debug('AIEventTime value:', aiEventTimeValue);
+            Debugger.debug('AIEventTime type:', typeof aiEventTimeValue);
             
             // Log all form data
             const formData = new FormData(form);
-            console.log('All form data:');
+            Debugger.debug('All form data:');
             for (let [key, value] of formData.entries()) {
-                console.log(`  ${key}: '${value}' (${typeof value})`);
+                Debugger.debug(`  ${key}: '${value}' (${typeof value})`);
             }
             
             // If timePosted is empty, show warning
             if (!timePostedValue || timePostedValue.trim() === '') {
-                console.warn('WARNING: timePosted is empty, will use current time');
+                Debugger.warn('WARNING: timePosted is empty, will use current time');
             }
         });
     }
 });
 </script>
+{% endblock %}
 {% endblock %}

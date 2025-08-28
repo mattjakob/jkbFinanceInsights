@@ -144,7 +144,7 @@ const TRADINGVIEW_CONFIG = {
 * - Loads TradingView library if not already available
 */
 function initializeTradingView(containerId = 'tradingview_widget_container', symbol = 'BTCUSD') {
-    console.log('TradingView: Initializing widget with symbol:', symbol);
+            Debugger.info('TradingView: Initializing widget with symbol:', symbol);
     
     // Create widget configuration
     const config = {
@@ -158,7 +158,7 @@ function initializeTradingView(containerId = 'tradingview_widget_container', sym
     // Create the widget
     new TradingView.widget(config);
     
-    console.log('TradingView: Widget initialized successfully');
+            Debugger.success('TradingView: Widget initialized successfully');
 }
 
 /**
@@ -191,7 +191,7 @@ function updateTradingViewChart(symbol) {
     
     // Clean symbol input
     const cleanSymbol = symbol.toUpperCase().trim();
-    console.log('TradingView: Updating chart to symbol:', cleanSymbol);
+            Debugger.info('TradingView: Updating chart to symbol:', cleanSymbol);
     
     // Find the TradingView widget container
     let parentContainer = document.querySelector('.tradingview-widget-container');
@@ -201,11 +201,11 @@ function updateTradingViewChart(symbol) {
         return;
     }
     
-    console.log('TradingView: Found parent container:', parentContainer);
+            Debugger.info('TradingView: Found parent container:', parentContainer);
     
     // Clear the parent container completely
     parentContainer.innerHTML = '';
-    console.log('TradingView: Cleared container');
+            Debugger.info('TradingView: Cleared container');
     
     // Recreate the widget container structure with new ID
     const newWidgetContainer = document.createElement('div');
@@ -226,7 +226,7 @@ function updateTradingViewChart(symbol) {
     }
     
     function createWidget(containerId, symbol) {
-        console.log('TradingView: Creating widget with symbol:', symbol);
+        Debugger.info('TradingView: Creating widget with symbol:', symbol);
         
         const config = {
             "container_id": containerId,
@@ -239,7 +239,7 @@ function updateTradingViewChart(symbol) {
         new TradingView.widget(config);
     }
     
-    console.log('TradingView: Widget recreated with symbol:', cleanSymbol);
+            Debugger.success('TradingView: Widget recreated with symbol:', cleanSymbol);
 }
 
 /**
@@ -276,11 +276,11 @@ function updateTradingViewChartFromInputs() {
     const symbol = symbolInput.value.trim();
     const exchange = exchangeInput ? exchangeInput.value.trim() : '';
     
-    console.log('TradingView: updateTradingViewChartFromInputs called');
-    console.log('TradingView: Current inputs - Symbol:', symbol, 'Exchange:', exchange);
+            Debugger.info('TradingView: updateTradingViewChartFromInputs called');
+            Debugger.info('TradingView: Current inputs - Symbol:', symbol, 'Exchange:', exchange);
     
     if (!symbol) {
-        console.log('TradingView: No symbol provided, skipping update');
+        Debugger.warn('TradingView: No symbol provided, skipping update');
         return;
     }
     
@@ -292,7 +292,7 @@ function updateTradingViewChartFromInputs() {
         tradingViewSymbol = symbol.toUpperCase();
     }
     
-    console.log('TradingView: Final symbol format:', tradingViewSymbol);
+            Debugger.info('TradingView: Final symbol format:', tradingViewSymbol);
     
     // Update the chart
     updateTradingViewChart(tradingViewSymbol);

@@ -92,7 +92,6 @@ class Debugger:
             "message": self.current_message,
             "status": self.current_status,
             "timestamp": self.timestamp,
-            "full_message": f"{self.current_message}"
         }
     
     def clear(self) -> None:

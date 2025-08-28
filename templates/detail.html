@@ -57,14 +57,14 @@
         </div>
  
         <div class="col-auto">
-            <button class="btn btn-secondary btn-sm" onclick="performAITextAnalysis({{ insight.id }}, this)">
+            <button class="btn btn-secondary btn-sm" id="textAnalysisBtn" data-insight-id="{{ insight.id }}">
                 <i class="bi bi-stars"></i> STRATEGY
             </button>
         </div>
         
         {% if insight.imageURL %}
         <div class="col-auto">
-            <button class="btn btn-secondary btn-sm" onclick="performAIImageAnalysis({{ insight.id }}, this)">
+            <button class="btn btn-secondary btn-sm" id="imageAnalysisBtn" data-insight-id="{{ insight.id }}">
                 <i class="bi bi-stars"></i> CHART
             </button>
         </div>
@@ -76,7 +76,7 @@
             </a>
         </div>
         <div class="col-auto">
-            <button class="btn btn-danger btn-sm" onclick="deleteInsight({{ insight.id }}, true)">
+            <button class="btn btn-danger btn-sm" id="deleteInsightBtn" data-insight-id="{{ insight.id }}">
                 <i class="bi bi-trash"></i> DELETE
             </button>
         </div>
@@ -192,7 +192,11 @@
 </div>
 
 
-<script>
+{% block scripts %}
+<script type="module">
+import { insightsService } from '/static/js/services/insights.js';
+import { showNotification } from '/static/js/core/utils.js';
+
 // Format level values as currency
 function formatLevelValues() {
     const levelValueElements = document.querySelectorAll('.level-values[data-level-value]');
@@ -216,11 +220,7 @@ function formatLevelValues() {
     });
 }
 
-// Format levels when page loads
-document.addEventListener('DOMContentLoaded', formatLevelValues);
-
-async function performAITextAnalysis(insightId, buttonElement) {
-    // Declare variables at function level for access in finally block
+async function handleAITextAnalysis(insightId, buttonElement) {
     const button = buttonElement;
     const originalText = button.innerHTML;
     
@@ -229,36 +229,28 @@ async function performAITextAnalysis(insightId, buttonElement) {
         button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>ANALYZING...';
         button.disabled = true;
         
-        // Call AI text analysis API
-        const response = await fetch(`/api/insights/${insightId}/ai-text-analysis`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+        // Call AI text analysis service
+        const result = await insightsService.performAITextAnalysis(insightId);
         
-        const result = await response.json();
-        
-        console.log('AI text analysis response:', result);
+        Debugger.info('AI text analysis response:', result);
         
         if (result.success) {
             // Reload the page to show updated AI fields
             location.reload();
         } else {
             const errorMessage = result.message || 'Unknown error occurred';
-            console.error(`AI text analysis failed: ${errorMessage}`);
+            showNotification(`AI text analysis failed: ${errorMessage}`, 'error');
         }
     } catch (error) {
-        console.error('AI text analysis error:', error);
+        Debugger.error('AI text analysis error:', error);
+        showNotification('Error performing AI text analysis', 'error');
     } finally {
-        // Re-enable button
         button.innerHTML = originalText;
         button.disabled = false;
     }
 }
 
-async function performAIImageAnalysis(insightId, buttonElement) {
-    // Declare variables at function level for access in finally block
+async function handleAIImageAnalysis(insightId, buttonElement) {
     const button = buttonElement;
     const originalText = button.innerHTML;
     
@@ -267,33 +259,71 @@ async function performAIImageAnalysis(insightId, buttonElement) {
         button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>ANALYZING...';
         button.disabled = true;
         
-        // Call AI image analysis API
-        const response = await fetch(`/api/insights/${insightId}/ai-image-analysis`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+        // Call AI image analysis service
+        const result = await insightsService.performAIImageAnalysis(insightId);
         
-        const result = await response.json();
-        
-        console.log('AI image analysis response:', result);
+        Debugger.info('AI image analysis response:', result);
         
         if (result.success) {
             // Reload the page to show updated AI fields
             location.reload();
         } else {
             const errorMessage = result.message || 'Unknown error occurred';
-            console.error(`AI image analysis failed: ${errorMessage}`);
+            showNotification(`AI image analysis failed: ${errorMessage}`, 'error');
         }
     } catch (error) {
-        console.error('AI image analysis error:', error);
+        Debugger.error('AI image analysis error:', error);
+        showNotification('Error performing AI image analysis', 'error');
     } finally {
-        // Re-enable button
         button.innerHTML = originalText;
         button.disabled = false;
     }
 }
+
+async function handleDeleteInsight(insightId) {
+    if (!confirm('Are you sure you want to delete this insight?')) {
+        return;
+    }
+    
+    try {
+        await insightsService.deleteInsight(insightId, true);
+    } catch (error) {
+        Debugger.error('Delete insight error:', error);
+        showNotification('Error deleting insight', 'error');
+    }
+}
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Format level values
+    formatLevelValues();
+    
+    // Add event listeners
+    const deleteBtn = document.getElementById('deleteInsightBtn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function() {
+            const insightId = this.getAttribute('data-insight-id');
+            handleDeleteInsight(insightId);
+        });
+    }
+    
+    const textAnalysisBtn = document.getElementById('textAnalysisBtn');
+    if (textAnalysisBtn) {
+        textAnalysisBtn.addEventListener('click', function() {
+            const insightId = this.getAttribute('data-insight-id');
+            handleAITextAnalysis(insightId, this);
+        });
+    }
+    
+    const imageAnalysisBtn = document.getElementById('imageAnalysisBtn');
+    if (imageAnalysisBtn) {
+        imageAnalysisBtn.addEventListener('click', function() {
+            const insightId = this.getAttribute('data-insight-id');
+            handleAIImageAnalysis(insightId, this);
+        });
+    }
+});
 </script>
+{% endblock %}
 
 {% endblock %}

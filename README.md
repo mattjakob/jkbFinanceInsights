@@ -1,293 +1,104 @@
-# JKB Finance Insights
+# Finance Insights Web App
 
-A comprehensive financial insights management system with AI-powered analysis capabilities, built using FastAPI, SQLite, and OpenAI integration.
+A simple, user-friendly web application for managing finance insights with AI analysis capabilities.
 
-## 🚀 Features
+## Features
 
-### Core Functionality
-- **Financial Insights Management**: Add, edit, view, and delete financial insights
-- **AI-Powered Analysis**: Automated text and image analysis using OpenAI API
-- **Multi-Source Integration**: Support for various financial data sources (TD IDEAS, NEWS, OPINIONS)
-- **Real-time Updates**: Live market data updates and AI analysis
-- **Responsive Web Interface**: Modern, mobile-friendly UI built with Bootstrap
+- **Simple Interface**: Clean, responsive design using Bootstrap
+- **SQLite Database**: Lightweight database storage
+- **AI Integration Ready**: Fields for AI-generated summaries, actions, and analysis
+- **CRUD Operations**: Create, read, update, and delete insights
+- **REST API**: RESTful endpoints for programmatic access
+- **Image Support**: Display images with insights
+- **Real-time UI**: Interactive features with JavaScript
 
-### AI Analysis Capabilities
-- **Text Analysis**: AI-powered analysis of financial content using custom prompts
-- **Image Analysis**: Technical chart analysis using OpenAI's multimodal API
-- **Comprehensive Summaries**: Structured AI summaries with actionable insights
-- **Confidence Scoring**: AI-generated confidence levels for recommendations
-- **Event Timing**: Predicted event timing for market movements
-- **Support/Resistance Levels**: AI-identified key price levels
+## Database Schema
 
-### Technical Features
-- **FastAPI Backend**: High-performance, async web framework
-- **SQLite Database**: Lightweight, file-based database
-- **Modular Architecture**: Clean separation of concerns with dedicated modules
-- **Environment Configuration**: Secure configuration management
-- **Server Management**: Robust server control scripts with auto-reload
+The application uses a single SQLite table with the following fields:
 
-## 🛠️ Technology Stack
+- `id`: Primary key (auto-increment)
+- `timeFetched`: When the insight was fetched
+- `timePosted`: When the insight was posted
+- `type`: Category of insight (News, Analysis, Market Update, etc.)
+- `title`: Title of the insight
+- `content`: Main content/description
+- `imageURL`: Optional image URL
+- `AITextSummary`: AI-generated text summary
+- `AIImageSummary`: AI-generated image summary
+- `AISummary`: Overall AI summary
+- `AIAction`: Recommended action from AI
+- `AIConfidence`: Confidence level (0-1)
+- `AIEventTime`: AI-predicted event time
+- `AILevels`: AI risk/importance levels
 
-- **Backend**: Python 3.13+, FastAPI, Uvicorn
-- **Database**: SQLite with SQLAlchemy-style operations
-- **AI Integration**: OpenAI API (GPT-4, GPT-5, Responses API)
-- **Frontend**: HTML5, CSS3, JavaScript, Bootstrap 5
-- **Server**: Uvicorn with auto-reload for development
-- **Environment**: Virtual environment with dependency management
+## Quick Start
 
-## 📋 Prerequisites
-
-- Python 3.13 or higher
-- OpenAI API key
-- Virtual environment (recommended)
-
-## 🚀 Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd jkbFinanceInsights
-   ```
-
-2. **Create and activate virtual environment**
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-
-3. **Install dependencies**
+1. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configure environment variables**
+2. **Run the Application**:
    ```bash
-   cp env.example .env
-   # Edit .env with your OpenAI API keys and configuration
+   python main.py
    ```
 
-## ⚙️ Configuration
+3. **Open Your Browser**:
+   Navigate to `http://localhost:8000`
 
-Create a `.env` file with the following variables:
+## API Endpoints
 
-```env
-# OpenAI Configuration
-OPENAI_API_KEY=your-openai-api-key-here
-OPENAI_MODEL=gpt-5
-OPENAI_PROMPT_TEXTANALYSIS_ID=your-prompt1-id-here
-OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID=your-prompt1-version-id-here
-OPENAI_PROMPT_BRIEFSTRATEGY_ID=your-prompt2-id-here
-OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID=your-prompt2-version-id-here
+- `GET /`: Web interface home page
+- `GET /add`: Add new insight form
+- `POST /add`: Create new insight
+- `GET /insight/{id}`: View insight details
+- `DELETE /insight/{id}`: Delete insight
+- `GET /api/insights`: Get all insights (JSON)
+- `POST /api/insights`: Create insight via API (JSON)
 
-# Server Configuration
-SERVER_HOST=127.0.0.1
-SERVER_PORT=8000
-SERVER_RELOAD=true
-```
+## Usage
 
-## 🚀 Usage
+### Adding Insights
+1. Click "Add New Insight" button
+2. Fill in the required fields (Type, Title, Content)
+3. Optionally add AI analysis data
+4. Submit the form
 
-### Starting the Server
+### Viewing Insights
+- Home page shows all insights in a card layout
+- Click "View Details" to see full insight information
+- AI summaries and actions are highlighted
 
-#### Option 1: Using the server management script
-```bash
-# Start in production mode
-./start.sh
+### Deleting Insights
+- Click the trash icon on any insight card
+- Confirm deletion in the popup dialog
 
-# Start in development mode with auto-reload
-./dev.sh
+## Development
 
-# Restart server
-./restart.sh
+The application is built with:
+- **FastAPI**: Modern Python web framework
+- **SQLite**: Embedded database
+- **Jinja2**: Template engine
+- **Bootstrap 5**: CSS framework
+- **Vanilla JavaScript**: Frontend interactions
 
-# Stop server
-./stop.sh
-
-# Check server status
-./status.sh
-
-# View configuration
-./config.sh
-```
-
-### Task Management
-
-The system includes comprehensive task management for AI analysis operations:
-
-#### Stop All OpenAI Queries and Clear Tasks
-
-**Option 1: Command Line Script**
-```bash
-# Stop all workers and clear tasks
-./stop_openai.sh
-
-# Or run the Python script directly
-python3 stop_openai.py
-```
-
-**Option 2: API Endpoints**
-```bash
-# Stop all workers and cancel pending tasks
-curl -X POST http://localhost:8000/api/tasks/stop-all
-
-# Clear all tasks from the system
-curl -X POST http://localhost:8000/api/tasks/clear-all
-
-# Restart workers after clearing
-curl -X POST http://localhost:8000/api/tasks/restart-workers
-```
-
-**Option 3: Web Interface**
-- Navigate to the tasks status page: `/tasks`
-- Use the task management controls in the web interface
-
-#### Task Status Monitoring
-
-Check the current tasks status:
-```bash
-curl http://localhost:8000/tasks
-```
-
-This provides a real-time view of:
-- Pending tasks
-- Processing tasks  
-- Failed tasks
-- Task statistics
-- Worker status
-```
-
-#### Option 2: Direct uvicorn command
-```bash
-# Development mode with auto-reload
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-
-# Production mode
-uvicorn main:app --host 127.0.0.1 --port 8000
-```
-
-### Accessing the Application
-
-- **Main Terminal**: http://localhost:8000/
-- **Add Insight**: http://localhost:8000/add
-- **View Insight**: http://localhost:8000/insight/{id}
-- **Edit Insight**: http://localhost:8000/edit-insight/{id}
-- **API Endpoints**: http://localhost:8000/api/
-
-## 📁 Project Structure
+## File Structure
 
 ```
 jkbFinanceInsights/
-├── main.py                 # FastAPI application and routes
-├── ai_worker.py           # AI analysis orchestration
-├── items_management.py    # Database CRUD operations
-├── fake_data.py           # Sample data generation
-├── database_schema.py     # Database schema management
-├── config.py              # Configuration management
-├── server.py              # Server management utilities
-├── requirements.txt       # Python dependencies
-├── .env                   # Environment variables (not in git)
-├── .gitignore            # Git ignore rules
-├── static/               # Static assets (CSS, JS)
-├── templates/            # HTML templates
-└── *.sh                  # Server management scripts
+├── main.py              # Main FastAPI application
+├── requirements.txt     # Python dependencies
+├── finance_insights.db  # SQLite database (created automatically)
+├── templates/           # HTML templates
+│   ├── base.html       # Base template
+│   ├── index.html      # Home page
+│   ├── add.html        # Add insight form
+│   └── detail.html     # Insight details
+└── static/             # Static files
+    ├── style.css       # Custom styles
+    └── script.js       # JavaScript functionality
 ```
 
-## 🔧 API Endpoints
+## Contributing
 
-### Web Routes
-- `GET /` - Main terminal view
-- `GET /add` - Add new insight form
-- `POST /add` - Create new insight
-- `GET /insight/{id}` - View insight details
-- `GET /edit-insight/{id}` - Edit insight form
-- `POST /edit-insight/{id}` - Update insight
-
-### API Routes
-- `GET /api/insights` - List all insights
-- `POST /api/insights` - Create insight via API
-- `POST /api/update-market-data` - Trigger AI analysis
-- `GET /api/feeds` - Get available feed types
-
-## 🤖 AI Analysis Workflow
-
-1. **Text Analysis**: Uses `OPENAI_PROMPT_TEXTANALYSIS_ID` for content analysis
-2. **Image Analysis**: Uses `OPENAI_MODEL` for chart analysis
-3. **Summary Generation**: Uses `OPENAI_PROMPT_BRIEFSTRATEGY_ID` for final insights
-4. **Data Processing**: Parses JSON responses and updates database
-5. **Field Updates**: Updates all AI-related fields including confidence and timing
-
-## 🗄️ Database Schema
-
-### Insights Table
-- **Basic Fields**: id, timeFetched, timePosted, type, title, content, symbol, exchange, imageURL
-- **AI Fields**: AIImageSummary, AISummary, AIAction, AIConfidence, AIEventTime, AILevels
-
-### Feed Names Table
-- **Structure**: name, description, created_at
-- **Default Feeds**: TD IDEAS RECENT, TD IDEAS POPULAR, TD OPINIONS, TD NEWS
-
-## 🔒 Security & Best Practices
-
-- **Environment Variables**: Sensitive data stored in `.env` (not in git)
-- **Input Validation**: Pydantic models for data validation
-- **Error Handling**: Comprehensive error handling and logging
-- **Database Security**: Parameterized queries to prevent SQL injection
-
-## 🧪 Testing
-
-The application includes comprehensive testing capabilities:
-
-```bash
-# Test AI worker functions
-python3 -c "from ai_worker import do_ai_summary; print('AI functions working')"
-
-# Test database operations
-python3 -c "from items_management import get_all_insights; print('Database working')"
-
-# Test configuration
-python3 -c "from config import get_config_summary; print(get_config_summary())"
-```
-
-## 🚀 Deployment
-
-### Development
-- Use `./dev.sh` for development with auto-reload
-- Debug logging enabled
-- Hot reload on file changes
-
-### Production
-- Use `./start.sh` for production deployment
-- Disable debug logging
-- Set appropriate environment variables
-
-## 📝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🤝 Support
-
-For support and questions:
-- Check the documentation
-- Review the code comments
-- Open an issue on GitHub
-
-## 🔄 Recent Updates
-
-- ✅ **Edit Functionality**: Full CRUD operations for insights
-- ✅ **AI Integration**: Complete OpenAI API integration
-- ✅ **Symbol/Exchange Support**: Enhanced data fields
-- ✅ **Server Management**: Robust server control scripts
-- ✅ **Configuration Management**: Environment-based configuration
-- ✅ **Database Schema**: Optimized schema with AI fields
-
----
-
-**Built with ❤️ for financial insights and AI-powered analysis**
+This is a minimal, easy-to-use application designed for simplicity. Feel free to extend it with additional features as needed.
