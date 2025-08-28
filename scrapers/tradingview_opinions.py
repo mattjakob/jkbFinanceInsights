@@ -98,17 +98,28 @@ class TradingViewOpinionsScraper(BaseScraper):
         likes_count = item.get('total_likes', 0)
         comments_count = item.get('total_comments', 0)
         
+        # Fetch actual comment content if available
+        comment_content = ""
+        mind_uid = item.get('uid')
+        if mind_uid and comments_count > 0:
+            comment_content = self._fetch_comments(mind_uid)
+        
         metadata = {
             'author': author,
             'post_type': 'opinion',
             'likes': likes_count,
-            'comments': comments_count
+            'comments': comments_count,
+            'comment_content': comment_content
         }
         
         # Enhance content with engagement metrics
         engagement_summary = self._create_engagement_summary(metadata)
         if engagement_summary:
             content = f"{content}\n\n{engagement_summary}"
+        
+        # Add comment content if available
+        if comment_content:
+            content = f"{content}\n\n--- COMMENTS ---\n{comment_content}"
         
         # Parse timestamp
         timestamp = self._parse_timestamp(item)
@@ -212,5 +223,78 @@ class TradingViewOpinionsScraper(BaseScraper):
             return " | ".join(summary_parts)
         
         return ""
+
+    def _fetch_comments(self, mind_uid: str) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │           FETCH COMMENTS            │
+        └─────────────────────────────────────┘
+        Fetches comment content for a specific mind/opinion.
+        
+        Parameters:
+        - mind_uid: Unique identifier for the mind/opinion
+        
+        Returns:
+        - Formatted comment content string
+        
+        Notes:
+        - Makes separate API call to get comment content
+        - Formats comments with author and timestamp
+        - Limits to 5 comments for readability
+        """
+        if not mind_uid:
+            return ""
+        
+        try:
+            comment_url = f"https://www.tradingview.com/api/v1/minds/{mind_uid}/comments/"
+            response = self.make_request(comment_url)
+            comments = response.json()
+            
+            if not isinstance(comments, list) or not comments:
+                return ""
+            
+            comment_texts = []
+            
+            # Process up to 5 comments
+            for comment in comments[:5]:
+                if not isinstance(comment, dict):
+                    continue
+                
+                # Extract comment data
+                text = comment.get('text', '').strip()
+                if not text:
+                    continue
+                
+                # Extract author
+                author_info = comment.get('author', {})
+                author = author_info.get('username', 'Anonymous') if isinstance(author_info, dict) else 'Anonymous'
+                
+                # Extract and format timestamp
+                created = comment.get('created', '')
+                timestamp_str = ""
+                if created:
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                        timestamp_str = dt.strftime('%m/%d %H:%M')
+                    except:
+                        timestamp_str = created[:10]  # Just the date part
+                
+                # Limit comment length
+                if len(text) > 200:
+                    text = text[:197] + "..."
+                
+                # Format comment
+                if timestamp_str:
+                    comment_texts.append(f"@{author} ({timestamp_str}): {text}")
+                else:
+                    comment_texts.append(f"@{author}: {text}")
+            
+            return "\n".join(comment_texts)
+            
+        except Exception as e:
+            from debugger import debug_warning
+            debug_warning(f"Failed to fetch comments for mind {mind_uid}: {str(e)}")
+            return ""
 
 
