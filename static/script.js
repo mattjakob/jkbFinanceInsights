@@ -92,6 +92,13 @@ function initializeControlPanel() {
         });
     }
     
+    const generateBtn = document.querySelector('.generate-btn');
+    if (generateBtn) {
+        generateBtn.addEventListener('click', function() {
+            generateAIMegasummary();
+        });
+    }
+    
     if (deleteBtn) {
         deleteBtn.addEventListener('click', function() {
             deleteSelectedInsights();
@@ -1808,5 +1815,96 @@ async function resetInsightAI(insightId) {
 }
 
 // TradingView chart functions moved to separate file: /static/tradingview-chart.js
+
+/**
+ * 
+ * ┌─────────────────────────────────────┐
+ * │      GENERATE AI MEGASUMMARY        │
+ * └─────────────────────────────────────┘
+ * Generates AI-powered megasummary analysis
+ * 
+ * Calls the AI megasummary endpoint and displays results in the generate block.
+ * Shows loading state and handles errors gracefully.
+ * 
+ * Parameters:
+ * - None
+ * 
+ * Returns:
+ * - None
+ * 
+ * Notes:
+ * - Makes POST request to /summary/generate endpoint
+ * - Updates generate block with AI analysis results
+ * - Handles loading states and error conditions
+ */
+async function generateAIMegasummary() {
+    try {
+        // Show generate block and loading state
+        const generateBlock = document.getElementById('generateBlock');
+        const generateContent = document.getElementById('generateContent');
+        const generateBtn = document.querySelector('.generate-btn');
+        
+        // Show the generate block
+        generateBlock.style.display = 'block';
+        
+        // Show loading state
+        generateContent.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-warning" role="status">
+                    <span class="visually-hidden">Generating...</span>
+                </div>
+                <p class="mt-2">Generating AI analysis...</p>
+            </div>
+        `;
+        
+        // Disable button during generation
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> GENERATING...';
+        
+        // Call the AI megasummary endpoint
+        const response = await fetch('/summary/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        
+        if (response.ok) {
+            const aiAnalysis = await response.text();
+            
+            // Display the AI analysis
+            generateContent.innerHTML = `
+                <div class="ai-analysis">
+                    <div class="ai-content">
+                        ${aiAnalysis.replace(/\n/g, '<br>').replace(/\r/g, '').replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')}
+                    </div>
+                </div>
+            `;
+        } else {
+            generateContent.innerHTML = `
+                <div class="text-center text-danger">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <p class="mt-2">Error generating AI analysis</p>
+                    <p class="small">HTTP ${response.status}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error generating AI megasummary:', error);
+        const generateContent = document.getElementById('generateContent');
+        generateContent.innerHTML = `
+            <div class="text-center text-danger">
+                <i class="bi bi-exclamation-triangle"></i>
+                <p class="mt-2">Network error while generating AI analysis</p>
+                <p class="small">${error.message}</p>
+            </div>
+        `;
+    } finally {
+        // Re-enable button
+        const generateBtn = document.querySelector('.generate-btn');
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = 'GENERATE';
+    }
+}
 
 

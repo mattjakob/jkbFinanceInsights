@@ -1,10 +1,10 @@
 """
 ┌─────────────────────────────────────┐
-│            SUMMARY MODULE           │
+│         AI SUMMARY MODULE           │
 └─────────────────────────────────────┘
-Summary endpoint functionality for Finance Insights
+AI-powered summary functionality for Finance Insights
 
-Provides text-only summary output of insights data with filtering capabilities.
+Provides text-only summary output and AI-generated megasummary analysis.
 """
 
 from fastapi import APIRouter
@@ -14,6 +14,21 @@ import items_management
 
 # Create router for summary endpoints
 summary_router = APIRouter(prefix="/summary", tags=["summary"])
+
+@summary_router.post("/generate")
+async def generate_ai_megasummary():
+    """
+     ┌─────────────────────────────────────┐
+     │     GENERATE_AI_MEGASUMMARY        │
+     └─────────────────────────────────────┘
+     Generate AI-powered megasummary analysis
+     
+     Endpoint to trigger AI analysis of high-confidence insights.
+     
+     Returns:
+     - AI-generated megasummary text
+    """
+    return await do_ai_megasummary()
 
 @summary_router.get("")
 async def get_summary(type_filter: Optional[str] = None, symbol_filter: Optional[str] = None):
@@ -90,3 +105,81 @@ async def get_summary(type_filter: Optional[str] = None, symbol_filter: Optional
     
     summary_text = "\n".join(summary_lines)
     return Response(content=summary_text, media_type="text/plain")
+
+async def do_ai_megasummary():
+    """
+     ┌─────────────────────────────────────┐
+     │        DO_AI_MEGASUMMARY           │
+     └─────────────────────────────────────┘
+     Generate AI-powered megasummary analysis
+     
+     Calls the summary endpoint and sends results to OpenAI for enhanced analysis.
+     Returns a comprehensive AI-generated summary of all high-confidence insights.
+     
+     Returns:
+     - AI-generated megasummary text
+    """
+    try:
+        # Call the summary endpoint internally
+        from fastapi.testclient import TestClient
+        from main import app
+        
+        client = TestClient(app)
+        response = client.get("/summary")
+        
+        if response.status_code != 200:
+            return "Error: Could not retrieve summary data"
+        
+        summary_text = response.text
+        
+        # Get OpenAI configuration from config
+        from config import OPENAI_API_KEY, OPENAI_MODEL
+        
+        if not OPENAI_API_KEY:
+            return "Error: OPENAI_API_KEY not configured in environment"
+        
+        # Prepare prompt for OpenAI
+        prompt = f"""
+        Analyze the following financial insights summary and provide a comprehensive analysis:
+
+        {summary_text}
+
+        Please provide:
+        1. Overall market sentiment analysis
+        2. Key trading opportunities identified
+        3. Risk factors to consider
+        4. Recommended portfolio positioning
+        5. Timeline for expected moves
+
+        Return a summary paragraph under 100 words and then a table in text format with key actions and levels.
+        """
+        
+        # Use OpenAI client with different message roles
+        from openai import OpenAI
+        
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        try:
+            response = client.responses.create(
+                model="gpt-5",
+                input=[
+                    {
+                        "role": "developer",
+                        "content": "You are an expert day trader and technical analyst."
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": prompt}
+                        ]
+                    }
+                ]
+            )
+            
+            return response.output_text
+            
+        except Exception as openai_error:
+            return f"Error calling OpenAI API: {str(openai_error)}"
+                
+    except Exception as e:
+        return f"Error generating AI megasummary: {str(e)}"

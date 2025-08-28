@@ -29,7 +29,7 @@ from scrapers.tdIdeasPopular_scraper import TradingViewIdeasPopularScraper
 from scrapers.tdOpinions_scraper import TradingViewOpinionsScraper
 from async_worker import WorkerManager, create_ai_analysis_task
 from async_task_manager import get_task_manager
-from summary import summary_router
+from ai_summary import summary_router
 
 class FetchRequest(BaseModel):
     symbol: str
@@ -1037,19 +1037,142 @@ async def ai_image_analysis(insight_id: int):
             "error": str(e)
         }
 
-@app.get("/queue")
-async def get_queue_status():
+@app.post("/api/tasks/stop-all")
+async def stop_all_workers():
     """
      ┌─────────────────────────────────────┐
-     │         GET_QUEUE_STATUS            │
+     │         STOP_ALL_WORKERS             │
      └─────────────────────────────────────┘
-     Get current AI task queue status
+     Stop all background workers and cancel pending tasks
+     
+     Stops the worker manager and cancels all pending/processing
+     tasks. This effectively halts all OpenAI API calls.
+     
+     Returns:
+     - JSON response with operation results
+    """
+    try:
+        global worker_manager
+        
+        if not worker_manager:
+            return {
+                "success": False,
+                "message": "No worker manager running"
+            }
+        
+        # Stop all workers
+        debug_info("Stopping all background workers...")
+        await worker_manager.stop()
+        
+        # Cancel all pending tasks
+        task_manager = get_task_manager()
+        cancelled_count = task_manager.cancel_all_pending_tasks()
+        
+        debug_success(f"Stopped all workers and cancelled {cancelled_count} tasks")
+        
+        return {
+            "success": True,
+            "message": f"Stopped all workers and cancelled {cancelled_count} tasks",
+            "tasks_cancelled": cancelled_count
+        }
+        
+    except Exception as e:
+        debug_error(f"Error stopping workers: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error stopping workers: {str(e)}"
+        }
+
+@app.post("/api/tasks/clear-all")
+async def clear_all_tasks():
+    """
+     ┌─────────────────────────────────────┐
+     │         CLEAR_ALL_TASKS             │
+     └─────────────────────────────────────┘
+     Clear all tasks from the system
+     
+     Removes all tasks from the database regardless of status.
+     This is a destructive operation that should be used with caution.
+     
+     Returns:
+     - JSON response with operation results
+    """
+    try:
+        task_manager = get_task_manager()
+        cleared_count = task_manager.clear_all_tasks()
+        
+        debug_success(f"Cleared all {cleared_count} tasks from the system")
+        
+        return {
+            "success": True,
+            "message": f"Cleared all {cleared_count} tasks from the system",
+            "tasks_cleared": cleared_count
+        }
+        
+    except Exception as e:
+        debug_error(f"Error clearing tasks: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error clearing tasks: {str(e)}"
+        }
+
+@app.post("/api/tasks/restart-workers")
+async def restart_workers():
+    """
+     ┌─────────────────────────────────────┐
+     │        RESTART_WORKERS               │
+     └─────────────────────────────────────┘
+     Restart all background workers
+     
+     Restarts the worker manager to resume processing tasks.
+     
+     Returns:
+     - JSON response with operation results
+    """
+    try:
+        global worker_manager
+        
+        # Stop existing workers if running
+        if worker_manager:
+            debug_info("Stopping existing workers...")
+            await worker_manager.stop()
+        
+        # Start new workers
+        from config import AI_WORKER_COUNT
+        debug_info(f"Starting {AI_WORKER_COUNT} new workers...")
+        worker_manager = WorkerManager(worker_count=AI_WORKER_COUNT)
+        
+        # Start workers in background
+        import asyncio
+        asyncio.create_task(worker_manager.start())
+        
+        debug_success("Workers restarted successfully")
+        
+        return {
+            "success": True,
+            "message": "Workers restarted successfully"
+        }
+        
+    except Exception as e:
+        debug_error(f"Error restarting workers: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error restarting workers: {str(e)}"
+        }
+
+@app.get("/tasks")
+async def get_tasks_status():
+    """
+     ┌─────────────────────────────────────┐
+     │         GET_TASKS_STATUS            │
+     └─────────────────────────────────────┘
+     Get current AI tasks status
      
      Returns a simple text list of all pending, processing, and failed tasks
      in the async task queue for monitoring and debugging purposes.
      
      Returns:
-     - Plain text response with queue details
+     - Plain text response with tasks details
     """
     try:
         from async_task_manager import get_task_manager
@@ -1085,7 +1208,7 @@ async def get_queue_status():
         
         # Build response text
         response_lines = []
-        response_lines.append("🔄 AI TASK QUEUE STATUS")
+        response_lines.append("🔄 AI TASKS STATUS")
         response_lines.append("=" * 50)
         
         # Circuit breaker status

@@ -73,7 +73,7 @@ Create a `.env` file with the following variables:
 ```env
 # OpenAI Configuration
 OPENAI_API_KEY=your-openai-api-key-here
-OPENAI_IMAGEANALYSIS_MODEL=gpt-5
+OPENAI_MODEL=gpt-5
 OPENAI_PROMPT_TEXTANALYSIS_ID=your-prompt1-id-here
 OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID=your-prompt1-version-id-here
 OPENAI_PROMPT_BRIEFSTRATEGY_ID=your-prompt2-id-here
@@ -108,6 +108,52 @@ SERVER_RELOAD=true
 
 # View configuration
 ./config.sh
+```
+
+### Task Management
+
+The system includes comprehensive task management for AI analysis operations:
+
+#### Stop All OpenAI Queries and Clear Tasks
+
+**Option 1: Command Line Script**
+```bash
+# Stop all workers and clear tasks
+./stop_openai.sh
+
+# Or run the Python script directly
+python3 stop_openai.py
+```
+
+**Option 2: API Endpoints**
+```bash
+# Stop all workers and cancel pending tasks
+curl -X POST http://localhost:8000/api/tasks/stop-all
+
+# Clear all tasks from the system
+curl -X POST http://localhost:8000/api/tasks/clear-all
+
+# Restart workers after clearing
+curl -X POST http://localhost:8000/api/tasks/restart-workers
+```
+
+**Option 3: Web Interface**
+- Navigate to the tasks status page: `/tasks`
+- Use the task management controls in the web interface
+
+#### Task Status Monitoring
+
+Check the current tasks status:
+```bash
+curl http://localhost:8000/tasks
+```
+
+This provides a real-time view of:
+- Pending tasks
+- Processing tasks  
+- Failed tasks
+- Task statistics
+- Worker status
 ```
 
 #### Option 2: Direct uvicorn command
@@ -165,7 +211,7 @@ jkbFinanceInsights/
 ## 🤖 AI Analysis Workflow
 
 1. **Text Analysis**: Uses `OPENAI_PROMPT_TEXTANALYSIS_ID` for content analysis
-2. **Image Analysis**: Uses `OPENAI_IMAGEANALYSIS_MODEL` for chart analysis
+2. **Image Analysis**: Uses `OPENAI_MODEL` for chart analysis
 3. **Summary Generation**: Uses `OPENAI_PROMPT_BRIEFSTRATEGY_ID` for final insights
 4. **Data Processing**: Parses JSON responses and updates database
 5. **Field Updates**: Updates all AI-related fields including confidence and timing

@@ -13,7 +13,7 @@ import asyncio
 import time
 from datetime import datetime, timedelta
 from openai import OpenAI
-from config import OPENAI_API_KEY, OPENAI_IMAGEANALYSIS_MODEL, OPENAI_PROMPT_TEXTANALYSIS_ID, OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID, OPENAI_PROMPT_BRIEFSTRATEGY_ID, OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID, AI_CIRCUIT_BREAKER_THRESHOLD, AI_CIRCUIT_BREAKER_RESET_MINUTES
+from config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_PROMPT_TEXTANALYSIS_ID, OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID, OPENAI_PROMPT_BRIEFSTRATEGY_ID, OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID, AI_CIRCUIT_BREAKER_THRESHOLD, AI_CIRCUIT_BREAKER_RESET_MINUTES
 from debugger import debug_info, debug_warning, debug_error, debug_success
 
 # Global OpenAI client instance
@@ -249,62 +249,54 @@ Return a {symbol} trading brief with:
 - If the image is not a chart or technical analysis, return "No chart found".
 - If the technical analysis in the image is not clear or poorly executed shorten the analysis and add a note that it is not clear or poorly executed."""
         
-        # Create the API request as specified
-        api_request = {
-            "model": OPENAI_IMAGEANALYSIS_MODEL,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": imageURL}}
+        # Create the API request using the new format with developer role
+        debug_info(f"OpenAI API Image Analysis initiated with model: {OPENAI_MODEL} for imageURL: {imageURL}")
+        
+        try:
+            response = client.responses.create(
+                model=OPENAI_MODEL,
+                input=[
+                    {
+                        "role": "developer",
+                        "content": "You are an expert day trader and technical analyst."
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": prompt},
+                            {"type": "input_image", "image_url": imageURL}
+                        ]
+                    }
                 ]
-            }],
-        }
-        
-        # Make the API call
-        debug_info(f"OpenAI API Image Analysis initiated with model: {OPENAI_IMAGEANALYSIS_MODEL} for imageURL: {imageURL}")
-        response = client.chat.completions.create(**api_request)
-        
-        # Debug: Print response structure
-        debug_info(f"OpenAI API Image Analysis response type: {type(response)}")
-        #debug_info(f"Response choices: {len(response.choices) if response.choices else 0}")
-        
-        # Extract and return the analysis
-        if response.choices and len(response.choices) > 0:
-            choice = response.choices[0]
-            #debug_info(f"First choice type: {type(choice)}")
-            #debug_info(f"Choice message: {choice.message if hasattr(choice, 'message') else 'No message'}")
+            )
             
-            if hasattr(choice, 'message') and choice.message:
-                if hasattr(choice.message, 'content'):
-                    analysis = choice.message.content
-                    debug_info(f"OpenAI API Image Analysis response ({len(analysis) if analysis else 0} chars)")
-                    #debug_info(f"Analysis preview: {analysis[:100] if analysis else 'None'}...")
-                    _handle_openai_success()  # Reset circuit breaker on success
-                    return analysis
-                else:
-                    debug_error("OpenAI API Image Analysis failed: Message has no 'content' attribute.")
-                    return None
-            else:
-                debug_error("OpenAI API Image Analysis failed: Choice has no 'message'.")
-                return None
-        else:
-            debug_error("OpenAI API Image Analysis failed: No choices in response.")
+            # Extract and return the analysis
+            analysis = response.output_text
+            debug_info(f"OpenAI API Image Analysis response ({len(analysis) if analysis else 0} chars)")
+            _handle_openai_success()  # Reset circuit breaker on success
+            return analysis
+            
+        except Exception as openai_error:
+            error_msg = str(openai_error)
+            debug_error(f"OpenAI API Image Analysis error: {error_msg}")
+            
+            # Handle specific error types
+            if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
+                debug_info("OpenAI quota exceeded. Check billing.")
+                _handle_openai_quota_error()
+            elif "401" in error_msg or "unauthorized" in error_msg.lower():
+                debug_info("OpenAI API key invalid or expired.")
+            elif "400" in error_msg:
+                debug_info("Bad request. Check image URL format.")
+            
             return None
-            
+        
+
+
+
     except Exception as e:
         error_msg = str(e)
         debug_error(f"OpenAI API Image Analysis error: {error_msg}")
-        
-        # Handle specific error types
-        if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
-            debug_info("OpenAI quota exceeded. Check billing.")
-            _handle_openai_quota_error()
-        elif "401" in error_msg or "unauthorized" in error_msg.lower():
-            debug_info("OpenAI API key invalid or expired.")
-        elif "400" in error_msg:
-            debug_info("Bad request. Check image URL format.")
-        
         return None
 
 

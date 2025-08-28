@@ -92,6 +92,7 @@
             <div class="d-flex gap-2 align-items-center">
                 <button class="btn btn-success btn-sm fetch-btn">FETCH</button>
                 <button class="btn btn-primary btn-sm update-btn">ANALYZE</button>
+                <button class="btn btn-secondary btn-sm generate-btn">GENERATE</button>
 
                 <button class="btn btn-danger btn-sm delete-btn">DELETE</button>
                 <a href="/add" class="btn btn-outline-light btn-sm add-entry-btn">
@@ -115,6 +116,25 @@
 <!-- System Status -->
 <div class="status-bar mb-4">
     <span class="status-bar-text" id="statusBarText">[SYSTEM] Loading...</span>
+</div>
+
+<!-- AI Generate Block -->
+<div class="generate-block mb-3" id="generateBlock" style="display: none;">
+    <div class="terminal-section">
+        <div class="section-header" style="cursor: pointer;" onclick="document.getElementById('generateBlock').style.display='none'" title="Click to hide">
+            <span class="section-label">AI MEGASUMMARY</span>
+        </div>
+        <div class="terminal-content">
+            <div id="generateContent">
+                <div class="text-center">
+                    <div class="spinner-border" role="status" style="color: var(--text-color);">
+                        <span class="visually-hidden">Generating...</span>
+                    </div>
+                    <p class="mt-1 mb-1">Generating AI analysis...</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% if insights %}

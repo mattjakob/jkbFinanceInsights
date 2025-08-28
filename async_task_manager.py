@@ -476,6 +476,61 @@ class AsyncTaskManager:
             if deleted > 0:
                 debug_info(f"Cleaned up {deleted} old tasks")
 
+    def clear_all_tasks(self):
+        """
+         ┌─────────────────────────────────────┐
+         │         CLEAR_ALL_TASKS             │
+         └─────────────────────────────────────┘
+         Clear all tasks from the system
+         
+         Removes all tasks regardless of status. This is a destructive
+         operation that should be used with caution.
+         
+         Returns:
+         - int: Number of tasks cleared
+        """
+        with self._get_connection() as conn:
+            deleted = conn.execute('DELETE FROM async_tasks').rowcount
+            conn.commit()
+            
+            if deleted > 0:
+                debug_info(f"Cleared all {deleted} tasks from the system")
+            
+            return deleted
+
+    def cancel_all_pending_tasks(self):
+        """
+         ┌─────────────────────────────────────┐
+         │     CANCEL_ALL_PENDING_TASKS        │
+         └─────────────────────────────────────┘
+         Cancel all pending and processing tasks
+         
+         Marks all pending and processing tasks as cancelled without
+         removing them from the database.
+         
+         Returns:
+         - int: Number of tasks cancelled
+        """
+        with self._get_connection() as conn:
+            cancelled = conn.execute('''
+                UPDATE async_tasks 
+                SET status = ?, completed_at = ?, error_message = ?
+                WHERE status IN (?, ?)
+            ''', (
+                TaskStatus.CANCELLED.value,
+                datetime.now().isoformat(),
+                "All tasks cancelled by user request",
+                TaskStatus.PENDING.value,
+                TaskStatus.PROCESSING.value
+            )).rowcount
+            
+            conn.commit()
+            
+            if cancelled > 0:
+                debug_info(f"Cancelled {cancelled} pending/processing tasks")
+            
+            return cancelled
+
 
 # Global instance
 _task_manager: Optional[AsyncTaskManager] = None
