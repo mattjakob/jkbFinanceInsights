@@ -200,8 +200,10 @@ class InsightsRepository:
                 params.append(type_filter)
             
             if symbol_filter:
+                # Extract just the symbol part, ignoring exchange suffix (e.g., "AAPL:NASDAQ" -> "AAPL")
+                clean_symbol = symbol_filter.split(':')[0] if ':' in symbol_filter else symbol_filter
                 query += " AND (symbol = ? OR symbol IS NULL)"
-                params.append(symbol_filter)
+                params.append(clean_symbol)
             
             query += " ORDER BY timePosted DESC"
             

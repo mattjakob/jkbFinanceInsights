@@ -2,6 +2,37 @@
 
 {% block title %}JKB Finance Terminal{% endblock %}
 
+{# Macro for type icons #}
+{% macro type_icon(insight_type, description) -%}
+    {% if insight_type == 'TD NEWS' %}
+        <i class="bi bi-file-text type-icon type-document" title="{{ description or insight_type }}"></i>
+    {% elif insight_type == 'TD OPINIONS' %}
+        <i class="bi bi-chat-text type-icon type-analysis" title="{{ description or insight_type }}"></i>
+    {% elif 'IDEAS' in insight_type %}
+        <i class="bi bi-lightbulb type-icon type-document" title="{{ description or insight_type }}"></i>
+    {% else %}
+        <i class="bi bi-geo-alt type-icon type-location" title="{{ description or insight_type }}"></i>
+    {% endif %}
+{%- endmacro %}
+
+{# Macro for action badges #}
+{% macro action_badge(action) -%}
+    {% if 'SELL' in action|upper %}
+        <span class="action-badge action-sell">SELL <i class="bi bi-graph-down-arrow"></i></span>
+    {% elif 'BUY' in action|upper %}
+        <span class="action-badge action-buy">BUY <i class="bi bi-graph-up-arrow"></i></span>
+    {% elif 'HOLD' in action|upper %}
+        <span class="action-badge action-hold">HOLD <i class="bi bi-hourglass-split"></i></span>
+    {% else %}
+        <span class="action-badge action-neutral">{{ action[:4]|upper }}</span>
+    {% endif %}
+{%- endmacro %}
+
+{# Macro for loading spinner #}
+{% macro loading_spinner() -%}
+    <div class="loading-spinner"></div>
+{%- endmacro %}
+
 {% block content %}
 <div class="trading-chart-section mb-4">
     <!-- TradingView Widget BEGIN -->
@@ -20,13 +51,12 @@
 
 <!-- Control Panel -->
 <div class="control-panel mb-4">
-
     <div class="row g-2 align-items-center">
         <!-- Symbol and Exchange Group -->
-                <div class="col-auto">
-            <div class="symbol-autocomplete-container">
-                <div class="input-group input-group-sm">
-                    <input type="text" class="form-control control-select symbol-input" 
+        <div class="col-auto">
+            <div class="symbol-exchange-container">
+                <div class="symbol-autocomplete-container">
+                    <input type="text" class="symbol-input" 
                            id="symbolInput" 
                            title="Trading Symbol" 
                            placeholder="BTCUSD" 
@@ -36,8 +66,8 @@
                            data-bs-toggle="tooltip"
                            data-bs-placement="bottom"
                            data-bs-title="Enter a trading symbol (e.g., BTCUSD, AAPL)">
-                    <span class="input-group-text separator">:</span>
-                    <input type="text" class="form-control control-select exchange-input" 
+                    <span class="separator">:</span>
+                    <input type="text" class="exchange-input" 
                            id="exchangeInput" 
                            title="Trading Exchange" 
                            placeholder="BINANCE" 
@@ -46,12 +76,15 @@
                            data-bs-toggle="tooltip"
                            data-bs-placement="bottom"
                            data-bs-title="Enter an exchange (e.g., BINANCE, NASDAQ)">
+                    <div class="autocomplete-dropdown" id="symbolAutocomplete"></div>
                 </div>
-                <div class="autocomplete-dropdown" id="symbolAutocomplete"></div>
             </div>
         </div>
+
+
+        <!-- Feed Type Filter -->
         <div class="col-auto">
-            <select class="form-select form-select-sm control-select" id="typeFilter" title="Feed Type">
+            <select class="form-select form-select-sm" id="typeFilter" title="Feed Type">
                 <option value="" {% if selected_type == "" %}selected{% endif %}>ALL</option>
                 {% for feed in feed_names %}
                 <option value="{{ feed.name }}" {% if selected_type == feed.name %}selected{% endif %}>{{ feed.name }}</option>
@@ -63,7 +96,7 @@
         <div class="col-auto">
             <div class="input-group input-group-sm">
                 <span class="input-group-text">INTERVAL</span>
-                <select class="form-select form-select-sm control-select" title="Update Interval">
+                <select class="form-select form-select-sm" title="Update Interval">
                     <option selected>60s</option>
                     <option>5m</option>
                     <option>15m</option>
@@ -74,7 +107,7 @@
         <div class="col-auto">
             <div class="input-group input-group-sm">
                 <span class="input-group-text">ITEMS</span>
-                <select class="form-select form-select-sm control-select" title="Number of Items">
+                <select class="form-select form-select-sm" title="Number of Items">
                     <option selected>10</option>
                     <option>25</option>
                     <option>50</option>
@@ -83,47 +116,56 @@
             </div>
         </div>
 
-        <!-- Action Group - Right Aligned -->
+        <!-- Action Group -->
         <div class="col-auto ms-auto">
             <div class="d-flex gap-2 align-items-center">
                 <button class="btn btn-success btn-sm fetch-btn">FETCH</button>
                 <button class="btn btn-primary btn-sm update-btn">ANALYZE</button>
                 <button class="btn btn-secondary btn-sm generate-btn">GENERATE</button>
-
                 <button class="btn btn-danger btn-sm delete-btn">DELETE</button>
                 <a href="/add" class="btn btn-outline-light btn-sm add-entry-btn">
                     <i class="bi bi-plus-circle"></i> ADD ENTRY
                 </a>
-<!-- 
-                <div class="d-flex align-items-center gap-1">
-                    <input type="number" class="form-control form-control-sm reset-id-input" id="resetInsightId" placeholder="ID" min="1">
-                    <button class="btn btn-outline-warning btn-sm" id="resetBtn" title="Reset AI fields for the specified insight ID">
-                        AI RESET
-                    </button>
-                </div>
--->
             </div>
         </div>
-    </div>
-
     </div>
 </div>
 
 <!-- System Status -->
 <div class="status-bar mb-4">
-    <span class="status-bar-text" id="statusBarText">00:00:00 <i class="bi bi-lightning-charge-fill" style="color: var(--text-color);"></i> 0 <i class="bi bi-list-ol" style="color: var(--text-color);"></i> 0 <i class="bi bi-heartbreak-fill" style="color: var(--text-color);"></i> 0 <i class="bi bi-hourglass-split" style="color: var(--text-color);"></i> Loading...</span>
+    <div class="status-bar-content" id="statusBarContent">
+        <span class="status-time" id="statusTime">00:00:00</span>
+        <div class="status-tasks-group">
+            <span class="status-task-item" id="statusRunning">
+                <i class="bi bi-lightning-charge-fill"></i>
+                <span class="task-count">0</span>
+            </span>
+            <span class="status-task-item" id="statusQueued">
+                <i class="bi bi-list-ol"></i>
+                <span class="task-count">0</span>
+            </span>
+            <span class="status-task-item" id="statusFailed">
+                <i class="bi bi-heartbreak-fill"></i>
+                <span class="task-count">0</span>
+            </span>
+        </div>
+        <span class="status-icon" id="statusIcon">
+            <i class="bi bi-hourglass-split"></i>
+        </span>
+        <span class="status-message" id="statusMessage">Loading...</span>
+    </div>
 </div>
 
 <!-- AI Generate Block -->
-<div class="generate-block mb-3" id="generateBlock" style="display: none;">
+<div class="generate-block mb-3 d-none" id="generateBlock">
     <div class="terminal-section">
-        <div class="section-header" style="cursor: pointer;" onclick="document.getElementById('generateBlock').style.display='none'" title="Click to hide">
+        <div class="section-header clickable" onclick="document.getElementById('generateBlock').classList.add('d-none')" title="Click to hide">
             <span class="section-label">AI MEGASUMMARY</span>
         </div>
         <div class="terminal-content">
             <div id="generateContent">
                 <div class="text-center">
-                    <div class="spinner-border" role="status" style="color: var(--text-color);">
+                    <div class="spinner-border terminal-spinner" role="status">
                         <span class="visually-hidden">Generating...</span>
                     </div>
                     <p class="mt-1 mb-1">Generating AI analysis...</p>
@@ -153,15 +195,7 @@
                 {% for insight in insights %}
                 <tr class="insight-row" data-insight-id="{{ insight.id }}">
                     <td class="type-col">
-                        {% if insight.type == 'TD NEWS' %}
-                            <i class="bi bi-file-text type-icon type-document" title="{{ insight.feed_description or insight.type }}"></i>
-                        {% elif insight.type == 'TD OPINIONS' %}
-                            <i class="bi bi-chat-text type-icon type-analysis" title="{{ insight.feed_description or insight.type }}"></i>
-                        {% elif 'IDEAS' in insight.type %}
-                            <i class="bi bi-lightbulb type-icon type-document" title="{{ insight.feed_description or insight.type }}"></i>
-                        {% else %}
-                            <i class="bi bi-geo-alt type-icon type-location" title="{{ insight.feed_description or insight.type }}"></i>
-                        {% endif %}
+                        {{ type_icon(insight.type, insight.feed_description) }}
                     </td>
                     <td class="symbol-col">
                         {% if insight.symbol %}
@@ -182,29 +216,21 @@
                         {% if insight.AISummary %}
                             {{ insight.AISummary[:100] }}{% if insight.AISummary|length > 100 %}...{% endif %}
                         {% elif insight.AIAnalysisStatus == 'processing' %}
-                            <div class="loading-spinner"></div>
+                            {{ loading_spinner() }}
                         {% endif %}
                     </td>
                     <td class="action-col">
                         {% if insight.AIAction %}
-                            {% if 'SELL' in insight.AIAction|upper %}
-                                <span class="action-badge action-sell">SELL <i class="bi bi-graph-down-arrow"></i></span>
-                            {% elif 'BUY' in insight.AIAction|upper %}
-                                <span class="action-badge action-buy">BUY <i class="bi bi-graph-up-arrow"></i></span>
-                            {% elif 'HOLD' in insight.AIAction|upper %}
-                                <span class="action-badge action-hold">HOLD <i class="bi bi-hourglass-split"></i></span>
-                            {% else %}
-                                <span class="action-badge action-neutral">{{ insight.AIAction[:4]|upper }}</span>
-                            {% endif %}
+                            {{ action_badge(insight.AIAction) }}
                         {% elif insight.AIAnalysisStatus == 'processing' %}
-                            <div class="loading-spinner"></div>
+                            {{ loading_spinner() }}
                         {% endif %}
                     </td>
                     <td class="confidence-col">
                         {% if insight.AIConfidence is not none %}
                             <span class="confidence-value">{{ "%.0f"|format(insight.AIConfidence * 100) }}%</span>
                         {% elif insight.AIAnalysisStatus == 'processing' %}
-                            <div class="loading-spinner"></div>
+                            {{ loading_spinner() }}
                         {% endif %}
                     </td>
                     <td class="time-col">
@@ -221,7 +247,7 @@
                             {% if insight.AILevels %}
                                 {{ insight.AILevels }}
                             {% elif insight.AIAnalysisStatus == 'processing' %}
-                                <div class="loading-spinner"></div>
+                                {{ loading_spinner() }}
                             {% else %}
                                 <span class="text-muted">-</span>
                             {% endif %}

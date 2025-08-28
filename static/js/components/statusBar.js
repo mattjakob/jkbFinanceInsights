@@ -23,11 +23,17 @@ import { tasksService } from '../services/tasks.js';
 
 export class StatusBar {
     constructor() {
-        this.statusBarText = document.querySelector('.status-bar-text');
+        this.statusTime = document.getElementById('statusTime');
+        this.statusRunning = document.querySelector('#statusRunning .task-count');
+        this.statusQueued = document.querySelector('#statusQueued .task-count');
+        this.statusFailed = document.querySelector('#statusFailed .task-count');
+        this.statusIcon = document.querySelector('#statusIcon i');
+        this.statusMessage = document.getElementById('statusMessage');
         this.updateInterval = null;
+        this.debuggerFetchInterval = null;
         this.lastDebuggerMessage = null;
         
-        if (this.statusBarText) {
+        if (this.statusTime && this.statusMessage) {
             this.initialize();
         }
     }
@@ -47,7 +53,7 @@ export class StatusBar {
      */
     initialize() {
         this.startTimeUpdates();
-        //this.updateDebuggerStatus('info', 'System ready');
+        this.startDebuggerUpdates();
         
         // Start task service updates and fetch initial data
         tasksService.startAutoUpdates(5000);
@@ -94,40 +100,137 @@ export class StatusBar {
      *  - None
      */
     updateTime() {
-        // If we have a last debugger message, show it instead of just time
+        // Update timestamp
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        this.statusTime.textContent = timeString;
+        
+        // Update task counts
+        const taskStats = tasksService.getCurrentStats();
+        this.statusRunning.textContent = taskStats.processing || 0;
+        this.statusQueued.textContent = taskStats.pending || 0;
+        this.statusFailed.textContent = taskStats.failed || 0;
+        
+        // Update message/icon based on debugger status
         if (this.lastDebuggerMessage) {
             this.displayDebuggerMessage(this.lastDebuggerMessage);
         } else {
-            const now = new Date();
-            
-            const timeString = now.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-            
+            // Show default status
+            this.statusIcon.className = 'bi bi-clock';
             const dateString = now.toLocaleDateString('en-US', {
                 weekday: 'short',
                 month: 'short',
                 day: 'numeric'
             });
-            
-            const taskStats = tasksService.getCurrentStats();
-            const running = taskStats.processing || 0;
-            const queued = taskStats.pending || 0;
-            const failed = taskStats.failed || 0;
-            
-            const formattedTime = `
-                <span style="display: inline-block; width: 70px; text-align: left;">${timeString}</span>
-                <span style="display: inline-block; width: 50px; text-align: center; color: var(--text-color); font-size: 12px;"><i class="bi bi-lightning-charge-fill" style="color: var(--text-color);"></i> ${running}</span>
-                <span style="display: inline-block; width: 50px; text-align: center; color: var(--text-color); font-size: 12px;"><i class="bi bi-list-ol" style="color: var(--text-color);"></i> ${queued}</span>
-                <span style="display: inline-block; width: 50px; text-align: center; color: var(--text-color); font-size: 12px;"><i class="bi bi-heartbreak-fill" style="color: var(--text-color);"></i> ${failed}</span>
-                <span style="display: inline-block; width: 15px; text-align: center; color: var(--text-color);"><i class="bi bi-clock" style="color: var(--text-color);"></i></span>
-                <span style="display: inline-block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Last Update: ${dateString}</span>
-            `;
-            
-            this.statusBarText.innerHTML = formattedTime;
+            this.statusMessage.textContent = `Last Update: ${dateString}`;
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      START DEBUGGER UPDATES         │
+     *  └─────────────────────────────────────┘
+     *  Starts automatic debugger status updates
+     * 
+     *  Parameters:
+     *  - None
+     * 
+     *  Returns:
+     *  - None
+     */
+    startDebuggerUpdates() {
+        // Initial fetch
+        this.fetchDebuggerStatus();
+        
+        // Update every 2 seconds
+        this.debuggerFetchInterval = setInterval(() => {
+            this.fetchDebuggerStatus();
+        }, 2000);
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      FETCH DEBUGGER STATUS          │
+     *  └─────────────────────────────────────┘
+     *  Fetches current debugger status from API
+     * 
+     *  Parameters:
+     *  - None
+     * 
+     *  Returns:
+     *  - None
+     */
+    async fetchDebuggerStatus() {
+        try {
+            const response = await fetch('/api/debug-status');
+            if (response.ok) {
+                const debugStatus = await response.json();
+                
+                // Only update if we have a valid message and it's different from current
+                if (debugStatus.message && debugStatus.message.trim()) {
+                    const newMessage = {
+                        level: debugStatus.status || 'info',
+                        message: debugStatus.message,
+                        timestamp: this.formatTimestamp(debugStatus.timestamp)
+                    };
+                    
+                    // Update if message is different or if we don't have a current message
+                    if (!this.lastDebuggerMessage || 
+                        this.lastDebuggerMessage.message !== newMessage.message ||
+                        this.lastDebuggerMessage.timestamp !== newMessage.timestamp) {
+                        this.lastDebuggerMessage = newMessage;
+                    }
+                }
+            }
+        } catch (error) {
+            // Silently fail - don't spam console with fetch errors
+            // The status bar will continue showing time if debugger fetch fails
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      FORMAT TIMESTAMP               │
+     *  └─────────────────────────────────────┘
+     *  Formats timestamp from API response
+     * 
+     *  Parameters:
+     *  - timestamp: Timestamp from API (could be string or Date)
+     * 
+     *  Returns:
+     *  - Formatted time string
+     */
+    formatTimestamp(timestamp) {
+        if (!timestamp) return new Date().toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        
+        try {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+        } catch (e) {
+            return new Date().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
         }
     }
 
@@ -177,24 +280,21 @@ export class StatusBar {
      *  - None
      */
     displayDebuggerMessage(messageObj) {
-        const icon = this.getStatusIcon(messageObj.level);
+        // Update timestamp
+        this.statusTime.textContent = messageObj.timestamp;
+        
+        // Update task counts (already updated in updateTime)
         const taskStats = tasksService.getCurrentStats();
+        this.statusRunning.textContent = taskStats.processing || 0;
+        this.statusQueued.textContent = taskStats.pending || 0;
+        this.statusFailed.textContent = taskStats.failed || 0;
         
-        // Format task counts with fallback to 0
-        const running = taskStats.processing || 0;
-        const queued = taskStats.pending || 0;
-        const failed = taskStats.failed || 0;
+        // Update status icon
+        const iconClass = this.getStatusIconClass(messageObj.level);
+        this.statusIcon.className = iconClass;
         
-        const formattedMessage = `
-            <span style="display: inline-block; width: 70px; text-align: left;">${messageObj.timestamp}</span>
-            <span style="display: inline-block; width: 50px; text-align: center; color: var(--text-color); font-size: 12px;"><i class="bi bi-lightning-charge-fill" style="color: var(--text-color);"></i> ${running}</span>
-            <span style="display: inline-block; width: 50px; text-align: center; color: var(--text-color); font-size: 12px;"><i class="bi bi-list-ol" style="color: var(--text-color);"></i> ${queued}</span>
-            <span style="display: inline-block; width: 50px; text-align: center; color: var(--text-color); font-size: 12px;"><i class="bi bi-heartbreak-fill" style="color: var(--text-color);"></i> ${failed}</span>
-            <span style="display: inline-block; width: 15px; text-align: center; color: var(--text-color);">${icon}</span>
-            <span style="display: inline-block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${messageObj.message}</span>
-        `;
-        
-        this.statusBarText.innerHTML = formattedMessage;
+        // Update message
+        this.statusMessage.textContent = messageObj.message;
     }
 
     /**
@@ -210,16 +310,16 @@ export class StatusBar {
      *  Returns:
      *  - HTML string with Bootstrap icon
      */
-    getStatusIcon(level) {
+    getStatusIconClass(level) {
         const iconMap = {
-            'debug': '<i class="bi bi-bug" style="color: var(--text-color);"></i>',
-            'info': '<i class="bi bi-chevron-right" style="color: var(--text-color);"></i>',
-            'warn': '<i class="bi bi-exclamation-triangle" style="color: var(--text-color);"></i>',
-            'error': '<i class="bi bi-exclamation-diamond-fill" style="color: var(--text-color);"></i>',
-            'success': '<i class="bi bi-check" style="color: var(--text-color);"></i>'
+            'debug': 'bi bi-bug',
+            'info': 'bi bi-chevron-right',
+            'warn': 'bi bi-exclamation-triangle',
+            'error': 'bi bi-exclamation-diamond-fill',
+            'success': 'bi bi-check'
         };
         
-        return iconMap[level] || '<i class="bi bi-circle" style="color: var(--text-color);"></i>';
+        return iconMap[level] || 'bi bi-circle';
     }
 
     /**
@@ -306,6 +406,11 @@ export class StatusBar {
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
             this.updateInterval = null;
+        }
+        
+        if (this.debuggerFetchInterval) {
+            clearInterval(this.debuggerFetchInterval);
+            this.debuggerFetchInterval = null;
         }
     }
 

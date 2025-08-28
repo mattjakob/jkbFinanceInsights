@@ -31,6 +31,7 @@ export class SymbolSearch {
         this.selectedIndex = -1;
         this.suggestions = [];
         this.isLoading = false;
+        this.symbolUpdateTimeout = null;
         
         if (this.input) {
             this.initialize();
@@ -46,7 +47,6 @@ export class SymbolSearch {
      */
     initialize() {
         this.createDropdown();
-
         this.setupEventListeners();
     }
 
@@ -101,9 +101,15 @@ export class SymbolSearch {
         });
         
         // Add change listeners to update TradingView chart when inputs change
-        this.input.addEventListener('change', () => this.updateTradingViewChart());
+        this.input.addEventListener('change', () => {
+            this.updateTradingViewChart();
+            this.updateSymbolFilter();
+        });
         if (this.exchangeInput) {
-            this.exchangeInput.addEventListener('change', () => this.updateTradingViewChart());
+            this.exchangeInput.addEventListener('change', () => {
+                this.updateTradingViewChart();
+                this.updateSymbolFilter();
+            });
         }
     }
 
@@ -128,7 +134,6 @@ export class SymbolSearch {
         }
         
         this.isLoading = true;
-
         this.showLoadingState();
         
         try {
@@ -139,11 +144,9 @@ export class SymbolSearch {
                 this.suggestions = data.suggestions;
                 this.selectedIndex = -1;
                 this.showSuggestions(this.suggestions);
-
             } else {
                 this.suggestions = [];
                 this.showNoResults();
-
             }
         } catch (error) {
             if (window.Debugger) {
@@ -151,7 +154,6 @@ export class SymbolSearch {
             }
             this.suggestions = [];
             this.showError();
-           
         } finally {
             this.isLoading = false;
         }
@@ -385,7 +387,7 @@ export class SymbolSearch {
         
         // Hide dropdown and update validation
         this.hideDropdown();
-
+        this.setValidationIcon('valid');
         
         // Trigger change events for other components
         this.input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -401,6 +403,27 @@ export class SymbolSearch {
         }
     }
 
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      SET VALIDATION ICON            │
+     *  └─────────────────────────────────────┘
+     *  Updates the validation icon state
+     */
+    setValidationIcon(state) {
+        if (!this.validationIcon) return;
+        
+        const iconClasses = {
+            search: 'bi bi-search',
+            loading: 'bi bi-arrow-clockwise',
+            valid: 'bi bi-check',
+            invalid: 'bi bi-x',
+            error: 'bi bi-exclamation-triangle'
+        };
+        
+        const iconClass = iconClasses[state] || 'bi bi-search';
+        this.validationIcon.className = iconClass;
+    }
 
     /**
      * 
@@ -428,6 +451,7 @@ export class SymbolSearch {
         if (this.exchangeInput && exchange) {
             this.exchangeInput.value = exchange.toUpperCase();
         }
+        this.setValidationIcon(symbol ? 'valid' : 'search');
     }
 
     /**
@@ -441,5 +465,60 @@ export class SymbolSearch {
         if (window.TradingViewChart && window.TradingViewChart.updateFromInputs) {
             window.TradingViewChart.updateFromInputs();
         }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │       UPDATE SYMBOL FILTER          │
+     *  └─────────────────────────────────────┘
+     *  Updates the table filtering based on symbol input
+     * 
+     *  Extracts just the symbol part (ignoring exchange suffix)
+     *  and updates URL parameters to filter the table.
+     */
+    updateSymbolFilter() {
+        const currentValues = this.getCurrentValues();
+        let symbol = currentValues.symbol;
+        
+        // Extract symbol part only, discarding exchange suffix
+        // Handle formats like "AAPL:NASDAQ" -> "AAPL"
+        if (symbol.includes(':')) {
+            symbol = symbol.split(':')[0];
+        }
+        
+        // Update URL parameters for table filtering
+        const url = new URL(window.location);
+        const currentSymbolParam = url.searchParams.get('symbol') || '';
+        
+        // Only update if symbol has changed to avoid unnecessary reloads
+        if (symbol && symbol !== currentSymbolParam) {
+            url.searchParams.set('symbol', symbol);
+            // Debounce the reload to avoid rapid page refreshes
+            this.debounceSymbolUpdate(url.toString());
+        } else if (!symbol && currentSymbolParam) {
+            // Clear symbol filter if input is empty
+            url.searchParams.delete('symbol');
+            this.debounceSymbolUpdate(url.toString());
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │     DEBOUNCE SYMBOL UPDATE          │
+     *  └─────────────────────────────────────┘
+     *  Debounces symbol filter updates to avoid rapid page reloads
+     */
+    debounceSymbolUpdate(newUrl) {
+        // Clear existing timeout
+        if (this.symbolUpdateTimeout) {
+            clearTimeout(this.symbolUpdateTimeout);
+        }
+        
+        // Set new timeout
+        this.symbolUpdateTimeout = setTimeout(() => {
+            window.location.href = newUrl;
+        }, 800); // 800ms delay to allow for rapid typing
     }
 }
