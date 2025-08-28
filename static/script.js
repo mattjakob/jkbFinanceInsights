@@ -743,11 +743,12 @@ async function fetchDebugStatus() {
         const response = await fetch('/api/debug-status');
         if (response.ok) {
             const status = await response.json();
-            updateStatusBar(status.full_message);
+            const formattedTime = formatTimestamp(status.timestamp);
+            updateStatusBar(formattedTime + ' ' + status.full_message);
         }
     } catch (error) {
         console.error('Error fetching debug status:', error);
-        updateStatusBar('[SYSTEM] Connection error');
+        updateStatusBar('! Connection error');
     }
 }
 
@@ -1095,7 +1096,8 @@ function initializeSymbolValidation(symbolInput) {
  * └─────────────────────────────────────┘
  * Refreshes the table with new data
  * 
- * Simulates data refresh and updates loading states for incomplete entries.
+ * Fetches the latest insights data from the API and updates the table
+ * to show current AI analysis status without full page reload.
  * 
  * Parameters:
  * - None
@@ -1104,14 +1106,280 @@ function initializeSymbolValidation(symbolInput) {
  * - None
  * 
  * Notes:
- * - Updates loading spinners for incomplete data
- * - Simulates real-time data updates
+ * - Updates AI status indicators in real-time
+ * - Preserves user interactions and scroll position
  */
-function refreshTableData() {
-    // This function is now deprecated since we reload the page after updates
-    // The UPDATE button calls the API which adds/updates data server-side
-    // and then reloads the page to show the actual data from the database
-    console.log('refreshTableData called - page will reload after API update');
+async function refreshTableData() {
+    try {
+        // Get current filter parameters
+        const symbolFilter = document.getElementById('symbolFilter')?.value || '';
+        const typeFilter = document.getElementById('typeFilter')?.value || '';
+        
+        // Fetch latest insights data
+        const response = await fetch(`/api/insights?symbol=${encodeURIComponent(symbolFilter)}&type=${encodeURIComponent(typeFilter)}`);
+        
+        if (!response.ok) {
+            console.error('Failed to fetch insights data:', response.status);
+            return;
+        }
+        
+        const insights = await response.json();
+        
+        console.log(`Refreshing table with ${insights.length} insights`);
+        
+        // Update table rows with new data
+        updateTableRows(insights);
+        
+        console.log('Table data refreshed successfully');
+    } catch (error) {
+        console.error('Error refreshing table data:', error);
+    }
+}
+
+/**
+ * 
+ * ┌─────────────────────────────────────┐
+ * │          UPDATE TABLE ROWS          │
+ * └─────────────────────────────────────┘
+ * Updates existing table rows with fresh data
+ * 
+ * Updates the content of table rows to reflect the latest AI analysis
+ * status and other field changes without disrupting the page layout.
+ * 
+ * Parameters:
+ * - insights: Array of insight objects with updated data
+ * 
+ * Returns:
+ * - None
+ * 
+ * Notes:
+ * - Preserves existing table structure and row heights
+ * - Only updates changed content
+ * - Prevents table jumping during updates
+ */
+function updateTableRows(insights) {
+    const tableBody = document.querySelector('tbody');
+    if (!tableBody) return;
+    
+    // Create a map of insights by ID for quick lookup
+    const insightMap = new Map();
+    insights.forEach(insight => {
+        insightMap.set(insight.id, insight);
+    });
+    
+    const rows = tableBody.querySelectorAll('tr[data-insight-id]');
+    
+    rows.forEach(row => {
+        const insightId = parseInt(row.getAttribute('data-insight-id'));
+        const insight = insightMap.get(insightId);
+        
+        if (!insight) return; // Skip if no matching insight found
+        
+        const cells = row.querySelectorAll('td');
+        
+        if (cells.length < 9) return; // Ensure we have enough cells (0-8 = 9 columns)
+        
+        // Column indices based on HTML table structure:
+        // 0: TYPE, 1: SYMBOL, 2: AGE, 3: TITLE, 4: AI SUMMARY, 5: ACTION, 6: RELEVANCE, 7: HORIZON, 8: LEVELS
+        
+        // Update AI Summary column (index 4)
+        updateAICellStable(cells[4], insight.AISummary, insight.AIAnalysisStatus, (summary) => {
+            return summary.length > 100 ? summary.substring(0, 100) + '...' : summary;
+        });
+        
+        // Update Action column (index 5)
+        updateAICellStable(cells[5], insight.AIAction, insight.AIAnalysisStatus, (action) => {
+            const actionUpper = action.toUpperCase();
+            let iconClass = '';
+            let badgeClass = '';
+            
+            if (actionUpper.includes('SELL')) {
+                iconClass = 'bi-graph-down-arrow';
+                badgeClass = 'action-sell';
+            } else if (actionUpper.includes('BUY')) {
+                iconClass = 'bi-graph-up-arrow';
+                badgeClass = 'action-buy';
+            } else if (actionUpper.includes('HOLD')) {
+                iconClass = 'bi-hourglass-split';
+                badgeClass = 'action-hold';
+            } else {
+                badgeClass = 'action-neutral';
+            }
+            
+            return `<span class="action-badge ${badgeClass}">${actionUpper}${iconClass ? ` <i class="bi ${iconClass}"></i>` : ''}</span>`;
+        });
+        
+        // Update Relevance column (index 6)
+        updateAICellStable(cells[6], insight.AIConfidence, insight.AIAnalysisStatus, (confidence) => {
+            return `<span class="confidence-value">${Math.round(confidence * 100)}%</span>`;
+        });
+        
+        // Update Horizon column (index 7 - AIEventTime)
+        updateAICellStable(cells[7], insight.AIEventTime, insight.AIAnalysisStatus, (eventTime) => {
+            if (!eventTime) return '';
+            try {
+                const date = new Date(eventTime);
+                const formattedDate = date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric' 
+                });
+                return `<span class="time-value">${formattedDate}</span>`;
+            } catch {
+                return eventTime;
+            }
+        });
+        
+        // Update Levels column (index 8)
+        updateAICellStable(cells[8], insight.AILevels, insight.AIAnalysisStatus, (levels) => {
+            const levelsParts = levels.split(' | ');
+            let entry = '';
+            let takeProfit = '';
+            
+            levelsParts.forEach(part => {
+                if (part.includes('Entry:')) {
+                    entry = part.replace('Entry:', 'E:').trim();
+                } else if (part.includes('TP:')) {
+                    takeProfit = part.replace('TP:', 'T:').trim();
+                }
+            });
+            
+            let result = '';
+            if (entry) result += entry;
+            if (entry && takeProfit) result += ' | ';
+            if (takeProfit) result += takeProfit;
+            if (!entry && !takeProfit && levels.length > 50) {
+                result = levels.substring(0, 50);
+            }
+            
+            return `<span class="levels-text">${result}</span>`;
+        });
+    });
+    
+}
+
+/**
+ * 
+ * ┌─────────────────────────────────────┐
+ * │           UPDATE AI CELL            │
+ * └─────────────────────────────────────┘
+ * Updates a single table cell based on AI analysis status
+ * 
+ * Updates cell content to show loading spinner, data, or empty state
+ * based on the current AI analysis status.
+ * 
+ * Parameters:
+ * - cell: The table cell DOM element to update
+ * - data: The data value for this cell
+ * - status: The AI analysis status ('pending', 'processing', 'completed', 'failed')
+ * - formatter: Function to format the data for display
+ * 
+ * Returns:
+ * - None
+ * 
+ * Notes:
+ * - Shows spinner only during 'processing' status
+ * - Shows data when available
+ * - Shows nothing when data is empty/null/none
+ */
+function updateAICell(cell, data, status, formatter) {
+    if (data != null && data !== '') {
+        // Show data if available
+        cell.innerHTML = formatter(data);
+    } else if (status === 'processing') {
+        // Show spinner only during processing
+        cell.innerHTML = '<div class="loading-spinner"></div>';
+    } else {
+        // Show nothing for empty/null data
+        cell.innerHTML = '';
+    }
+}
+
+/**
+ * 
+ * ┌─────────────────────────────────────┐
+ * │        UPDATE AI CELL STABLE        │
+ * └─────────────────────────────────────┘
+ * Updates a single table cell without changing row height
+ * 
+ * Updates cell content while preserving the original cell dimensions
+ * to prevent table row height changes during updates.
+ * 
+ * Parameters:
+ * - cell: The table cell DOM element to update
+ * - data: The data value for this cell
+ * - status: The AI analysis status ('pending', 'processing', 'completed', 'failed')
+ * - formatter: Function to format the data for display
+ * 
+ * Returns:
+ * - None
+ * 
+ * Notes:
+ * - Preserves cell height to prevent table jumping
+ * - Uses textContent for better height stability
+ * - Maintains consistent visual appearance
+ */
+function updateAICellStable(cell, data, status, formatter) {
+    if (data != null && data !== '') {
+        // Show data if available
+        const formattedContent = formatter(data);
+        
+        if (formattedContent.includes('<')) {
+            cell.innerHTML = formattedContent;
+        } else {
+            cell.textContent = formattedContent;
+        }
+    } else if (status === 'processing') {
+        // Show spinner only during processing
+        cell.innerHTML = '<div class="loading-spinner"></div>';
+    } else {
+        // Show nothing for empty/null data
+        cell.textContent = '';
+    }
+}
+
+/**
+ * 
+ * ┌─────────────────────────────────────┐
+ * │         FORMAT TIMESTAMP            │
+ * └─────────────────────────────────────┘
+ * Formats a timestamp string to hh:mm AM/PM format
+ * 
+ * Converts ISO timestamp strings to readable time format
+ * for display in the status bar.
+ * 
+ * Parameters:
+ * - timestamp: ISO timestamp string (e.g., "2025-08-27T23:09:51.495623")
+ * 
+ * Returns:
+ * - Formatted time string in "hh:mm AM/PM" format
+ * 
+ * Notes:
+ * - Handles various timestamp formats gracefully
+ * - Returns "Invalid time" for malformed timestamps
+ */
+function formatTimestamp(timestamp) {
+    try {
+        if (!timestamp) return '';
+        
+        const date = new Date(timestamp);
+        
+        // Check if date is valid
+        if (isNaN(date.getTime())) {
+            return '';
+        }
+        
+        // Format to hh:mm AM/PM
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        const displayMinutes = minutes.toString().padStart(2, '0');
+        
+        return `${displayHours}:${displayMinutes} ${ampm}`;
+    } catch (error) {
+        console.error('Error formatting timestamp:', error);
+        return '';
+    }
 }
 
 /**
@@ -1121,7 +1389,7 @@ function refreshTableData() {
  * └─────────────────────────────────────┘
  * Starts automatic data refresh at regular intervals
  * 
- * Implements periodic updates to simulate real-time financial data feed.
+ * Implements periodic updates to show real-time AI analysis status changes.
  * 
  * Parameters:
  * - None
@@ -1130,19 +1398,18 @@ function refreshTableData() {
  * - None
  * 
  * Notes:
- * - Updates every 60 seconds by default
- * - Can be adjusted based on interval selection
+ * - Updates every 5 seconds for real-time AI status tracking
+ * - Only refreshes table data, not the entire page
  */
 function startAutoRefresh() {
-    // Auto-refresh every 60 seconds (adjustable based on interval selection)
+    // Auto-refresh every 5 seconds to show real-time AI status updates
     setInterval(() => {
-        // Only auto-refresh if AI is enabled
-        const aiCheckbox = document.getElementById('aiCheck');
-        if (aiCheckbox && aiCheckbox.checked) {
-            // Simulate subtle updates
-            updateAIStatus();
+        // Only refresh if we're on the main page with the table
+        const tableBody = document.querySelector('tbody');
+        if (tableBody && tableBody.children.length > 0) {
+            refreshTableData();
         }
-    }, 60000);
+    }, 5000); // 5 seconds for responsive AI status updates
 }
 
 /**

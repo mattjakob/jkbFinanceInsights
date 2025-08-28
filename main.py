@@ -78,6 +78,7 @@ class InsightCreate(BaseModel):
     AIConfidence: Optional[float] = None
     AIEventTime: Optional[str] = None
     AILevels: Optional[str] = None
+    AIAnalysisStatus: Optional[str] = None
 
 class Insight(BaseModel):
     """Data model for insight responses"""
@@ -97,6 +98,7 @@ class Insight(BaseModel):
     AIConfidence: Optional[float] = None
     AIEventTime: Optional[str] = None
     AILevels: Optional[str] = None
+    AIAnalysisStatus: Optional[str] = None
 
 def init_db():
     """Initialize the database using the centralized schema module"""
@@ -391,16 +393,26 @@ async def get_feeds():
 
 # API Endpoints
 @app.get("/api/insights", response_model=List[Insight])
-async def get_insights():
+async def get_insights(symbol: str = "", type: str = ""):
     """
      ┌─────────────────────────────────────┐
      │         GET_INSIGHTS                │
      └─────────────────────────────────────┘
      API endpoint to retrieve all insights
      
-     Returns a JSON list of all insights in the database.
+     Returns a JSON list of insights filtered by symbol and type.
+     
+     Parameters:
+     - symbol: Optional symbol filter (empty string for all)
+     - type: Optional type filter (empty string for all)
+     
+     Returns:
+     - List of insights with all fields including AIAnalysisStatus
     """
-    return items_management.get_all_insights()
+    # Convert empty strings to None for filters
+    type_filter = type if type else None
+    symbol_filter = symbol if symbol else None
+    return items_management.get_all_insights(type_filter=type_filter, symbol_filter=symbol_filter)
 
 @app.post("/api/insights", response_model=Insight)
 async def create_insight(insight: InsightCreate):

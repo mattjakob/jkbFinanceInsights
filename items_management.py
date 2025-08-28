@@ -156,42 +156,50 @@ def add_insight(
     debug_info(f"Added new insight with ID: {insight_id}")
     return insight_id
 
-def get_all_insights(type_filter: str = None) -> List[Dict[str, Any]]:
+def get_all_insights(type_filter: str = None, symbol_filter: str = None) -> List[Dict[str, Any]]:
     """
      ┌─────────────────────────────────────┐
      │        GET_ALL_INSIGHTS             │
      └─────────────────────────────────────┘
-     Retrieve all insights from the database with optional type filtering
+     Retrieve all insights from the database with optional filtering
      
      Returns all insights with their feed descriptions, ordered by most recently posted first.
-     Supports filtering by type when type_filter is provided.
+     Supports filtering by type and symbol when filters are provided.
      
      Parameters:
      - type_filter: Optional feed type to filter by (e.g., "TD NEWS"). If None or empty, returns all insights.
+     - symbol_filter: Optional symbol to filter by (e.g., "BTCUSD"). If None or empty, no symbol filtering.
      
      Returns:
-     - List of insight dictionaries
+     - List of insight dictionaries with AIAnalysisStatus included
     """
     conn = get_db_connection()
     
-    if type_filter and type_filter.strip():
-        # Filter by specific type
-        insights = conn.execute('''
-            SELECT i.*, f.description as feed_description 
-            FROM insights i 
-            LEFT JOIN feed_names f ON i.type = f.name 
-            WHERE i.type = ?
-            ORDER BY i.timePosted DESC
-        ''', (type_filter,)).fetchall()
-    else:
-        # Return all insights (no filter)
-        insights = conn.execute('''
-            SELECT i.*, f.description as feed_description 
-            FROM insights i 
-            LEFT JOIN feed_names f ON i.type = f.name 
-            ORDER BY i.timePosted DESC
-        ''').fetchall()
+    # Build WHERE clause based on filters
+    where_conditions = []
+    params = []
     
+    if type_filter and type_filter.strip():
+        where_conditions.append("i.type = ?")
+        params.append(type_filter)
+    
+    if symbol_filter and symbol_filter.strip():
+        where_conditions.append("(i.symbol = ? OR i.symbol IS NULL)")
+        params.append(symbol_filter)
+    
+    # Build complete query
+    base_query = '''
+        SELECT i.*, f.description as feed_description 
+        FROM insights i 
+        LEFT JOIN feed_names f ON i.type = f.name
+    '''
+    
+    if where_conditions:
+        base_query += " WHERE " + " AND ".join(where_conditions)
+    
+    base_query += " ORDER BY i.timePosted DESC"
+    
+    insights = conn.execute(base_query, params).fetchall()
     conn.close()
     
     return [dict(insight) for insight in insights]
