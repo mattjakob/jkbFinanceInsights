@@ -27,11 +27,13 @@
 
 import requests
 import json
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from debugger import debug_info, debug_warning, debug_error, debug_success
 from scrapers.feed_scraper import FeedScraper
 import items_management
+from config import SCRAPER_TIMEOUT, SCRAPER_MAX_RETRIES, SCRAPER_RETRY_DELAY
 
 
 class TradingViewOpinionsScraper(FeedScraper):
@@ -106,7 +108,7 @@ class TradingViewOpinionsScraper(FeedScraper):
             debug_info(f"Fetching opinions from: {minds_url}")
             
             # Make API request
-            response = requests.get(minds_url, headers=self.headers, timeout=10)
+            response = requests.get(minds_url, headers=self.headers, timeout=SCRAPER_TIMEOUT)
             response.raise_for_status()
             
             data = response.json()
@@ -148,11 +150,24 @@ class TradingViewOpinionsScraper(FeedScraper):
                     # Parse timestamp to ISO format
                     try:
                         # The API returns ISO format like "2025-08-27T20:08:56.834327+00:00"
-                        # Convert to standard ISO format
-                        if timePosted.endswith('+00:00'):
-                            timePosted = timePosted.replace('+00:00', 'Z')
-                        elif not timePosted.endswith('Z'):
-                            timePosted += 'Z'
+                        # Parse as UTC timestamp
+                        if isinstance(timePosted, str):
+                            # Parse the timestamp
+                            if timePosted.endswith('+00:00'):
+                                # Replace +00:00 with Z for standard ISO format
+                                dt = datetime.fromisoformat(timePosted.replace('+00:00', '+00:00'))
+                            elif 'Z' in timePosted:
+                                dt = datetime.fromisoformat(timePosted.replace('Z', '+00:00'))
+                            else:
+                                # Assume UTC if no timezone info
+                                dt = datetime.fromisoformat(timePosted).replace(tzinfo=timezone.utc)
+                            
+                            # Convert to local time for storage
+                            local_dt = dt.astimezone()
+                            timePosted = local_dt.isoformat()
+                        else:
+                            debug_warning(f"Unexpected timestamp format: {timePosted}")
+                            continue
                     except Exception as e:
                         debug_warning(f"Failed to parse timestamp {timePosted}: {str(e)}")
                         continue
@@ -175,7 +190,7 @@ class TradingViewOpinionsScraper(FeedScraper):
                             content += f" ({', '.join(badges)})"
                     
                     # Create insight item
-                    insight_id = items_management.add_insight(
+                    insight_id, is_new = items_management.add_insight(
                         type=self.type,
                         title=title,
                         content=content,
@@ -193,10 +208,11 @@ class TradingViewOpinionsScraper(FeedScraper):
                         "exchange": exchange.upper(),
                         "imageURL": imageURL,
                         "insight_id": insight_id,
-                        "status": "created"
+                        "status": "created" if is_new else "duplicate"
                     }
                     processed_items.append(processed_item)
-                    successful_inserts += 1
+                    if is_new:
+                        successful_inserts += 1
                     
                 except Exception as e:
                     debug_error(f"Failed to process opinion: {str(e)}")
@@ -296,7 +312,7 @@ class TradingViewOpinionsScraper(FeedScraper):
                 post_id = opinion.get('uid')
                 if post_id:
                     comments_url = f"https://www.tradingview.com/api/v1/minds/{post_id}/comments/"
-                    comments_response = requests.get(comments_url, headers=self.headers, timeout=10)
+                    comments_response = requests.get(comments_url, headers=self.headers, timeout=SCRAPER_TIMEOUT)
                     
                     if comments_response.status_code == 200:
                         comments_data = comments_response.json()

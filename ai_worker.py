@@ -10,13 +10,66 @@ from typing import Optional, Dict, Any, Tuple
 import items_management
 import os
 import asyncio
+import time
+from datetime import datetime, timedelta
 from openai import OpenAI
-from config import OPENAI_API_KEY, OPENAI_SUMMARY_MODEL, OPENAI_PROMPT1_ID, OPENAI_PROMPT1_VERSION_ID, OPENAI_PROMPT2_ID, OPENAI_PROMPT2_VERSION_ID
+from config import OPENAI_API_KEY, OPENAI_IMAGEANALYSIS_MODEL, OPENAI_PROMPT_TEXTANALYSIS_ID, OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID, OPENAI_PROMPT_BRIEFSTRATEGY_ID, OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID, AI_CIRCUIT_BREAKER_THRESHOLD, AI_CIRCUIT_BREAKER_RESET_MINUTES
 from debugger import debug_info, debug_warning, debug_error, debug_success
 
 # Global OpenAI client instance
 openai_client = None
 
+# Circuit breaker for OpenAI API
+_openai_circuit_breaker = {
+    'is_open': False,
+    'last_quota_error': None,
+    'consecutive_quota_errors': 0,
+    'quota_error_threshold': AI_CIRCUIT_BREAKER_THRESHOLD,  # Configurable threshold
+    'reset_time_minutes': AI_CIRCUIT_BREAKER_RESET_MINUTES    # Configurable reset time
+}
+
+
+def _check_openai_circuit_breaker() -> bool:
+    """
+     ┌─────────────────────────────────────┐
+     │    _CHECK_OPENAI_CIRCUIT_BREAKER    │
+     └─────────────────────────────────────┘
+     Check if OpenAI circuit breaker is open
+     
+     Returns True if circuit is open (should not call API)
+    """
+    if not _openai_circuit_breaker['is_open']:
+        return False
+        
+    # Check if reset time has passed
+    if _openai_circuit_breaker['last_quota_error']:
+        reset_time = _openai_circuit_breaker['last_quota_error'] + timedelta(
+            minutes=_openai_circuit_breaker['reset_time_minutes']
+        )
+        if datetime.now() > reset_time:
+            # Reset circuit breaker
+            _openai_circuit_breaker['is_open'] = False
+            _openai_circuit_breaker['consecutive_quota_errors'] = 0
+            debug_info("OpenAI circuit breaker reset - attempting API calls again")
+            return False
+    
+    return True
+
+def _handle_openai_quota_error():
+    """Handle OpenAI quota error - update circuit breaker"""
+    _openai_circuit_breaker['consecutive_quota_errors'] += 1
+    _openai_circuit_breaker['last_quota_error'] = datetime.now()
+    
+    if _openai_circuit_breaker['consecutive_quota_errors'] >= _openai_circuit_breaker['quota_error_threshold']:
+        _openai_circuit_breaker['is_open'] = True
+        debug_error(f"OpenAI circuit breaker OPENED - too many quota errors ({_openai_circuit_breaker['consecutive_quota_errors']})")
+        debug_info(f"Will retry OpenAI API calls after {_openai_circuit_breaker['reset_time_minutes']} minutes")
+
+def _handle_openai_success():
+    """Handle successful OpenAI API call - reset error counter"""
+    if _openai_circuit_breaker['consecutive_quota_errors'] > 0:
+        debug_info("OpenAI API call successful - resetting error counter")
+        _openai_circuit_breaker['consecutive_quota_errors'] = 0
 
 def openai_init() -> Optional[OpenAI]:
     """
@@ -81,18 +134,18 @@ def do_ai_text_analysis(symbol: Optional[str], item_type: str, title: str, conte
         return None
     
     # Check if prompt configuration is available
-    if not OPENAI_PROMPT1_ID or not OPENAI_PROMPT1_VERSION_ID:
-        debug_error("Missing 'OPENAI_PROMPT1_ID' or 'OPENAI_PROMPT1_VERSION_ID' in configuration.")
+    if not OPENAI_PROMPT_TEXTANALYSIS_ID or not OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID:
+        debug_error("Missing 'OPENAI_PROMPT_TEXTANALYSIS_ID' or 'OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID' in configuration.")
         return None
     
     try:
-        debug_info(f"OpenAI API Text Analysis initiated with prompt ID: {OPENAI_PROMPT1_ID} for {symbol} {item_type} {title}")
+        debug_info(f"OpenAI API Text Analysis initiated with prompt ID: {OPENAI_PROMPT_TEXTANALYSIS_ID} for {symbol} {item_type} {title}")
         
         # Create the API request using the template format
         response = client.responses.create(
             prompt={
-                "id": OPENAI_PROMPT1_ID,
-                "version": OPENAI_PROMPT1_VERSION_ID,
+                "id": OPENAI_PROMPT_TEXTANALYSIS_ID,
+                "version": OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID,
                 "variables": {
                     "symbol": symbol,
                     "item_type": item_type,
@@ -166,6 +219,11 @@ def do_ai_image_analysis(symbol: str, imageURL: str) -> str:
      Returns:
      - str: AI-generated image analysis summary
     """
+    # Check circuit breaker first
+    if _check_openai_circuit_breaker():
+        #debug_warning("OpenAI circuit breaker is open - skipping image analysis")
+        return None
+        
     # Initialize OpenAI client if not already done
     client = openai_init()
     if not client:
@@ -193,7 +251,7 @@ Return a {symbol} trading brief with:
         
         # Create the API request as specified
         api_request = {
-            "model": OPENAI_SUMMARY_MODEL,
+            "model": OPENAI_IMAGEANALYSIS_MODEL,
             "messages": [{
                 "role": "user",
                 "content": [
@@ -204,7 +262,7 @@ Return a {symbol} trading brief with:
         }
         
         # Make the API call
-        debug_info(f"OpenAI API Image Analysis initiated with model: {OPENAI_SUMMARY_MODEL} for imageURL: {imageURL}")
+        debug_info(f"OpenAI API Image Analysis initiated with model: {OPENAI_IMAGEANALYSIS_MODEL} for imageURL: {imageURL}")
         response = client.chat.completions.create(**api_request)
         
         # Debug: Print response structure
@@ -222,6 +280,7 @@ Return a {symbol} trading brief with:
                     analysis = choice.message.content
                     debug_info(f"OpenAI API Image Analysis response ({len(analysis) if analysis else 0} chars)")
                     #debug_info(f"Analysis preview: {analysis[:100] if analysis else 'None'}...")
+                    _handle_openai_success()  # Reset circuit breaker on success
                     return analysis
                 else:
                     debug_error("OpenAI API Image Analysis failed: Message has no 'content' attribute.")
@@ -238,8 +297,9 @@ Return a {symbol} trading brief with:
         debug_error(f"OpenAI API Image Analysis error: {error_msg}")
         
         # Handle specific error types
-        if "429" in error_msg or "quota" in error_msg.lower():
+        if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
             debug_info("OpenAI quota exceeded. Check billing.")
+            _handle_openai_quota_error()
         elif "401" in error_msg or "unauthorized" in error_msg.lower():
             debug_info("OpenAI API key invalid or expired.")
         elif "400" in error_msg:
@@ -307,13 +367,18 @@ def do_ai_summary(
        - AILevels: Support/resistance levels
     """
     try:
+        # Check circuit breaker first
+        if _check_openai_circuit_breaker():
+            debug_warning("OpenAI circuit breaker is open - skipping AI summary")
+            return None
+            
         # Ensure OpenAI client is initialized and get the client instance
         client = openai_init()
         
         # Get configuration from config module
-        from config import OPENAI_PROMPT2_ID, OPENAI_PROMPT2_VERSION_ID
+        from config import OPENAI_PROMPT_BRIEFSTRATEGY_ID, OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID
         
-        if not OPENAI_PROMPT2_ID or not OPENAI_PROMPT2_VERSION_ID:
+        if not OPENAI_PROMPT_BRIEFSTRATEGY_ID or not OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID:
             debug_error("OpenAI API Summary failed: Missing OpenAI prompt configuration.")
             return None
         
@@ -329,12 +394,12 @@ def do_ai_summary(
         debug_info(f"Variables prepared: symbol={symbol}, item_type={item_type}, title={title[:50]}...")
         
         # Make the OpenAI Response API call
-        debug_info(f"OpenAI API Summary initiated with prompt ID: {OPENAI_PROMPT2_ID}")
+        debug_info(f"OpenAI API Summary initiated with prompt ID: {OPENAI_PROMPT_BRIEFSTRATEGY_ID}")
         
         # Build prompt object
         prompt = {
-            "id": OPENAI_PROMPT2_ID,
-            "version": OPENAI_PROMPT2_VERSION_ID,
+            "id": OPENAI_PROMPT_BRIEFSTRATEGY_ID,
+            "version": OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID,
             "variables": variables
         }
         
@@ -401,9 +466,13 @@ def do_ai_summary(
             if levels_data.get('stop_loss') is not None:
                 levels_summary.append(f"SL: {levels_data['stop_loss']}")
             
-            # Support levels (array)
+            # Support levels (array or single value)
             if levels_data.get('support'):
-                levels_summary.append(f"S: {', '.join(map(str, levels_data['support']))}")
+                support = levels_data['support']
+                if isinstance(support, (list, tuple)):
+                    levels_summary.append(f"S: {', '.join(map(str, support))}")
+                else:
+                    levels_summary.append(f"S: {support}")
             
             # Resistance level (single value now, not array)
             if levels_data.get('resistance') is not None:
@@ -421,6 +490,7 @@ def do_ai_summary(
             }
             
             debug_success("OpenAI API Summary parsed successfully.")
+            _handle_openai_success()  # Reset circuit breaker on success
             
             return result_data
             
@@ -438,7 +508,14 @@ def do_ai_summary(
             }
         
     except Exception as e:
-        debug_error(f"OpenAI API Summary error in do_ai_summary: {str(e)}")
+        error_msg = str(e)
+        debug_error(f"OpenAI API Summary error in do_ai_summary: {error_msg}")
+        
+        # Handle specific error types
+        if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
+            debug_info("OpenAI quota exceeded in summary. Check billing.")
+            _handle_openai_quota_error()
+        
         return None
 
 
@@ -477,127 +554,47 @@ async def do_ai_analysis() -> Tuple[int, int]:
      ┌─────────────────────────────────────┐
      │         DO_AI_ANALYSIS              │
      └─────────────────────────────────────┘
-     Main AI analysis orchestrator with parallel execution
+     Main AI analysis orchestrator using async task system
      
-     Processes all insights that need AI analysis by:
-     1. Finding insights with empty/null AISummary
-     2. Running text and image analysis in parallel within each insight cluster
-     3. Generating comprehensive summary after both analyses complete
-     4. Updating database with results
-     5. Processing multiple insights in parallel clusters
+     Creates tasks for insights that need AI analysis and lets
+     the background workers process them asynchronously.
      
      Returns:
-     - Tuple of (processed_count, success_count)
+     - Tuple of (insights_found, tasks_created)
     """
-    processed_count = 0
-    success_count = 0
+    from async_worker import create_ai_analysis_task
+    
+    insights_found = 0
+    tasks_created = 0
     
     try:
         # Get insights that need AI analysis
         insights = items_management.get_insights_for_ai()
         
         if not insights:
-            debug_info("No insights need AI analysis. All insights have AISummary.")
-            return processed_count, success_count
+            debug_info("No insights need AI analysis")
+            return 0, 0
+            
+        insights_found = len(insights)
+        debug_info(f"Found {insights_found} insights needing AI analysis")
         
-        debug_info(f"Found {len(insights)} insights needing AI analysis.")
-        
-        # Process insights in parallel clusters
-        async def process_insight_cluster(insight):
-            """Process a single insight with parallel text and image analysis"""
-            insight_id = insight['id']
+        # Create tasks for each insight
+        for insight in insights:
             try:
-                debug_error(f"Processing insight #{insight_id}: {insight.get('title', 'Untitled')[:50]}...")
-                
-                # Set status to processing
-                items_management.update_ai_analysis_status(insight_id, 'processing')
-                
-                # Get values from insight, ensuring they're strings
-                symbol = insight.get('symbol') or ""
-                item_type = insight.get('type') or ""
-                title = insight.get('title') or ""
-                content = insight.get('content') or ""
-                image_url = insight.get('imageURL')
-                
-                debug_info(f"Symbol: {symbol}, Type: {item_type}")
-                
-                # New flow: first image analysis (if imageURL exists), then summary
-                technical_analysis = ""
-                
-                # Step 1: Run image analysis if imageURL is valid
-                if image_url and image_url != "" and image_url != "None":
-                    debug_info(f"Running image analysis for URL: {image_url}")
-                    try:
-                        technical_analysis = await do_ai_image_analysis_async(symbol, image_url)
-                        if technical_analysis:
-                            items_management.update_insight(insight_id, AIImageSummary=technical_analysis)
-                            debug_success(f"Image analysis complete for insight #{insight_id}")
-                        else:
-                            debug_warning(f"Image analysis returned empty for insight #{insight_id}")
-                    except Exception as e:
-                        debug_error(f"Image analysis failed: {str(e)}")
-                        technical_analysis = ""
-                else:
-                    debug_info("No imageURL available, skipping image analysis")
-                
-                # Step 2: Run AI summary (always runs, uses technical_analysis if available)
-                debug_info(f"Generating AI summary for insight #{insight_id}...")
-                
-                summary_data = await do_ai_summary_async(
-                    symbol=symbol,
-                    item_type=item_type,
-                    title=title,
-                    content=content,
-                    technical=technical_analysis or ""  # Use empty string if no technical analysis
-                )
-                
-                # Save all AI-generated fields
-                if summary_data:
-                    update_success = items_management.update_insight(
-                        insight_id,
-                        AISummary=summary_data.get('AISummary'),
-                        AIAction=summary_data.get('AIAction'),
-                        AIConfidence=summary_data.get('AIConfidence'),
-                        AIEventTime=summary_data.get('AIEventTime'),
-                        AILevels=summary_data.get('AILevels')
-                    )
-                    
-                    if update_success:
-                        # Set status to completed
-                        items_management.update_ai_analysis_status(insight_id, 'completed')
-                        debug_success(f"AI analysis complete for insight #{insight_id}")
-                        return True
-                    else:
-                        # Set status to failed
-                        items_management.update_ai_analysis_status(insight_id, 'failed')
-                        debug_error(f"Failed to save AI analysis for insight #{insight_id}")
-                        return False
-                else:
-                    # Set status to failed
-                    items_management.update_ai_analysis_status(insight_id, 'failed')
-                    debug_error(f"Failed to generate AI summary for insight #{insight_id}")
-                    return False
-                    
+                num_tasks = await create_ai_analysis_task(insight['id'], insight)
+                tasks_created += num_tasks
+                debug_info(f"Created {num_tasks} tasks for insight #{insight['id']}")
             except Exception as e:
-                # Set status to failed
-                items_management.update_ai_analysis_status(insight_id, 'failed')
-                debug_error(f"Error processing insight #{insight_id}: {str(e)}")
-                return False
+                debug_error(f"Failed to create tasks for insight #{insight['id']}: {str(e)}")
+                # Update status to failed
+                items_management.update_ai_analysis_status(insight['id'], 'failed')
         
-        # Process all insights in parallel
-        cluster_tasks = [process_insight_cluster(insight) for insight in insights]
-        results = await asyncio.gather(*cluster_tasks, return_exceptions=True)
-        
-        # Count results
-        processed_count = len(insights)
-        success_count = sum(1 for result in results if result is True)
-        
-        debug_success(f"AI analysis complete: {success_count}/{processed_count} insights successfully analyzed.")
+        debug_success(f"Created {tasks_created} tasks for {insights_found} insights")
         
     except Exception as e:
-        debug_error(f"Error during AI analysis: {str(e)}")
+        debug_error(f"Error during AI analysis task creation: {str(e)}")
     
-    return processed_count, success_count
+    return insights_found, tasks_created
 
 
 # Test function

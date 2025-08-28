@@ -10,13 +10,15 @@ providing real news data from TradingView's news API.
 
 import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
+import time
 
 from .feed_scraper import FeedScraper
 import items_management
 from debugger import debug_info, debug_error, debug_success, debug_warning
+from config import SCRAPER_TIMEOUT, SCRAPER_MAX_RETRIES, SCRAPER_RETRY_DELAY
 
 class TradingViewNewsScraper(FeedScraper):
     """
@@ -82,7 +84,7 @@ class TradingViewNewsScraper(FeedScraper):
             # --- Scrape headlines ---
             url = f"https://news-headlines.tradingview.com/v2/view/headlines/symbol?client=web&lang=en&area=&provider=&section=&streaming=&symbol={exchange}:{symbol}"
             debug_info(f"Fetching headlines from: {url}")
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=SCRAPER_TIMEOUT)
             response.raise_for_status()
             response_json = response.json()
             items = response_json.get('items', [])
@@ -105,7 +107,7 @@ class TradingViewNewsScraper(FeedScraper):
                         try:
                             url = f"https://tradingview.com{headline['storyPath']}"
                             debug_info(f"Fetching article content from: {url}")
-                            article_resp = requests.get(url, headers=self.headers, timeout=10)
+                            article_resp = requests.get(url, headers=self.headers, timeout=SCRAPER_TIMEOUT)
                             article_resp.raise_for_status()
                             soup = BeautifulSoup(article_resp.text, "html.parser")
                             article_tag = soup.find('article')
@@ -168,12 +170,26 @@ class TradingViewNewsScraper(FeedScraper):
                     timePosted = None
                     if 'published' in headline:
                         try:
-                            dt = datetime.fromtimestamp(headline['published'])
-                            timePosted = dt.isoformat()
+                            # Unix timestamps from TradingView are in UTC
+                            dt = datetime.fromtimestamp(headline['published'], tz=timezone.utc)
+                            # Convert to local time
+                            local_dt = dt.astimezone()
+                            timePosted = local_dt.isoformat()
                         except:
                             pass
                     if not timePosted and full_content and full_content.get('published_datetime'):
-                        timePosted = full_content['published_datetime']
+                        try:
+                            # Parse and convert to local time
+                            pub_dt = full_content['published_datetime']
+                            if 'T' in pub_dt and (pub_dt.endswith('Z') or '+' in pub_dt):
+                                dt = datetime.fromisoformat(pub_dt.replace('Z', '+00:00'))
+                            else:
+                                # Assume UTC if no timezone
+                                dt = datetime.fromisoformat(pub_dt).replace(tzinfo=timezone.utc)
+                            local_dt = dt.astimezone()
+                            timePosted = local_dt.isoformat()
+                        except:
+                            timePosted = full_content['published_datetime']
                     if not timePosted:
                         debug_warning(f"Skipping news item with no timestamp: {title}")
                         continue
@@ -189,7 +205,7 @@ class TradingViewNewsScraper(FeedScraper):
                     if not content or len(content.strip()) < 20:
                         debug_warning(f"Skipping news item due to insufficient data: {title}")
                         continue
-                    insight_id = items_management.add_insight(
+                    insight_id, is_new = items_management.add_insight(
                         type=self.type,
                         title=insight_data["title"],
                         content=insight_data["content"],
@@ -201,10 +217,11 @@ class TradingViewNewsScraper(FeedScraper):
                     processed_item = {
                         **insight_data,
                         "insight_id": insight_id,
-                        "status": "created"
+                        "status": "created" if is_new else "duplicate"
                     }
                     processed_items.append(processed_item)
-                    successful_inserts += 1
+                    if is_new:
+                        successful_inserts += 1
                 except Exception as e:
                     debug_error(f"Failed to process news item: {str(e)}")
                     processed_items.append({

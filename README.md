@@ -73,11 +73,11 @@ Create a `.env` file with the following variables:
 ```env
 # OpenAI Configuration
 OPENAI_API_KEY=your-openai-api-key-here
-OPENAI_SUMMARY_MODEL=gpt-5
-OPENAI_PROMPT1_ID=your-prompt1-id-here
-OPENAI_PROMPT1_VERSION_ID=your-prompt1-version-id-here
-OPENAI_PROMPT2_ID=your-prompt2-id-here
-OPENAI_PROMPT2_VERSION_ID=your-prompt2-version-id-here
+OPENAI_IMAGEANALYSIS_MODEL=gpt-5
+OPENAI_PROMPT_TEXTANALYSIS_ID=your-prompt1-id-here
+OPENAI_PROMPT_TEXTANALYSIS_VERSION_ID=your-prompt1-version-id-here
+OPENAI_PROMPT_BRIEFSTRATEGY_ID=your-prompt2-id-here
+OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID=your-prompt2-version-id-here
 
 # Server Configuration
 SERVER_HOST=127.0.0.1
@@ -164,9 +164,9 @@ jkbFinanceInsights/
 
 ## 🤖 AI Analysis Workflow
 
-1. **Text Analysis**: Uses `OPENAI_PROMPT1_ID` for content analysis
-2. **Image Analysis**: Uses `OPENAI_SUMMARY_MODEL` for chart analysis
-3. **Summary Generation**: Uses `OPENAI_PROMPT2_ID` for final insights
+1. **Text Analysis**: Uses `OPENAI_PROMPT_TEXTANALYSIS_ID` for content analysis
+2. **Image Analysis**: Uses `OPENAI_IMAGEANALYSIS_MODEL` for chart analysis
+3. **Summary Generation**: Uses `OPENAI_PROMPT_BRIEFSTRATEGY_ID` for final insights
 4. **Data Processing**: Parses JSON responses and updates database
 5. **Field Updates**: Updates all AI-related fields including confidence and timing
 

@@ -233,8 +233,22 @@ function initializeAgeCalculations() {
     // Calculate initial ages
     updateAllAges();
     
+    // Calculate initial horizons and levels
+    updateAllHorizons();
+    updateAllLevels();
+    
+    // Apply initial confidence styling
+    updateConfidenceStyling();
+    
     // Update ages every minute
     setInterval(updateAllAges, 60000);
+    
+    // Update horizons and levels every minute (in case data changes)
+    setInterval(updateAllHorizons, 60000);
+    setInterval(updateAllLevels, 60000);
+    
+    // Update confidence styling every minute
+    setInterval(updateConfidenceStyling, 60000);
 }
 
 /**
@@ -275,8 +289,124 @@ function updateAllAges() {
             const age = calculateAge(timePosted);
             console.log(`Element ${index}: calculated age = "${age}"`);
             element.textContent = age;
+            
+            // Add CSS class for future timestamps
+            if (age.startsWith('+')) {
+                element.classList.add('age-future');
+            } else {
+                element.classList.remove('age-future');
+            }
         } else {
             console.log(`Element ${index}: no timePosted attribute`);
+        }
+    });
+}
+
+/**
+* 
+*  ┌─────────────────────────────────────┐
+*  │      UPDATE ALL HORIZONS            │
+*  └─────────────────────────────────────┘
+*  Updates the horizon display for all insight rows
+* 
+*  Iterates through all horizon elements and formats their event time
+*  based on the data-event-time attribute.
+* 
+*  Parameters:
+*  - None
+* 
+*  Returns:
+*  - None
+* 
+*  Notes:
+*  - Processes all horizon elements on the page
+*  - Handles missing or invalid time data gracefully
+*/
+function updateAllHorizons() {
+    const horizonElements = document.querySelectorAll('.time-text[data-event-time]');
+    
+    horizonElements.forEach((element) => {
+        const eventTime = element.getAttribute('data-event-time');
+        
+        if (eventTime) {
+            const formattedTime = formatEventTime(eventTime);
+            element.textContent = formattedTime;
+        } else {
+            element.textContent = '-';
+        }
+    });
+}
+
+/**
+* 
+*  ┌─────────────────────────────────────┐
+*  │       UPDATE ALL LEVELS             │
+*  └─────────────────────────────────────┘
+*  Updates the levels display for all insight rows
+* 
+*  Iterates through all levels elements and formats their levels data
+*  based on the data-levels attribute.
+* 
+*  Parameters:
+*  - None
+* 
+*  Returns:
+*  - None
+* 
+*  Notes:
+*  - Processes all levels elements on the page
+*  - Handles missing or invalid levels data gracefully
+*/
+function updateAllLevels() {
+    const levelsElements = document.querySelectorAll('.levels-text[data-levels]');
+    
+    levelsElements.forEach((element) => {
+        const levels = element.getAttribute('data-levels');
+        
+        if (levels) {
+            const formattedLevels = formatLevels(levels);
+            element.textContent = formattedLevels;
+        } else {
+            element.textContent = '-';
+        }
+    });
+}
+
+/**
+* 
+*  ┌─────────────────────────────────────┐
+*  │      UPDATE CONFIDENCE STYLING      │
+*  └─────────────────────────────────────┘
+*  Applies low confidence styling to rows with confidence <50%
+* 
+*  Iterates through all insight rows and applies the low-confidence
+*  CSS class based on the confidence value in the confidence column.
+* 
+*  Parameters:
+*  - None
+* 
+*  Returns:
+*  - None
+* 
+*  Notes:
+*  - Applies 50% opacity to rows with confidence <50%
+*  - Removes styling from rows with confidence >=50%
+*  - Works with both initial page load and dynamic updates
+*/
+function updateConfidenceStyling() {
+    const insightRows = document.querySelectorAll('.insight-row');
+    
+    insightRows.forEach((row) => {
+        const confidenceCell = row.querySelector('.confidence-col .confidence-value');
+        if (confidenceCell) {
+            const confidenceText = confidenceCell.textContent;
+            const confidencePercent = parseInt(confidenceText);
+            
+            if (!isNaN(confidencePercent) && confidencePercent < 50) {
+                row.classList.add('low-confidence');
+            } else {
+                row.classList.remove('low-confidence');
+            }
         }
     });
 }
@@ -304,6 +434,122 @@ function updateAllAges() {
  *  - Returns appropriate format based on duration
  *  - Handles edge cases gracefully
  */
+/**
+* 
+*  ┌─────────────────────────────────────┐
+*  │        FORMAT EVENT TIME            │
+*  └─────────────────────────────────────┘
+*  Formats AIEventTime for display in HORIZON column
+* 
+*  Takes a timestamp and returns a user-friendly format like "Jan 27" or time portion.
+* 
+*  Parameters:
+*  - eventTime: string - ISO timestamp string or date string
+* 
+*  Returns:
+*  - string - Formatted time string for display
+* 
+*  Notes:
+*  - Returns short date format for dates
+*  - Returns time portion for same-day events
+*  - Handles various timestamp formats gracefully
+*/
+function formatEventTime(eventTime) {
+    if (!eventTime || typeof eventTime !== 'string') {
+        return '-';
+    }
+    
+    try {
+        const date = new Date(eventTime);
+        if (isNaN(date.getTime())) {
+            // If can't parse as date, return time portion if it looks like time
+            return eventTime.includes(':') ? eventTime.slice(-5) : eventTime.substring(0, 5);
+        }
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const eventDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        
+        // If it's today, show time portion
+        if (eventDate.getTime() === today.getTime()) {
+            return date.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: false 
+            });
+        }
+        
+        // Otherwise show date
+        return date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+        });
+    } catch {
+        // Fallback to original behavior
+        return eventTime.includes(':') ? eventTime.slice(-5) : eventTime.substring(0, 5);
+    }
+}
+
+/**
+* 
+*  ┌─────────────────────────────────────┐
+*  │        FORMAT LEVELS                │
+*  └─────────────────────────────────────┘
+*  Formats AILevels for display in LEVELS column
+* 
+*  Takes raw levels string and returns only Entry and Take Profit levels
+*  with currency formatting for numerical values.
+* 
+*  Parameters:
+*  - levels: string - Raw levels string from database
+* 
+*  Returns:
+*  - string - Formatted levels string showing only E: and TP: values with currency formatting
+* 
+*  Notes:
+*  - Filters to show only Entry (E:) and Take Profit (TP:) levels
+*  - Ignores SL, S, R, and other level types
+*  - Formats all numbers as currency (e.g., $130,000)
+*  - Maintains the original level type labels
+*/
+function formatLevels(levels) {
+    if (!levels || typeof levels !== 'string') {
+        return '-';
+    }
+    
+    // Split levels by | and filter for only E: and TP: entries
+    const levelParts = levels.split('|').map(part => part.trim());
+    const filteredLevels = levelParts.filter(part => {
+        const levelType = part.split(':')[0].trim();
+        return levelType === 'E' || levelType === 'TP';
+    });
+    
+    // Format each level with currency formatting
+    const formattedLevels = filteredLevels.map(part => {
+        const [levelType, levelValue] = part.split(':').map(s => s.trim());
+        
+        if (levelValue) {
+            // Extract numeric value and format as currency
+            const numericValue = parseFloat(levelValue.replace(/[^\d.-]/g, ''));
+            if (!isNaN(numericValue)) {
+                const formattedValue = new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD',
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                }).format(numericValue);
+                
+                return `${levelType}: ${formattedValue}`;
+            }
+        }
+        
+        return part; // Return original if no valid number found
+    });
+    
+    // Return formatted levels joined with | separator
+    return formattedLevels.length > 0 ? formattedLevels.join(' | ') : '-';
+}
+
 function calculateAge(timePosted) {
     console.log(`calculateAge called with: "${timePosted}"`);
     
@@ -337,8 +583,31 @@ function calculateAge(timePosted) {
             return '-';
         }
         
+        // Always use UTC for comparison to avoid timezone issues
         const now = new Date();
-        const diffMs = now - postedDate;
+        const nowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+                               now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds());
+        const postedUTC = postedDate.getTime();
+        const diffMs = nowUTC - postedUTC;
+        
+        console.log(`Now UTC: ${new Date(nowUTC).toISOString()}, Posted UTC: ${postedDate.toISOString()}, Diff: ${diffMs}ms`);
+        
+        // Check if the date is in the future
+        if (diffMs < 0) {
+            // For items in the future, show how far in the future
+            const futureDiffMs = Math.abs(diffMs);
+            const futureDiffMinutes = Math.floor(futureDiffMs / (1000 * 60));
+            const futureDiffHours = Math.floor(futureDiffMs / (1000 * 60 * 60));
+            
+            console.log(`Date is in the future: ${postedDate}`);
+            
+            if (futureDiffHours > 0) {
+                return `+${futureDiffHours}h`;
+            } else {
+                return `+${futureDiffMinutes}m`;
+            }
+        }
+        
         const diffMinutes = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -346,13 +615,25 @@ function calculateAge(timePosted) {
         console.log(`Time difference: ${diffDays}d ${diffHours % 24}h ${diffMinutes % 60}m`);
         
         // Format based on duration
-        if (diffDays > 0) {
+        if (diffDays > 365) {
+            // For very old items, show the actual date
+            const month = postedDate.toLocaleDateString('en-US', { month: 'short' });
+            const day = postedDate.getDate();
+            const year = postedDate.getFullYear();
+            return `${month} ${day}, ${year}`;
+        } else if (diffDays > 30) {
+            // Show in weeks for items older than a month
+            const weeks = Math.floor(diffDays / 7);
+            return `${weeks}w`;
+        } else if (diffDays > 0) {
             return `${diffDays}d`;
         } else if (diffHours > 0) {
             const remainingMinutes = diffMinutes % 60;
             return `${diffHours}h${remainingMinutes.toString().padStart(2, '0')}`;
-        } else {
+        } else if (diffMinutes > 0) {
             return `${diffMinutes}m`;
+        } else {
+            return 'now';
         }
         
     } catch (error) {
@@ -467,22 +748,33 @@ function updateInsightRows(processed, success) {
                     const confidenceCell = row.querySelector('.confidence-col');
                     if (confidenceCell && insight.AIConfidence) {
                         confidenceCell.innerHTML = `<span class="confidence-value">${Math.round(insight.AIConfidence * 100)}%</span>`;
+                        
+                        // Apply low confidence styling to the row
+                        if (insight.AIConfidence < 0.5) {
+                            row.classList.add('low-confidence');
+                        } else {
+                            row.classList.remove('low-confidence');
+                        }
                     }
                     
-                    // Update AI event time
-                    const timeCell = row.querySelector('.time-col');
-                    if (timeCell && insight.AIEventTime) {
-                        timeCell.innerHTML = insight.AIEventTime.includes(':') 
-                            ? insight.AIEventTime.slice(-5) 
-                            : insight.AIEventTime.substring(0, 5);
+                    // Update AI event time using data attribute approach
+                    const timeCell = row.querySelector('.time-col .time-text');
+                    if (timeCell) {
+                        timeCell.setAttribute('data-event-time', insight.AIEventTime || '');
+                        const formattedTime = formatEventTime(insight.AIEventTime || '');
+                        timeCell.innerHTML = insight.AIEventTime 
+                            ? `<span class="time-value">${formattedTime}</span>`
+                            : '<span class="text-muted">-</span>';
                     }
                     
-                    // Update AI levels
-                    const levelsCell = row.querySelector('.levels-col');
-                    if (levelsCell && insight.AILevels) {
-                        levelsCell.innerHTML = `<span class="levels-text">${insight.AILevels.length > 30 
-                            ? insight.AILevels.substring(0, 30) + '...' 
-                            : insight.AILevels}</span>`;
+                    // Update AI levels using data attribute approach
+                    const levelsCell = row.querySelector('.levels-col .levels-text');
+                    if (levelsCell) {
+                        levelsCell.setAttribute('data-levels', insight.AILevels || '');
+                        const formattedLevels = formatLevels(insight.AILevels || '');
+                        levelsCell.innerHTML = insight.AILevels 
+                            ? formattedLevels
+                            : '<span class="text-muted">-</span>';
                     }
                 }
             });
@@ -1211,47 +1503,37 @@ function updateTableRows(insights) {
         
         // Update Relevance column (index 6)
         updateAICellStable(cells[6], insight.AIConfidence, insight.AIAnalysisStatus, (confidence) => {
+            // Apply low confidence styling to the row
+            const row = cells[6].closest('.insight-row');
+            if (row && insight.AIConfidence !== null && insight.AIConfidence !== undefined) {
+                if (insight.AIConfidence < 0.5) {
+                    row.classList.add('low-confidence');
+                } else {
+                    row.classList.remove('low-confidence');
+                }
+            }
+            
             return `<span class="confidence-value">${Math.round(confidence * 100)}%</span>`;
         });
         
-        // Update Horizon column (index 7 - AIEventTime)
+        // Update Horizon column (index 7 - AIEventTime) using data attribute approach
+        const horizonCell = cells[7].querySelector('.time-text');
+        if (horizonCell) {
+            horizonCell.setAttribute('data-event-time', insight.AIEventTime || '');
+        }
         updateAICellStable(cells[7], insight.AIEventTime, insight.AIAnalysisStatus, (eventTime) => {
-            if (!eventTime) return '';
-            try {
-                const date = new Date(eventTime);
-                const formattedDate = date.toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric' 
-                });
-                return `<span class="time-value">${formattedDate}</span>`;
-            } catch {
-                return eventTime;
-            }
+            const formattedTime = formatEventTime(eventTime);
+            return formattedTime;
         });
         
-        // Update Levels column (index 8)
+        // Update Levels column (index 8) using data attribute approach
+        const levelsCell = cells[8].querySelector('.levels-text');
+        if (levelsCell) {
+            levelsCell.setAttribute('data-levels', insight.AILevels || '');
+        }
         updateAICellStable(cells[8], insight.AILevels, insight.AIAnalysisStatus, (levels) => {
-            const levelsParts = levels.split(' | ');
-            let entry = '';
-            let takeProfit = '';
-            
-            levelsParts.forEach(part => {
-                if (part.includes('Entry:')) {
-                    entry = part.replace('Entry:', 'E:').trim();
-                } else if (part.includes('TP:')) {
-                    takeProfit = part.replace('TP:', 'T:').trim();
-                }
-            });
-            
-            let result = '';
-            if (entry) result += entry;
-            if (entry && takeProfit) result += ' | ';
-            if (takeProfit) result += takeProfit;
-            if (!entry && !takeProfit && levels.length > 50) {
-                result = levels.substring(0, 50);
-            }
-            
-            return `<span class="levels-text">${result}</span>`;
+            const formattedLevels = formatLevels(levels);
+            return formattedLevels;
         });
     });
     

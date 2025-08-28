@@ -55,18 +55,21 @@
                 <i class="bi bi-arrow-left"></i> TERMINAL
             </a>
         </div>
+ 
         <div class="col-auto">
             <button class="btn btn-secondary btn-sm" onclick="performAITextAnalysis({{ insight.id }}, this)">
-                <i class="bi bi-stars"></i> AI TEXT
+                <i class="bi bi-stars"></i> STRATEGY
             </button>
         </div>
+        
         {% if insight.imageURL %}
         <div class="col-auto">
             <button class="btn btn-secondary btn-sm" onclick="performAIImageAnalysis({{ insight.id }}, this)">
-                <i class="bi bi-stars"></i> AI IMAGE
+                <i class="bi bi-stars"></i> CHART
             </button>
         </div>
         {% endif %}
+
         <div class="col-auto">
             <a href="/edit-insight/{{ insight.id }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-pencil"></i> EDIT
@@ -88,13 +91,14 @@
 
         
     </div>
-    <div class="terminal-content">{{ insight.AISummary }}
-{% if insight.AIEventTime %}
-<div class="metadata-item">
+    <div class="terminal-content">{{ insight.AISummary }}</div>
+    
+    {% if insight.AIEventTime %}
+    <div class="metadata-item" style="margin-top: 1rem;">
         <span class="metadata-key">TIME HORIZON:</span>
         <span class="metadata-value">{{ insight.AIEventTime[:19].replace('T', ' ') }}</span>
     </div>
-        {% endif %}</div>
+    {% endif %}
 
 
     
@@ -107,18 +111,19 @@
                     {% set level_type = level_part.split(':')[0].strip() %}
                     {% set level_values = level_part.split(':')[1].strip() if ':' in level_part else '' %}
                     {# Show all levels including Entry in detail view #}
-                    {% if level_type in ['Entry', 'TP', 'SL', 'S', 'R'] and level_values %}
+                    {% if level_type in ['Entry', 'E', 'TP', 'SL', 'S', 'R'] and level_values %}
                     <div class="col-auto">
                         <div class="level-badge level-{{ level_type.lower() }}">
                             <div class="level-type">
-                                {% if level_type == 'TP' %}TAKE_PROFIT
+                                {% if level_type == 'E' %}ENTRY
+                                {% elif level_type == 'TP' %}TAKE_PROFIT
                                 {% elif level_type == 'SL' %}STOP_LOSS
                                 {% elif level_type == 'S' %}SUPPORT
                                 {% elif level_type == 'R' %}RESISTANCE
                                 {% else %}{{ level_type }}
                                 {% endif %}
                             </div>
-                            <div class="level-values">{{ level_values }}</div>
+                            <div class="level-values" data-level-value="{{ level_values }}">{{ level_values }}</div>
                         </div>
                     </div>
                     {% endif %}
@@ -145,29 +150,13 @@
 </div>
 {% endif %}
 
-<!-- AI Analysis Section -->
 {% if insight.AIImageSummary %}
-<div class="terminal-section mb-4">
+<!-- TA Section -->
+<div class="mb-4">
     <div class="section-header">
         <span class="section-label">AI TECHNICAL ANALYSIS</span>
     </div>
-    <div class="section-content">
-
-
-        {% if insight.AIImageSummary %}
-
-            <div class="ai-content">{{ insight.AIImageSummary }}</div>
-
-        {% endif %}
-
-
-        <!-- AI Metadata -->
-        <div class="ai-metadata">
-            <div class="row">
-
-            </div>
-        </div>
-    </div>
+    <div class="terminal-content">{{ insight.AIImageSummary }}</div>
 </div>
 {% endif %}
 
@@ -204,6 +193,32 @@
 
 
 <script>
+// Format level values as currency
+function formatLevelValues() {
+    const levelValueElements = document.querySelectorAll('.level-values[data-level-value]');
+    
+    levelValueElements.forEach(element => {
+        const rawValue = element.getAttribute('data-level-value');
+        if (rawValue) {
+            // Extract numeric value and format as currency
+            const numericValue = parseFloat(rawValue.replace(/[^\d.-]/g, ''));
+            if (!isNaN(numericValue)) {
+                const formattedValue = new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD',
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                }).format(numericValue);
+                
+                element.textContent = formattedValue;
+            }
+        }
+    });
+}
+
+// Format levels when page loads
+document.addEventListener('DOMContentLoaded', formatLevelValues);
+
 async function performAITextAnalysis(insightId, buttonElement) {
     // Declare variables at function level for access in finally block
     const button = buttonElement;

@@ -192,34 +192,24 @@
                         {% endif %}
                     </td>
                     <td class="time-col">
-                        {% if insight.AIEventTime %}
-                            {{ insight.AIEventTime[-5:] if ':' in insight.AIEventTime else insight.AIEventTime[:5] }}
-                        {% else %}
-                            <span class="text-muted">-</span>
-                        {% endif %}
+                        <span class="time-text" data-event-time="{{ insight.AIEventTime or '' }}">
+                            {% if insight.AIEventTime %}
+                                {{ insight.AIEventTime[-5:] if ':' in insight.AIEventTime else insight.AIEventTime[:5] }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </span>
                     </td>
                     <td class="levels-col">
-                        {% if insight.AILevels %}
-                            {% set levels_parts = insight.AILevels.split(' | ') %}
-                            {% set entry = '' %}
-                            {% set take_profit = '' %}
-                            {% for level_part in levels_parts %}
-                                {% if 'Entry:' in level_part %}
-                                    {% set entry = level_part.replace('Entry:', 'E:').strip() %}
-                                {% elif 'TP:' in level_part %}
-                                    {% set take_profit = level_part.replace('TP:', 'T:').strip() %}
-                                {% endif %}
-                            {% endfor %}
-                            <span class="levels-text">
-                                {% if entry %}{{ entry }}{% endif %}
-                                {% if entry and take_profit %} | {% endif %}
-                                {% if take_profit %}{{ take_profit }}{% endif %}
-                                {% if not entry and not take_profit %}{{ insight.AILevels[:50] }}{% endif %}
-                            </span>
-                            <!-- Debug: {{ insight.AILevels }} -->
-                        {% elif insight.AIAnalysisStatus == 'processing' %}
-                            <div class="loading-spinner"></div>
-                        {% endif %}
+                        <span class="levels-text" data-levels="{{ insight.AILevels or '' }}">
+                            {% if insight.AILevels %}
+                                {{ insight.AILevels }}
+                            {% elif insight.AIAnalysisStatus == 'processing' %}
+                                <div class="loading-spinner"></div>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </span>
                     </td>
                 </tr>
                 {% endfor %}

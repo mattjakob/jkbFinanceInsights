@@ -8,13 +8,15 @@ This module fetches popular user ideas for a symbol from TradingView.
 """
 
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
+import time
 
 from .feed_scraper import FeedScraper
 import items_management
 from debugger import debug_info, debug_error, debug_success, debug_warning
+from config import SCRAPER_TIMEOUT, SCRAPER_MAX_RETRIES, SCRAPER_RETRY_DELAY
 
 class TradingViewIdeasPopularScraper(FeedScraper):
     """
@@ -47,7 +49,7 @@ class TradingViewIdeasPopularScraper(FeedScraper):
             url = f"https://www.tradingview.com/symbols{symbol_payload}ideas/page-1/?component-data-only=1&sort=recent"
             debug_info(f"Fetching popular ideas from: {url}")
             
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.headers, timeout=SCRAPER_TIMEOUT)
             response.raise_for_status()
             
             # Parse HTML response
@@ -128,6 +130,23 @@ class TradingViewIdeasPopularScraper(FeedScraper):
                         debug_warning(f"Skipping idea with no timestamp: {title}")
                         continue
                     
+                    # Parse and convert UTC timestamp to local time
+                    try:
+                        if 'T' in timePosted and (timePosted.endswith('Z') or '+' in timePosted):
+                            # ISO format with timezone
+                            dt = datetime.fromisoformat(timePosted.replace('Z', '+00:00'))
+                            # Convert to local time
+                            local_dt = dt.astimezone()
+                            timePosted = local_dt.isoformat()
+                        else:
+                            # Assume UTC if no timezone specified
+                            dt = datetime.fromisoformat(timePosted).replace(tzinfo=timezone.utc)
+                            local_dt = dt.astimezone()
+                            timePosted = local_dt.isoformat()
+                    except Exception as e:
+                        debug_warning(f"Failed to parse timestamp {timePosted}: {str(e)}")
+                        # Keep original if parsing fails
+                    
                     # Handle image URL
                     imageURL = idea.get('preview_image', '')
                     if imageURL and "_mid" in imageURL:
@@ -147,7 +166,7 @@ class TradingViewIdeasPopularScraper(FeedScraper):
                         debug_warning(f"Skipping idea due to insufficient data: {title}")
                         continue
                     
-                    insight_id = items_management.add_insight(
+                    insight_id, is_new = items_management.add_insight(
                         type=self.type,
                         title=insight_data["title"],
                         content=insight_data["content"],
@@ -160,10 +179,11 @@ class TradingViewIdeasPopularScraper(FeedScraper):
                     processed_item = {
                         **insight_data,
                         "insight_id": insight_id,
-                        "status": "created"
+                        "status": "created" if is_new else "duplicate"
                     }
                     processed_items.append(processed_item)
-                    successful_inserts += 1
+                    if is_new:
+                        successful_inserts += 1
                     
                 except Exception as e:
                     debug_error(f"Failed to process idea: {str(e)}")

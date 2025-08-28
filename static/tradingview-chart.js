@@ -39,33 +39,85 @@ const TRADINGVIEW_CONFIG = {
         "save_image": true,
         "calendar": true,
         "hide_volume": false,
-        "support_host": "https://www.tradingview.com"
+        "support_host": "https://www.tradingview.com",
+        "backgroundColor": "#000000",
+        "containerBackgroundColor": "#000000"
     },
     overrides: {
+        // Main chart background - completely flat black
         "paneProperties.background": "#000000",
         "paneProperties.backgroundType": "solid",
-        "paneProperties.vertGridProperties.color": "#333333",
-        "paneProperties.horzGridProperties.color": "#333333",
-        "paneProperties.crossHairProperties.color": "#666666",
-        "symbolWatermarkProperties.transparency": 90,
-        "symbolWatermarkProperties.color": "#333333",
+        "paneProperties.backgroundGradientStartColor": "#000000",
+        "paneProperties.backgroundGradientEndColor": "#000000",
+        "paneProperties.backgroundGradientOpacity": 100,
+        
+        // Grid properties - minimal visibility
+        "paneProperties.vertGridProperties.color": "#1a1a1a",
+        "paneProperties.vertGridProperties.style": 0,
+        "paneProperties.horzGridProperties.color": "#1a1a1a",
+        "paneProperties.horzGridProperties.style": 0,
+        
+        // Crosshair - minimal
+        "paneProperties.crossHairProperties.color": "#333333",
+        "paneProperties.crossHairProperties.style": 0,
+        
+        // Remove watermark completely
+        "symbolWatermarkProperties.transparency": 100,
+        "symbolWatermarkProperties.color": "#000000",
+        "symbolWatermarkProperties.fontSize": 0,
+        
+        // Scales - completely flat black
         "scalesProperties.textColor": "#cccccc",
-        "scalesProperties.backgroundColor": "#1e2128",
+        "scalesProperties.backgroundColor": "#000000",
+        "scalesProperties.backgroundGradientStartColor": "#000000",
+        "scalesProperties.backgroundGradientEndColor": "#000000",
+        "scalesProperties.backgroundGradientOpacity": 100,
+        
+        // Candle styling - flat colors
         "mainSeriesProperties.candleStyle.upColor": "#000000",
         "mainSeriesProperties.candleStyle.downColor": "#000000",
-        "mainSeriesProperties.candleStyle.borderUpColor": "#aaaaaa",
+        "mainSeriesProperties.candleStyle.borderUpColor": "#ffffff",
         "mainSeriesProperties.candleStyle.borderDownColor": "#666666",
-        "mainSeriesProperties.candleStyle.wickUpColor": "#aaaaaa",
+        "mainSeriesProperties.candleStyle.wickUpColor": "#ffffff",
         "mainSeriesProperties.candleStyle.wickDownColor": "#666666",
-        "volumePaneProperties.background": "#1e2128",
-        "mainSeriesProperties.priceLineColor": "#666666",
-        "mainSeriesProperties.baseLineColor": "#666666"
+        "mainSeriesProperties.candleStyle.borderVisible": true,
+        "mainSeriesProperties.candleStyle.wickVisible": true,
+        
+        // Volume pane - completely flat black
+        "volumePaneProperties.background": "#000000",
+        "volumePaneProperties.backgroundGradientStartColor": "#000000",
+        "volumePaneProperties.backgroundGradientEndColor": "#000000",
+        "volumePaneProperties.backgroundGradientOpacity": 100,
+        
+        // Price lines - minimal
+        "mainSeriesProperties.priceLineColor": "#333333",
+        "mainSeriesProperties.baseLineColor": "#333333",
+        "mainSeriesProperties.priceLineWidth": 1,
+        "mainSeriesProperties.baseLineWidth": 1,
+        
+        // Remove all overlays and gradients
+        "mainSeriesProperties.overlay": false,
+        "mainSeriesProperties.overlayVisible": false,
+        "mainSeriesProperties.overlayTransparency": 100,
+        
+        // Chart container background
+        "containerBackgroundColor": "#000000",
+        "backgroundColor": "#000000"
     },
     studies_overrides: {
+        // Volume bars - flat colors with no gradients
         "volume.volume.color.0": "#666666",
         "volume.volume.color.1": "#444444",
         "volume.volume ma.color": "#888888",
-        "volume.show ma": false
+        "volume.show ma": false,
+        "volume.volume.transparency": 0,
+        "volume.volume.ma.transparency": 0,
+        
+        // Remove any volume overlays or gradients
+        "volume.volume.background": "#000000",
+        "volume.volume.backgroundGradientStartColor": "#000000",
+        "volume.volume.backgroundGradientEndColor": "#000000",
+        "volume.volume.backgroundGradientOpacity": 100
     }
 };
 

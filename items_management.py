@@ -36,7 +36,8 @@ def add_insight(
     AIAction: Optional[str] = None,
     AIConfidence: Optional[float] = None,
     AIEventTime: Optional[str] = None,
-    AILevels: Optional[str] = None
+    AILevels: Optional[str] = None,
+    AIAnalysisStatus: Optional[str] = None
 ) -> int:
     """
      ┌─────────────────────────────────────┐
@@ -62,6 +63,7 @@ def add_insight(
      - AIConfidence: Confidence level 0-1 (optional)
      - AIEventTime: Event timestamp (optional)
      - AILevels: Support/Resistance levels (optional)
+     - AIAnalysisStatus: Status of AI analysis (pending/processing/completed/failed) (optional)
      
      Returns:
      - int: ID of the created insight (or existing duplicate)
@@ -126,7 +128,7 @@ def add_insight(
         if existing_content_hash == content_hash:
             debug_warning(f"Found exact duplicate: ID {row['id']} - {row['title']}")
             conn.close()
-            return row['id']
+            return (row['id'], False)  # Return ID and False to indicate duplicate
         
         # If title is exact match and content is > 80% similar in length
         if row['title'] == title:
@@ -134,19 +136,23 @@ def add_insight(
             if 0.8 <= content_len_ratio <= 1.2:
                 debug_warning(f"Found likely duplicate (similar title/content): ID {row['id']}")
                 conn.close()
-                return row['id']
+                return (row['id'], False)  # Return ID and False to indicate duplicate
     
     # No duplicate found, insert the insight
+    # Set default AIAnalysisStatus based on whether we have AI data
+    if AIAnalysisStatus is None:
+        AIAnalysisStatus = 'completed' if AISummary else 'pending'
+        
     cursor.execute('''
         INSERT INTO insights (
             timeFetched, timePosted, type, title, content, symbol, exchange, imageURL,
             AIImageSummary, AISummary, AIAction,
-            AIConfidence, AIEventTime, AILevels
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            AIConfidence, AIEventTime, AILevels, AIAnalysisStatus
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         timeFetched, timePosted, type, title, content, symbol, exchange, imageURL,
         AIImageSummary, AISummary, AIAction,
-        AIConfidence, AIEventTime, AILevels
+        AIConfidence, AIEventTime, AILevels, AIAnalysisStatus
     ))
     
     insight_id = cursor.lastrowid
@@ -154,7 +160,7 @@ def add_insight(
     conn.close()
     
     debug_info(f"Added new insight with ID: {insight_id}")
-    return insight_id
+    return (insight_id, True)  # Return ID and True to indicate new insight
 
 def get_all_insights(type_filter: str = None, symbol_filter: str = None) -> List[Dict[str, Any]]:
     """
@@ -414,11 +420,13 @@ def update_ai_analysis_status(insight_id: int, status: str) -> bool:
 def get_insights_for_ai() -> List[Dict[str, Any]]:
     """
      ┌─────────────────────────────────────┐
-     │   GET_INSIGHTS_WITHOUT_AI_DATA      │
+     │      GET_INSIGHTS_FOR_AI            │
      └─────────────────────────────────────┘
-     Get insights that have missing AI analysis fields
+     Get insights that need AI analysis
      
-     Returns insights where AISummary is NULL or empty string, ordered by most recently posted first.
+     Returns insights where AIAnalysisStatus is 'pending' or where
+     AISummary is NULL/empty and status is not 'failed', ordered 
+     by most recently posted first.
      
      Returns:
      - List of insights needing AI analysis
@@ -426,7 +434,13 @@ def get_insights_for_ai() -> List[Dict[str, Any]]:
     conn = get_db_connection()
     insights = conn.execute('''
         SELECT * FROM insights 
-        WHERE AISummary IS NULL OR AISummary = ''
+        WHERE (
+            AIAnalysisStatus = 'pending' 
+            OR (
+                (AISummary IS NULL OR AISummary = '')
+                AND (AIAnalysisStatus IS NULL OR AIAnalysisStatus != 'failed')
+            )
+        )
         ORDER BY timePosted DESC
     ''').fetchall()
     conn.close()

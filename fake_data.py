@@ -164,7 +164,7 @@ def add_random_insights(count: int = 5) -> List[int]:
     for _ in range(count):
         insight_data = generate_random_insight()
         try:
-            insight_id = items_management.add_insight(**insight_data)
+            insight_id, is_new = items_management.add_insight(**insight_data)
             created_ids.append(insight_id)
             debug_success(f"Created insight #{insight_id}: {insight_data['title']}")
         except Exception as e:

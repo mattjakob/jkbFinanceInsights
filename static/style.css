@@ -73,14 +73,22 @@
 .tradingview-widget-container {
     height: 400px;
     width: 100%;
-    background-color: rgba(30, 33, 40, 1);
-    border: 1px solid #333333;
+    background-color: #000000 !important;
+    border: 1px solid #000000;
     border-radius: 4px;
 }
 
 .tradingview-widget-container__widget {
     height: 100% !important;
     width: 100% !important;
+    background-color: #000000 !important;
+}
+
+/* Override any TradingView internal styling */
+.tradingview-widget-container iframe,
+.tradingview-widget-container canvas,
+.tradingview-widget-container div[data-role="chart"] {
+    background-color: #000000 !important;
 }
 
 /* Control Panel */
@@ -382,6 +390,12 @@ option:checked {
     font-family: var(--mono-font);
 }
 
+/* Style for future timestamps - applied via JavaScript */
+.age-future {
+    color: var(--error-color);
+    font-style: italic;
+}
+
 .title-col {
     min-width: 280px;
     max-width: 380px;
@@ -534,26 +548,40 @@ option:checked {
 }
 
 .action-sell.action-badge,
-.action-buy.action-badge,
-.action-sell.action-btn,
-.action-buy.action-btn {
-    background-color: var(--text-color);
-    color: var(--bg-color);
+.action-sell.action-btn {
+    background-color: #000000;
+    color: #ffffff;
+    border: 1px solid #ffffff;
 }
+
+.action-buy.action-badge,
+.action-buy.action-btn {
+    background-color: #ffffff;
+    color: #000000;
+    border: 1px solid #000000;
+}
+
+
 
 
 
 .action-hold.action-badge,
 .action-hold.action-btn {
-    background-color: transparent;
+    background-color: #000000;
     color: var(--text-color);
-    border: 1px solid var(--text-color);
+    opacity: 1;
+    border: none;
 }
 
 .action-neutral.action-badge,
 .action-neutral.action-btn {
     background-color: var(--hover-color);
     color: var(--text-color);
+}
+
+/* Low confidence row styling */
+.insight-row.low-confidence {
+    opacity: 0.3;
 }
 
 /* Loading Spinner Bar */
@@ -1024,7 +1052,9 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     background-color: transparent;
     border-left: 1px solid var(--border-color);
     border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
     padding: 1rem;
+    padding-bottom: 1.5rem;
 }
 
 .terminal-image {
@@ -1038,6 +1068,7 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
 
 .metadata-item {
     margin-bottom: 0.5rem;
+    margin-left: 1rem;
     font-family: var(--mono-font);
     font-size: 12px;
 }
@@ -1073,8 +1104,7 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     font-size: 13px;
     line-height: 1.5;
     background-color: transparent;
-    border-left: 3px solid var(--border-color);
-    padding-left: 1rem;
+    padding-left: 1.5rem;
 }
 
 /* AI Levels Styling */

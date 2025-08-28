@@ -9,8 +9,7 @@ summaries and actions. Provides both API endpoints and web interface.
 """
 
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import sqlite3
@@ -28,6 +27,9 @@ from scrapers.tdNews_scraper import TradingViewNewsScraper
 from scrapers.tdIdeasRecent_scraper import TradingViewIdeasRecentScraper
 from scrapers.tdIdeasPopular_scraper import TradingViewIdeasPopularScraper
 from scrapers.tdOpinions_scraper import TradingViewOpinionsScraper
+from async_worker import WorkerManager, create_ai_analysis_task
+from async_task_manager import get_task_manager
+from summary import summary_router
 
 class FetchRequest(BaseModel):
     symbol: str
@@ -38,8 +40,14 @@ class FetchRequest(BaseModel):
 # Initialize FastAPI app
 app = FastAPI(title="Finance Insights", description="Simple Finance Insights Management App")
 
+# Include routers
+app.include_router(summary_router)
+
 # Setup templates and static files
 templates = Jinja2Templates(directory="templates")
+
+# Global worker manager
+worker_manager = None
 
 # Custom static files with cache-busting for development
 @app.get("/static/{file_path:path}")
@@ -58,6 +66,38 @@ async def serve_static_files(file_path: str, t: Optional[str] = None):
     raise HTTPException(status_code=404, detail="File not found")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    """Start background workers on app startup"""
+    global worker_manager
+    
+    from config import AI_WORKER_COUNT
+    debug_info(f"Starting {AI_WORKER_COUNT} async task workers with safety features...")
+    worker_manager = WorkerManager(worker_count=AI_WORKER_COUNT)
+    
+    # Start workers in background
+    import asyncio
+    asyncio.create_task(worker_manager.start())
+    
+    # Initialize task manager database
+    task_manager = get_task_manager()
+    
+    # Clean up old tasks
+    task_manager.cleanup_old_tasks(days=7)
+    
+    debug_success("Async task workers started")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop background workers on app shutdown"""
+    global worker_manager
+    
+    if worker_manager:
+        debug_info("Stopping async task workers...")
+        await worker_manager.stop()
+        debug_success("Async task workers stopped")
 
 # Database schema
 from database_utils import init_database, check_database_structure
@@ -206,7 +246,7 @@ async def add_insight(
             AIEventTime = None
         
         # Use items_management to add the insight
-        insight_id = items_management.add_insight(
+        insight_id, is_new = items_management.add_insight(
             type=type,
             title=title,
             content=content,
@@ -414,6 +454,8 @@ async def get_insights(symbol: str = "", type: str = ""):
     symbol_filter = symbol if symbol else None
     return items_management.get_all_insights(type_filter=type_filter, symbol_filter=symbol_filter)
 
+
+
 @app.post("/api/insights", response_model=Insight)
 async def create_insight(insight: InsightCreate):
     """
@@ -425,7 +467,7 @@ async def create_insight(insight: InsightCreate):
      Accepts JSON data and creates a new insight record.
     """
     try:
-        insight_id = items_management.add_insight(
+        insight_id, is_new = items_management.add_insight(
             type=insight.type,
             title=insight.title,
             content=insight.content,
@@ -842,63 +884,30 @@ async def ai_text_analysis(insight_id: int):
     try:
         debug_info(f"AI text analysis requested for insight {insight_id}")
         
-        # Set status to processing
-        items_management.update_ai_analysis_status(insight_id, 'processing')
-        
         # Get the insight from database
         insight = items_management.get_insight_by_id(insight_id)
         if not insight:
             raise HTTPException(status_code=404, detail="Insight not found")
         
-        # New flow: use do_ai_summary directly (no separate text analysis)
-        from ai_worker import do_ai_summary
+        # Create async task for AI analysis
+        task_count = await create_ai_analysis_task(insight_id, insight)
         
-        # Run AI summary without technical analysis
-        ai_summary_result = do_ai_summary(
-            symbol=insight.get('symbol', ''),
-            item_type=insight.get('type', ''),
-            title=insight.get('title', ''),
-            content=insight.get('content', ''),
-            technical=""  # No technical analysis for text-only
-        )
-        
-        if ai_summary_result:
-            # Update AI fields with comprehensive summary
-            items_management.update_insight_ai_fields(
-                insight_id=insight_id,
-                AISummary=ai_summary_result.get('AISummary'),
-                AIAction=ai_summary_result.get('AIAction'),
-                AIConfidence=ai_summary_result.get('AIConfidence'),
-                AIEventTime=ai_summary_result.get('AIEventTime'),
-                AILevels=ai_summary_result.get('AILevels')
-            )
-            
-
-            
-            # Set status to completed
-            items_management.update_ai_analysis_status(insight_id, 'completed')
-            debug_success(f"✓ AI text analysis (summary) completed for insight {insight_id}")
-            
+        if task_count > 0:
+            debug_success(f"Created {task_count} AI analysis tasks for insight {insight_id}")
             return {
                 "success": True,
-                "message": "AI text analysis completed successfully",
-
+                "message": f"AI analysis started ({task_count} tasks created)",
                 "insight_id": insight_id,
-                "summary": ai_summary_result
+                "tasks_created": task_count
             }
         else:
-            # Set status to failed
-            items_management.update_ai_analysis_status(insight_id, 'failed')
-            debug_error(f"AI text analysis (summary) failed for insight {insight_id}")
             return {
                 "success": False,
-                "message": "AI text analysis failed",
+                "message": "Failed to create AI analysis tasks",
                 "insight_id": insight_id
             }
             
     except Exception as e:
-        # Set status to failed
-        items_management.update_ai_analysis_status(insight_id, 'failed')
         debug_error(f"AI text analysis error: {str(e)}")
         return {
             "success": False,
@@ -906,6 +915,70 @@ async def ai_text_analysis(insight_id: int):
             "insight_id": insight_id,
             "error": str(e)
         }
+
+@app.get("/api/tasks/{task_id}/status")
+async def get_task_status(task_id: int):
+    """
+     ┌─────────────────────────────────────┐
+     │         GET_TASK_STATUS             │
+     └─────────────────────────────────────┘
+     Get status of an async task
+     
+     Returns current status and details of a specific task.
+     
+     Parameters:
+     - task_id: ID of the task to check
+     
+     Returns:
+     - JSON with task status and details
+    """
+    try:
+        task_manager = get_task_manager()
+        task = task_manager.get_task(task_id)
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+            
+        return {
+            "task_id": task.id,
+            "task_type": task.task_type,
+            "insight_id": task.insight_id,
+            "status": task.status,
+            "created_at": task.created_at,
+            "started_at": task.started_at,
+            "completed_at": task.completed_at,
+            "retry_count": task.retry_count,
+            "result": task.result,
+            "error_message": task.error_message
+        }
+    except Exception as e:
+        debug_error(f"Error getting task status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/tasks/stats")
+async def get_task_stats():
+    """
+     ┌─────────────────────────────────────┐
+     │         GET_TASK_STATS              │
+     └─────────────────────────────────────┘
+     Get statistics about async tasks
+     
+     Returns counts of tasks by status.
+     
+     Returns:
+     - JSON with task statistics
+    """
+    try:
+        task_manager = get_task_manager()
+        stats = task_manager.get_task_stats()
+        
+        return {
+            "stats": stats,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        debug_error(f"Error getting task stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/insights/{insight_id}/ai-image-analysis")
 async def ai_image_analysis(insight_id: int):
@@ -927,9 +1000,6 @@ async def ai_image_analysis(insight_id: int):
     try:
         debug_info(f"AI image analysis requested for insight {insight_id}")
         
-        # Set status to processing
-        items_management.update_ai_analysis_status(insight_id, 'processing')
-        
         # Get the insight from database
         insight = items_management.get_insight_by_id(insight_id)
         if not insight:
@@ -938,72 +1008,27 @@ async def ai_image_analysis(insight_id: int):
         # Check if insight has an image
         image_url = insight.get('imageURL')
         if not image_url:
-            # Reset status to pending since no image to analyze
-            items_management.update_ai_analysis_status(insight_id, 'pending')
             raise HTTPException(status_code=400, detail="Insight has no image to analyze")
         
-        # Perform AI image analysis
-        from ai_worker import do_ai_image_analysis
-        analysis = do_ai_image_analysis(
-            symbol=insight.get('symbol', ''),
-            imageURL=image_url
-        )
+        # Create async task for AI analysis
+        task_count = await create_ai_analysis_task(insight_id, insight)
         
-        if analysis:
-            # Update the insight with AI image analysis results
-            items_management.update_insight(
-                insight_id=insight_id,
-                AIImageSummary=analysis
-            )
-            
-            # New flow: Run comprehensive AI summary with image analysis
-            from ai_worker import do_ai_summary
-            ai_summary_result = do_ai_summary(
-                symbol=insight.get('symbol', ''),
-                item_type=insight.get('type', ''),
-                title=insight.get('title', ''),
-                content=insight.get('content', ''),
-                technical=analysis  # Use the image analysis as technical analysis
-            )
-            
-            if ai_summary_result:
-                # Update AI fields with comprehensive summary
-                items_management.update_insight_ai_fields(
-                    insight_id=insight_id,
-                    AISummary=ai_summary_result.get('AISummary'),
-                    AIAction=ai_summary_result.get('AIAction'),
-                    AIConfidence=ai_summary_result.get('AIConfidence'),
-                    AIEventTime=ai_summary_result.get('AIEventTime'),
-                    AILevels=ai_summary_result.get('AILevels')
-                )
-                # Set status to completed
-                items_management.update_ai_analysis_status(insight_id, 'completed')
-                debug_success(f"✓ AI image analysis and summary completed for insight {insight_id}")
-            else:
-                # Set status to failed if summary generation failed
-                items_management.update_ai_analysis_status(insight_id, 'failed')
-                debug_warning(f"AI image analysis completed but summary generation failed for insight {insight_id}")
-            
+        if task_count > 0:
+            debug_success(f"Created {task_count} AI analysis tasks for insight {insight_id}")
             return {
                 "success": True,
-                "message": "AI image analysis completed successfully",
-                "AIImageSummary": analysis,
+                "message": f"AI analysis started ({task_count} tasks created)",
                 "insight_id": insight_id,
-                "summary": ai_summary_result
+                "tasks_created": task_count
             }
         else:
-            # Set status to failed
-            items_management.update_ai_analysis_status(insight_id, 'failed')
-            debug_error(f"AI image analysis failed for insight {insight_id}")
             return {
                 "success": False,
-                "message": "AI image analysis failed",
+                "message": "Failed to create AI analysis tasks",
                 "insight_id": insight_id
             }
             
     except Exception as e:
-        # Set status to failed
-        items_management.update_ai_analysis_status(insight_id, 'failed')
         debug_error(f"AI image analysis error: {str(e)}")
         return {
             "success": False,
@@ -1011,6 +1036,116 @@ async def ai_image_analysis(insight_id: int):
             "insight_id": insight_id,
             "error": str(e)
         }
+
+@app.get("/queue")
+async def get_queue_status():
+    """
+     ┌─────────────────────────────────────┐
+     │         GET_QUEUE_STATUS            │
+     └─────────────────────────────────────┘
+     Get current AI task queue status
+     
+     Returns a simple text list of all pending, processing, and failed tasks
+     in the async task queue for monitoring and debugging purposes.
+     
+     Returns:
+     - Plain text response with queue details
+    """
+    try:
+        from async_task_manager import get_task_manager
+        from ai_worker import _openai_circuit_breaker
+        
+        task_manager = get_task_manager()
+        
+        # Get task statistics
+        stats = task_manager.get_task_stats()
+        
+        # Get detailed task list
+        with task_manager._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get active tasks (pending/processing) by default, or all tasks if requested
+            cursor.execute('''
+                SELECT id, task_type, insight_id, status, retry_count, max_retries, 
+                       created_at, started_at, completed_at, error_message
+                FROM async_tasks 
+                WHERE status IN ('pending', 'processing', 'failed')
+                ORDER BY 
+                    CASE status 
+                        WHEN 'processing' THEN 1
+                        WHEN 'pending' THEN 2  
+                        WHEN 'failed' THEN 3
+                        ELSE 4
+                    END,
+                    created_at ASC
+
+            ''')
+            
+            tasks = cursor.fetchall()
+        
+        # Build response text
+        response_lines = []
+        response_lines.append("🔄 AI TASK QUEUE STATUS")
+        response_lines.append("=" * 50)
+        
+        # Circuit breaker status
+        cb = _openai_circuit_breaker
+        cb_status = "🔴 OPEN" if cb['is_open'] else "🟢 CLOSED"
+        response_lines.append(f"Circuit Breaker: {cb_status}")
+        response_lines.append(f"Consecutive Errors: {cb['consecutive_quota_errors']}")
+        if cb['last_quota_error']:
+            response_lines.append(f"Last Error: {cb['last_quota_error']}")
+        response_lines.append("")
+        
+        # Task statistics
+        response_lines.append("📊 TASK SUMMARY:")
+        for status, count in stats.items():
+            response_lines.append(f"  {status.upper()}: {count}")
+        response_lines.append("")
+        
+        # Detailed task list
+        response_lines.append("📋 ACTIVE TASKS (pending/processing/failed):")
+        response_lines.append("-" * 50)
+        
+        if not tasks:
+            response_lines.append("No tasks found")
+        else:
+            for task in tasks:
+                status_emoji = {
+                    'processing': '⚡',
+                    'pending': '⏳',
+                    'failed': '❌',
+                    'completed': '✅',
+                    'cancelled': '🚫',
+                    'timeout': '⏰'
+                }.get(task['status'], '❓')
+                
+                retry_info = f" (retry {task['retry_count']}/{task['max_retries']})" if task['retry_count'] > 0 else ""
+                
+                response_lines.append(
+                    f"{status_emoji} Task #{task['id']} | {task['task_type']} | "
+                    f"Insight #{task['insight_id']} | {task['status'].upper()}{retry_info}"
+                )
+                
+                if task['error_message']:
+                    response_lines.append(f"   Error: {task['error_message'][:100]}...")
+                
+                # Show timing info
+                if task['started_at']:
+                    response_lines.append(f"   Started: {task['started_at']}")
+                if task['completed_at']:
+                    response_lines.append(f"   Completed: {task['completed_at']}")
+                
+                response_lines.append("")
+        
+        # Join all lines and return as plain text
+        response_text = "\n".join(response_lines)
+        
+        return Response(content=response_text, media_type="text/plain")
+        
+    except Exception as e:
+        error_text = f"Error getting queue status: {str(e)}"
+        return Response(content=error_text, media_type="text/plain", status_code=500)
 
 if __name__ == "__main__":
     from config import SERVER_HOST, SERVER_PORT
