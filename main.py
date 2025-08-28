@@ -830,6 +830,9 @@ async def ai_text_analysis(insight_id: int):
     try:
         debug_info(f"AI text analysis requested for insight {insight_id}")
         
+        # Set status to processing
+        items_management.update_ai_analysis_status(insight_id, 'processing')
+        
         # Get the insight from database
         insight = items_management.get_insight_by_id(insight_id)
         if not insight:
@@ -860,6 +863,8 @@ async def ai_text_analysis(insight_id: int):
             
 
             
+            # Set status to completed
+            items_management.update_ai_analysis_status(insight_id, 'completed')
             debug_success(f"✓ AI text analysis (summary) completed for insight {insight_id}")
             
             return {
@@ -870,6 +875,8 @@ async def ai_text_analysis(insight_id: int):
                 "summary": ai_summary_result
             }
         else:
+            # Set status to failed
+            items_management.update_ai_analysis_status(insight_id, 'failed')
             debug_error(f"AI text analysis (summary) failed for insight {insight_id}")
             return {
                 "success": False,
@@ -878,6 +885,8 @@ async def ai_text_analysis(insight_id: int):
             }
             
     except Exception as e:
+        # Set status to failed
+        items_management.update_ai_analysis_status(insight_id, 'failed')
         debug_error(f"AI text analysis error: {str(e)}")
         return {
             "success": False,
@@ -906,6 +915,9 @@ async def ai_image_analysis(insight_id: int):
     try:
         debug_info(f"AI image analysis requested for insight {insight_id}")
         
+        # Set status to processing
+        items_management.update_ai_analysis_status(insight_id, 'processing')
+        
         # Get the insight from database
         insight = items_management.get_insight_by_id(insight_id)
         if not insight:
@@ -914,6 +926,8 @@ async def ai_image_analysis(insight_id: int):
         # Check if insight has an image
         image_url = insight.get('imageURL')
         if not image_url:
+            # Reset status to pending since no image to analyze
+            items_management.update_ai_analysis_status(insight_id, 'pending')
             raise HTTPException(status_code=400, detail="Insight has no image to analyze")
         
         # Perform AI image analysis
@@ -950,8 +964,12 @@ async def ai_image_analysis(insight_id: int):
                     AIEventTime=ai_summary_result.get('AIEventTime'),
                     AILevels=ai_summary_result.get('AILevels')
                 )
+                # Set status to completed
+                items_management.update_ai_analysis_status(insight_id, 'completed')
                 debug_success(f"✓ AI image analysis and summary completed for insight {insight_id}")
             else:
+                # Set status to failed if summary generation failed
+                items_management.update_ai_analysis_status(insight_id, 'failed')
                 debug_warning(f"AI image analysis completed but summary generation failed for insight {insight_id}")
             
             return {
@@ -962,6 +980,8 @@ async def ai_image_analysis(insight_id: int):
                 "summary": ai_summary_result
             }
         else:
+            # Set status to failed
+            items_management.update_ai_analysis_status(insight_id, 'failed')
             debug_error(f"AI image analysis failed for insight {insight_id}")
             return {
                 "success": False,
@@ -970,6 +990,8 @@ async def ai_image_analysis(insight_id: int):
             }
             
     except Exception as e:
+        # Set status to failed
+        items_management.update_ai_analysis_status(insight_id, 'failed')
         debug_error(f"AI image analysis error: {str(e)}")
         return {
             "success": False,

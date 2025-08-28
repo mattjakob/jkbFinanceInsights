@@ -52,9 +52,24 @@ def create_insights_table(cursor: sqlite3.Cursor) -> None:
             AIConfidence REAL,
             AIEventTime TEXT,
             AILevels TEXT,
+            AIAnalysisStatus TEXT DEFAULT 'pending',
             FOREIGN KEY (type) REFERENCES feed_names (name)
         )
     ''')
+    
+    # Check if AIAnalysisStatus column exists, add it if not
+    cursor.execute("PRAGMA table_info(insights)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'AIAnalysisStatus' not in columns:
+        cursor.execute('ALTER TABLE insights ADD COLUMN AIAnalysisStatus TEXT DEFAULT "pending"')
+        # Update existing records: set to 'completed' if they have AISummary, otherwise 'pending'
+        cursor.execute('''
+            UPDATE insights 
+            SET AIAnalysisStatus = CASE 
+                WHEN AISummary IS NOT NULL AND AISummary != '' THEN 'completed'
+                ELSE 'pending'
+            END
+        ''')
 
 def insert_default_feeds(cursor: sqlite3.Cursor) -> None:
     """Insert default feed names if they don't exist"""

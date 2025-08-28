@@ -375,6 +375,34 @@ def delete_insight(insight_id: int) -> bool:
     
     return success
 
+def update_ai_analysis_status(insight_id: int, status: str) -> bool:
+    """
+     ┌─────────────────────────────────────┐
+     │      UPDATE_AI_ANALYSIS_STATUS      │
+     └─────────────────────────────────────┘
+     Update the AI analysis status for an insight
+     
+     Parameters:
+     - insight_id: The ID of the insight to update
+     - status: The new status ('pending', 'processing', 'completed', 'failed')
+     
+     Returns:
+     - bool: True if updated successfully, False otherwise
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        'UPDATE insights SET AIAnalysisStatus = ? WHERE id = ?',
+        (status, insight_id)
+    )
+    
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    
+    return success
+
 def get_insights_for_ai() -> List[Dict[str, Any]]:
     """
      ┌─────────────────────────────────────┐

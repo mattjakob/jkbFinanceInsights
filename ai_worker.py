@@ -509,6 +509,9 @@ async def do_ai_analysis() -> Tuple[int, int]:
             try:
                 debug_error(f"Processing insight #{insight_id}: {insight.get('title', 'Untitled')[:50]}...")
                 
+                # Set status to processing
+                items_management.update_ai_analysis_status(insight_id, 'processing')
+                
                 # Get values from insight, ensuring they're strings
                 symbol = insight.get('symbol') or ""
                 item_type = insight.get('type') or ""
@@ -560,16 +563,24 @@ async def do_ai_analysis() -> Tuple[int, int]:
                     )
                     
                     if update_success:
+                        # Set status to completed
+                        items_management.update_ai_analysis_status(insight_id, 'completed')
                         debug_success(f"AI analysis complete for insight #{insight_id}")
                         return True
                     else:
+                        # Set status to failed
+                        items_management.update_ai_analysis_status(insight_id, 'failed')
                         debug_error(f"Failed to save AI analysis for insight #{insight_id}")
                         return False
                 else:
+                    # Set status to failed
+                    items_management.update_ai_analysis_status(insight_id, 'failed')
                     debug_error(f"Failed to generate AI summary for insight #{insight_id}")
                     return False
                     
             except Exception as e:
+                # Set status to failed
+                items_management.update_ai_analysis_status(insight_id, 'failed')
                 debug_error(f"Error processing insight #{insight_id}: {str(e)}")
                 return False
         
