@@ -116,10 +116,14 @@ class TradingViewIdeasPopularScraper(BaseScraper):
             # Extract metadata for content enhancement
             metadata = self._extract_article_metadata(article)
             
-            # Enhance content with engagement metrics
-            engagement_summary = self._create_engagement_summary(metadata)
-            if engagement_summary:
-                content = f"{content}\n\n{engagement_summary}"
+            # Format content with new structure: LIKES -> CONTENT -> COMMENTS
+            likes_count = metadata.get('likes', 0)
+            formatted_content = content
+            
+            # Add likes section if available
+            if likes_count > 0:
+                likes_section = f"------------------------------------------------------------\n{likes_count} PEOPLE LIKED THIS POST OR FOUND IT USEFUL\n------------------------------------------------------------"
+                formatted_content = f"{likes_section}\n{formatted_content}"
             
             # Extract timestamp
             timestamp = self._parse_article_timestamp(article)
@@ -142,6 +146,23 @@ class TradingViewIdeasPopularScraper(BaseScraper):
             source_url = title_tag.get('href') if title_tag else None
             if source_url and not source_url.startswith('http'):
                 source_url = f"https://www.tradingview.com{source_url}"
+            
+            # Extract idea ID and fetch comments
+            idea_id = self._extract_idea_id(source_url)
+            comment_content = ""
+            if idea_id and metadata.get('comments', 0) > 0:
+                comment_content = self._fetch_idea_comments(idea_id)
+            
+            # Add comment content to metadata and formatted content
+            if comment_content:
+                metadata['comment_content'] = comment_content
+                comments_count = metadata.get('comments', 0)
+                if comments_count > 0:
+                    formatted_comments = self._format_comments_section(comment_content, comments_count)
+                    formatted_content = f"{formatted_content}\n{formatted_comments}"
+            
+            # Use the formatted content
+            content = formatted_content
             
             return ScrapedItem(
                 title=title,
@@ -253,3 +274,164 @@ class TradingViewIdeasPopularScraper(BaseScraper):
             return " | ".join(summary_parts)
         
         return ""
+
+    def _extract_idea_id(self, url: str) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │           EXTRACT IDEA ID           │
+        └─────────────────────────────────────┘
+        Extracts idea ID from TradingView idea URL.
+        
+        Parameters:
+        - url: TradingView idea URL
+        
+        Returns:
+        - Idea ID string or empty string if not found
+        
+        Notes:
+        - Parses URLs like /chart/BTCUSD/wR44yoxw-Bitcoin-Analysis/
+        - Extracts the ID part before the first dash
+        """
+        if not url:
+            return ""
+        
+        import re
+        # Pattern to match /chart/SYMBOL/ID-TITLE/ or /chart/SYMBOL/ID/
+        match = re.search(r'/chart/[^/]+/([^-/]+)', url)
+        if match:
+            return match.group(1)
+        return ""
+
+    def _fetch_idea_comments(self, idea_id: str) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │         FETCH IDEA COMMENTS         │
+        └─────────────────────────────────────┘
+        Fetches comment content for a specific idea with pagination.
+        
+        Parameters:
+        - idea_id: TradingView idea ID
+        
+        Returns:
+        - Formatted comment content string
+        
+        Notes:
+        - Makes paginated API calls to get all comments
+        - Formats comments with author and timestamp
+        - Limits to 10 comments for readability
+        - Handles cursor-based pagination
+        """
+        if not idea_id:
+            return ""
+        
+        try:
+            all_comments = []
+            next_url = f"https://www.tradingview.com/api/v1/ideas/{idea_id}/comments/"
+            max_pages = 5  # Limit to 5 pages to avoid excessive API calls
+            page_count = 0
+            
+            while next_url and page_count < max_pages:
+                response = self.make_request(next_url)
+                data = response.json()
+                
+                if not isinstance(data, dict) or 'results' not in data:
+                    break
+                
+                page_comments = data['results']
+                if not isinstance(page_comments, list):
+                    break
+                
+                all_comments.extend(page_comments)
+                
+                # Get next page URL
+                next_url = data.get('next')
+                page_count += 1
+                
+                # Stop if we have enough comments
+                if len(all_comments) >= 50:  # Limit total comments to prevent excessive content
+                    break
+            
+            if not all_comments:
+                return ""
+            
+            debug_info(f"Fetched {len(all_comments)} comments across {page_count} pages for idea {idea_id}")
+            
+            comment_texts = []
+            
+            # Process ALL comments (no limit)
+            for comment in all_comments:
+                if not isinstance(comment, dict):
+                    continue
+                
+                # Extract comment data
+                text = comment.get('comment', '').strip()
+                if not text:
+                    continue
+                
+                # Extract author
+                user_info = comment.get('user', {})
+                username = user_info.get('username', 'Anonymous') if isinstance(user_info, dict) else 'Anonymous'
+                
+                # Extract and format timestamp
+                created = comment.get('created_at', '')
+                timestamp_str = ""
+                if created:
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                        timestamp_str = dt.strftime('%m/%d %H:%M')
+                    except:
+                        timestamp_str = created[:10]  # Just the date part
+                
+                # Limit comment length but keep it reasonable
+                if len(text) > 500:
+                    text = text[:497] + "..."
+                
+                # Format comment
+                if timestamp_str:
+                    comment_texts.append(f"@{username} ({timestamp_str}): {text}")
+                else:
+                    comment_texts.append(f"@{username}: {text}")
+            
+            return "\n".join(comment_texts)
+            
+        except Exception as e:
+            debug_warning(f"Failed to fetch comments for idea {idea_id}: {str(e)}")
+            return ""
+
+    def _format_comments_section(self, comment_content: str, comments_count: int) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │       FORMAT COMMENTS SECTION       │
+        └─────────────────────────────────────┘
+        Formats comments into numbered section with separators.
+        
+        Parameters:
+        - comment_content: Raw comment content string
+        - comments_count: Total number of comments
+        
+        Returns:
+        - Formatted comments section string
+        
+        Notes:
+        - Numbers each comment (01:, 02:, etc.)
+        - Adds separators between comments
+        - Wraps entire section with header and footer lines
+        """
+        if not comment_content:
+            return ""
+        
+        comment_lines = comment_content.split('\n')
+        formatted_comments = []
+        
+        for i, comment_line in enumerate(comment_lines):
+            if comment_line.strip():
+                comment_number = f"{i+1:02d}"
+                formatted_comments.append(f"{comment_number}: {comment_line}")
+                if i < len(comment_lines) - 1 and comment_lines[i+1].strip():
+                    formatted_comments.append("------------------------------")
+        
+        comments_header = f"------------------------------------------------------------\n{comments_count} AVAILABLE COMMENTS:"
+        comments_footer = "------------------------------------------------------------"
+        
+        return f"{comments_header}\n" + "\n".join(formatted_comments) + f"\n{comments_footer}"

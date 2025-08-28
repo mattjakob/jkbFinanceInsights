@@ -112,14 +112,21 @@ class TradingViewOpinionsScraper(BaseScraper):
             'comment_content': comment_content
         }
         
-        # Enhance content with engagement metrics
-        engagement_summary = self._create_engagement_summary(metadata)
-        if engagement_summary:
-            content = f"{content}\n\n{engagement_summary}"
+        # Format content with new structure: LIKES -> CONTENT -> COMMENTS
+        formatted_content = content
         
-        # Add comment content if available
-        if comment_content:
-            content = f"{content}\n\n--- COMMENTS ---\n{comment_content}"
+        # Add likes section if available
+        if likes_count > 0:
+            likes_section = f"------------------------------------------------------------\n{likes_count} PEOPLE LIKED THIS POST OR FOUND IT USEFUL\n------------------------------------------------------------"
+            formatted_content = f"{likes_section}\n{formatted_content}"
+        
+        # Add comments section if available
+        if comment_content and comments_count > 0:
+            formatted_comments = self._format_comments_section(comment_content, comments_count)
+            formatted_content = f"{formatted_content}\n{formatted_comments}"
+        
+        # Use the formatted content
+        content = formatted_content
         
         # Parse timestamp
         timestamp = self._parse_timestamp(item)
@@ -280,9 +287,9 @@ class TradingViewOpinionsScraper(BaseScraper):
                     except:
                         timestamp_str = created[:10]  # Just the date part
                 
-                # Limit comment length
-                if len(text) > 200:
-                    text = text[:197] + "..."
+                # Limit comment length but keep it reasonable
+                if len(text) > 500:
+                    text = text[:497] + "..."
                 
                 # Format comment
                 if timestamp_str:
@@ -296,5 +303,42 @@ class TradingViewOpinionsScraper(BaseScraper):
             from debugger import debug_warning
             debug_warning(f"Failed to fetch comments for mind {mind_uid}: {str(e)}")
             return ""
+
+    def _format_comments_section(self, comment_content: str, comments_count: int) -> str:
+        """
+        ┌─────────────────────────────────────┐
+        │       FORMAT COMMENTS SECTION       │
+        └─────────────────────────────────────┘
+        Formats comments into numbered section with separators.
+        
+        Parameters:
+        - comment_content: Raw comment content string
+        - comments_count: Total number of comments
+        
+        Returns:
+        - Formatted comments section string
+        
+        Notes:
+        - Numbers each comment (01:, 02:, etc.)
+        - Adds separators between comments
+        - Wraps entire section with header and footer lines
+        """
+        if not comment_content:
+            return ""
+        
+        comment_lines = comment_content.split('\n')
+        formatted_comments = []
+        
+        for i, comment_line in enumerate(comment_lines):
+            if comment_line.strip():
+                comment_number = f"{i+1:02d}"
+                formatted_comments.append(f"{comment_number}: {comment_line}")
+                if i < len(comment_lines) - 1 and comment_lines[i+1].strip():
+                    formatted_comments.append("------------------------------")
+        
+        comments_header = f"------------------------------------------------------------\n{comments_count} AVAILABLE COMMENTS:"
+        comments_footer = "------------------------------------------------------------"
+        
+        return f"{comments_header}\n" + "\n".join(formatted_comments) + f"\n{comments_footer}"
 
 
