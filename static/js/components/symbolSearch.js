@@ -3,29 +3,34 @@
  *  ┌─────────────────────────────────────┐
  *  │        SYMBOL SEARCH                │
  *  └─────────────────────────────────────┘
- *  Symbol search and validation component
+ *  TradingView-inspired symbol search with autocomplete
  * 
- *  Provides symbol search suggestions and validation
- *  functionality for the symbol input field.
+ *  Provides real-time symbol search using TradingView API
+ *  with minimal, console-inspired dropdown interface.
  * 
  *  Parameters:
- *  - None
+ *  - inputElement: Symbol input element
+ *  - exchangeElement: Exchange input element (optional)
  * 
  *  Returns:
- *  - SymbolSearch class
+ *  - SymbolSearch class instance
  * 
  *  Notes:
- *  - Currently uses mock data until API is available
- *  - Will be updated when symbol API is implemented
+ *  - Uses real TradingView symbol search API
+ *  - Auto-populates exchange field with most popular exchange
+ *  - Supports both keyboard and mouse interaction
  */
 
 import { debounce } from '../core/utils.js';
 
 export class SymbolSearch {
-    constructor(inputElement) {
+    constructor(inputElement, exchangeElement = null) {
         this.input = inputElement;
+        this.exchangeInput = exchangeElement || document.getElementById('exchangeInput');
         this.dropdown = null;
-        this.validationIcon = null;
+        this.selectedIndex = -1;
+        this.suggestions = [];
+        this.isLoading = false;
         
         if (this.input) {
             this.initialize();
@@ -38,24 +43,11 @@ export class SymbolSearch {
      *  │         INITIALIZE                  │
      *  └─────────────────────────────────────┘
      *  Initializes symbol search functionality
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - None
      */
     initialize() {
-        // Create dropdown container
         this.createDropdown();
-        
-        // Create validation icon
-        this.createValidationIcon();
-        
-        // Set up event listeners
-        this.input.addEventListener('input', debounce((e) => this.handleInput(e), 300));
-        this.input.addEventListener('blur', () => this.hideDropdown());
-        this.input.addEventListener('focus', (e) => this.handleInput(e));
+
+        this.setupEventListeners();
     }
 
     /**
@@ -63,142 +55,180 @@ export class SymbolSearch {
      *  ┌─────────────────────────────────────┐
      *  │       CREATE DROPDOWN               │
      *  └─────────────────────────────────────┘
-     *  Creates dropdown for search results
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - None
+     *  Creates the autocomplete dropdown element
      */
     createDropdown() {
-        this.dropdown = document.createElement('div');
-        this.dropdown.className = 'symbol-dropdown dropdown-menu';
+        // Use existing dropdown or create new one
+        this.dropdown = document.getElementById('symbolAutocomplete');
+        
+        if (!this.dropdown) {
+            this.dropdown = document.createElement('div');
+            this.dropdown.id = 'symbolAutocomplete';
+            this.dropdown.className = 'autocomplete-dropdown';
+            
+            const container = this.input.closest('.symbol-autocomplete-container');
+            if (container) {
+                container.appendChild(this.dropdown);
+            } else {
+                this.input.parentNode.appendChild(this.dropdown);
+            }
+        }
+        
         this.dropdown.style.display = 'none';
-        this.dropdown.style.position = 'absolute';
-        this.dropdown.style.width = '100%';
-        
-        // Insert after input
-        this.input.parentNode.style.position = 'relative';
-        this.input.parentNode.appendChild(this.dropdown);
     }
 
     /**
      * 
      *  ┌─────────────────────────────────────┐
-     *  │     CREATE VALIDATION ICON          │
+     *  │       SETUP EVENT LISTENERS         │
      *  └─────────────────────────────────────┘
-     *  Creates validation status icon
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - None
+     *  Sets up all event handlers for the component
      */
-    createValidationIcon() {
-        const wrapper = document.createElement('div');
-        wrapper.style.position = 'relative';
+    setupEventListeners() {
+        // Debounced input handler for search
+        const debouncedSearch = debounce((e) => this.handleSearch(e), 200);
         
-        this.validationIcon = document.createElement('span');
-        this.validationIcon.className = 'symbol-validation-icon';
-        this.validationIcon.style.cssText = 'position: absolute; right: 10px; top: 50%; transform: translateY(-50%);';
+        this.input.addEventListener('input', debouncedSearch);
+        this.input.addEventListener('focus', (e) => this.handleFocus(e));
+        this.input.addEventListener('blur', (e) => this.handleBlur(e));
+        this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
         
-        // Wrap input
-        this.input.parentNode.insertBefore(wrapper, this.input);
-        wrapper.appendChild(this.input);
-        wrapper.appendChild(this.validationIcon);
+        // Handle clicks outside to close dropdown
+        document.addEventListener('click', (e) => {
+            if (!this.input.contains(e.target) && !this.dropdown.contains(e.target)) {
+                this.hideDropdown();
+            }
+        });
+        
+        // Add change listeners to update TradingView chart when inputs change
+        this.input.addEventListener('change', () => this.updateTradingViewChart());
+        if (this.exchangeInput) {
+            this.exchangeInput.addEventListener('change', () => this.updateTradingViewChart());
+        }
     }
 
     /**
      * 
      *  ┌─────────────────────────────────────┐
-     *  │         HANDLE INPUT                │
+     *  │         HANDLE SEARCH               │
      *  └─────────────────────────────────────┘
-     *  Handles input changes
-     * 
-     *  Parameters:
-     *  - event: Input event
-     * 
-     *  Returns:
-     *  - None
+     *  Handles symbol search input
      */
-    async handleInput(event) {
-        const query = event.target.value.trim();
+    async handleSearch(event) {
+        const query = event.target.value.trim().toUpperCase();
         
         if (query.length < 1) {
             this.hideDropdown();
-            this.setValidationIcon('');
             return;
         }
         
-        // Show loading state
-        this.setValidationIcon('loading');
+        if (query.length < 2) {
+            
+            return;
+        }
+        
+        this.isLoading = true;
+
+        this.showLoadingState();
         
         try {
-            // Mock symbol search until API is available
-            const suggestions = this.getMockSuggestions(query);
-            this.showSuggestions(suggestions);
+            const response = await fetch(`/api/scraping/symbols/search?query=${encodeURIComponent(query)}`);
+            const data = await response.json();
             
-            // Validate symbol
-            if (query.length >= 2) {
-                const isValid = this.validateSymbol(query);
-                this.setValidationIcon(isValid ? 'valid' : 'invalid');
+            if (data.suggestions && data.suggestions.length > 0) {
+                this.suggestions = data.suggestions;
+                this.selectedIndex = -1;
+                this.showSuggestions(this.suggestions);
+
+            } else {
+                this.suggestions = [];
+                this.showNoResults();
+
             }
         } catch (error) {
-            console.error('Symbol search error:', error);
-            this.hideDropdown();
-            this.setValidationIcon('error');
+            if (window.Debugger) {
+                window.Debugger.error('Symbol search error:', error);
+            }
+            this.suggestions = [];
+            this.showError();
+           
+        } finally {
+            this.isLoading = false;
         }
     }
 
     /**
      * 
      *  ┌─────────────────────────────────────┐
-     *  │      GET MOCK SUGGESTIONS           │
+     *  │         HANDLE FOCUS                │
      *  └─────────────────────────────────────┘
-     *  Returns mock suggestions for testing
-     * 
-     *  Parameters:
-     *  - query: Search query
-     * 
-     *  Returns:
-     *  - Array of suggestions
+     *  Handles input focus - shows dropdown if has suggestions
      */
-    getMockSuggestions(query) {
-        const symbols = [
-            { symbol: 'BTCUSD', description: 'Bitcoin / US Dollar' },
-            { symbol: 'ETHUSD', description: 'Ethereum / US Dollar' },
-            { symbol: 'AAPL', description: 'Apple Inc.' },
-            { symbol: 'GOOGL', description: 'Alphabet Inc.' },
-            { symbol: 'MSFT', description: 'Microsoft Corporation' },
-            { symbol: 'TSLA', description: 'Tesla Inc.' },
-            { symbol: 'AMZN', description: 'Amazon.com Inc.' },
-            { symbol: 'NVDA', description: 'NVIDIA Corporation' }
-        ];
-        
-        return symbols.filter(s => 
-            s.symbol.toLowerCase().includes(query.toLowerCase()) ||
-            s.description.toLowerCase().includes(query.toLowerCase())
-        ).slice(0, 8);
+    handleFocus(event) {
+        const query = event.target.value.trim();
+        if (query.length >= 2 && this.suggestions.length > 0) {
+            this.showSuggestions(this.suggestions);
+        }
     }
 
     /**
      * 
      *  ┌─────────────────────────────────────┐
-     *  │       VALIDATE SYMBOL               │
+     *  │         HANDLE BLUR                 │
      *  └─────────────────────────────────────┘
-     *  Validates if symbol is valid
-     * 
-     *  Parameters:
-     *  - symbol: Symbol to validate
-     * 
-     *  Returns:
-     *  - Boolean
+     *  Handles input blur - hides dropdown with delay
      */
-    validateSymbol(symbol) {
-        // Mock validation - just check if it's alphanumeric and 2-10 chars
-        return /^[A-Z0-9]{2,10}$/.test(symbol.toUpperCase());
+    handleBlur(event) {
+        // Delay hiding to allow for dropdown clicks
+        setTimeout(() => {
+            if (!this.dropdown.matches(':hover')) {
+                this.hideDropdown();
+            }
+        }, 150);
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │        HANDLE KEYDOWN               │
+     *  └─────────────────────────────────────┘
+     *  Handles keyboard navigation in dropdown
+     */
+    handleKeydown(event) {
+        if (!this.dropdown || this.dropdown.style.display === 'none' || this.suggestions.length === 0) {
+            return;
+        }
+
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                this.selectedIndex = Math.min(this.selectedIndex + 1, this.suggestions.length - 1);
+                this.updateSelection();
+                break;
+                
+            case 'ArrowUp':
+                event.preventDefault();
+                this.selectedIndex = Math.max(this.selectedIndex - 1, -1);
+                this.updateSelection();
+                break;
+                
+            case 'Enter':
+                event.preventDefault();
+                if (this.selectedIndex >= 0) {
+                    this.selectSuggestion(this.suggestions[this.selectedIndex]);
+                }
+                break;
+                
+            case 'Escape':
+                this.hideDropdown();
+                this.input.blur();
+                break;
+                
+            case 'Tab':
+                // Allow tab to work normally but hide dropdown
+                this.hideDropdown();
+                break;
+        }
     }
 
     /**
@@ -206,37 +236,101 @@ export class SymbolSearch {
      *  ┌─────────────────────────────────────┐
      *  │       SHOW SUGGESTIONS              │
      *  └─────────────────────────────────────┘
-     *  Shows suggestion dropdown
-     * 
-     *  Parameters:
-     *  - suggestions: Array of suggestions
-     * 
-     *  Returns:
-     *  - None
+     *  Displays the suggestion dropdown with results
      */
     showSuggestions(suggestions) {
-        if (!suggestions.length) {
+        if (!suggestions || suggestions.length === 0) {
             this.hideDropdown();
             return;
         }
         
-        this.dropdown.innerHTML = suggestions.map(s => `
-            <a class="dropdown-item symbol-suggestion" href="#" data-symbol="${s.symbol}">
-                <strong>${s.symbol}</strong> - ${s.description}
-            </a>
+        this.dropdown.innerHTML = suggestions.map((suggestion, index) => `
+            <div class="autocomplete-item" data-index="${index}">
+                <div class="autocomplete-item-content">
+                    <span class="symbol">${suggestion.symbol}</span>
+                    <span class="description">${suggestion.description}</span>
+                </div>
+                <span class="exchange">${suggestion.exchange}</span>
+            </div>
         `).join('');
         
         // Add click handlers
-        this.dropdown.querySelectorAll('.symbol-suggestion').forEach(item => {
+        this.dropdown.querySelectorAll('.autocomplete-item').forEach((item, index) => {
             item.addEventListener('mousedown', (e) => {
                 e.preventDefault();
-                this.input.value = e.currentTarget.dataset.symbol;
-                this.hideDropdown();
-                this.setValidationIcon('valid');
+                this.selectSuggestion(suggestions[index]);
+            });
+            
+            item.addEventListener('mouseenter', () => {
+                this.selectedIndex = index;
+                this.updateSelection();
+            });
+            
+            item.addEventListener('mouseleave', () => {
+                this.selectedIndex = -1;
+                this.updateSelection();
             });
         });
         
         this.dropdown.style.display = 'block';
+        this.dropdown.classList.add('show');
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │       SHOW LOADING STATE            │
+     *  └─────────────────────────────────────┘
+     *  Shows loading indicator in dropdown
+     */
+    showLoadingState() {
+        this.dropdown.innerHTML = `
+            <div class="autocomplete-loading">
+                <span>Searching symbols...</span>
+            </div>
+        `;
+        this.dropdown.style.display = 'block';
+        this.dropdown.classList.add('show');
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │       SHOW NO RESULTS               │
+     *  └─────────────────────────────────────┘
+     *  Shows no results message
+     */
+    showNoResults() {
+        this.dropdown.innerHTML = `
+            <div class="autocomplete-no-results">
+                <span>No symbols found</span>
+            </div>
+        `;
+        this.dropdown.style.display = 'block';
+        this.dropdown.classList.add('show');
+        
+        // Auto-hide after delay
+        setTimeout(() => this.hideDropdown(), 2000);
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │         SHOW ERROR                  │
+     *  └─────────────────────────────────────┘
+     *  Shows error message in dropdown
+     */
+    showError() {
+        this.dropdown.innerHTML = `
+            <div class="autocomplete-no-results">
+                <span>Search failed - try again</span>
+            </div>
+        `;
+        this.dropdown.style.display = 'block';
+        this.dropdown.classList.add('show');
+        
+        // Auto-hide after delay
+        setTimeout(() => this.hideDropdown(), 3000);
     }
 
     /**
@@ -244,47 +338,108 @@ export class SymbolSearch {
      *  ┌─────────────────────────────────────┐
      *  │         HIDE DROPDOWN               │
      *  └─────────────────────────────────────┘
-     *  Hides suggestion dropdown
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - None
+     *  Hides the suggestion dropdown
      */
     hideDropdown() {
         if (this.dropdown) {
             this.dropdown.style.display = 'none';
+            this.dropdown.classList.remove('show');
+        }
+        this.selectedIndex = -1;
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │       UPDATE SELECTION              │
+     *  └─────────────────────────────────────┘
+     *  Updates visual selection highlighting in dropdown
+     */
+    updateSelection() {
+        const items = this.dropdown.querySelectorAll('.autocomplete-item');
+        items.forEach((item, index) => {
+            if (index === this.selectedIndex) {
+                item.classList.add('highlighted');
+                item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            } else {
+                item.classList.remove('highlighted');
+            }
+        });
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │       SELECT SUGGESTION             │
+     *  └─────────────────────────────────────┘
+     *  Handles selection of a suggestion from dropdown
+     */
+    selectSuggestion(suggestion) {
+        // Update symbol input
+        this.input.value = suggestion.symbol;
+        
+        // Auto-populate exchange field
+        if (this.exchangeInput && suggestion.exchange) {
+            this.exchangeInput.value = suggestion.exchange;
+        }
+        
+        // Hide dropdown and update validation
+        this.hideDropdown();
+
+        
+        // Trigger change events for other components
+        this.input.dispatchEvent(new Event('change', { bubbles: true }));
+        if (this.exchangeInput) {
+            this.exchangeInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        
+        // Focus exchange input if empty, otherwise blur
+        if (this.exchangeInput && !this.exchangeInput.value.trim()) {
+            this.exchangeInput.focus();
+        } else {
+            this.input.blur();
+        }
+    }
+
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │         GET CURRENT VALUE           │
+     *  └─────────────────────────────────────┘
+     *  Returns current symbol and exchange values
+     */
+    getCurrentValues() {
+        return {
+            symbol: this.input.value.trim().toUpperCase(),
+            exchange: this.exchangeInput ? this.exchangeInput.value.trim().toUpperCase() : ''
+        };
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │         SET VALUES                  │
+     *  └─────────────────────────────────────┘
+     *  Sets symbol and exchange values programmatically
+     */
+    setValues(symbol, exchange = '') {
+        this.input.value = symbol.toUpperCase();
+        if (this.exchangeInput && exchange) {
+            this.exchangeInput.value = exchange.toUpperCase();
         }
     }
 
     /**
      * 
      *  ┌─────────────────────────────────────┐
-     *  │      SET VALIDATION ICON            │
+     *  │      UPDATE TRADINGVIEW CHART       │
      *  └─────────────────────────────────────┘
-     *  Sets validation icon state
-     * 
-     *  Parameters:
-     *  - state: Icon state
-     * 
-     *  Returns:
-     *  - None
+     *  Updates the TradingView chart with current symbol and exchange
      */
-    setValidationIcon(state) {
-        if (!this.validationIcon) return;
-        
-        const icons = {
-            loading: '<i class="spinner-border spinner-border-sm text-info"></i>',
-            valid: '<i class="bi bi-check-circle-fill text-success"></i>',
-            invalid: '<i class="bi bi-x-circle-fill text-danger"></i>',
-            error: '<i class="bi bi-exclamation-circle-fill text-warning"></i>',
-            '': ''
-        };
-        
-        this.validationIcon.innerHTML = icons[state] || '';
+    updateTradingViewChart() {
+        if (window.TradingViewChart && window.TradingViewChart.updateFromInputs) {
+            window.TradingViewChart.updateFromInputs();
+        }
     }
 }
-
-
-

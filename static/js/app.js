@@ -59,8 +59,9 @@ class App {
             
             // Initialize symbol search if input exists
             const symbolInput = document.getElementById('symbolInput');
+            const exchangeInput = document.getElementById('exchangeInput');
             if (symbolInput) {
-                this.components.symbolSearch = new SymbolSearch(symbolInput);
+                this.components.symbolSearch = new SymbolSearch(symbolInput, exchangeInput);
             }
             
             // Initialize additional features

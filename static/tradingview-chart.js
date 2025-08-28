@@ -185,7 +185,9 @@ function initializeTradingView(containerId = 'tradingview_widget_container', sym
 */
 function updateTradingViewChart(symbol) {
     if (!symbol) {
-        console.error('TradingView: No symbol provided for chart update');
+        if (window.Debugger) {
+            window.Debugger.error('TradingView: No symbol provided for chart update');
+        }
         return;
     }
     

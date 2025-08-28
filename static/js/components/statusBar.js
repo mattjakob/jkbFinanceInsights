@@ -47,7 +47,7 @@ export class StatusBar {
      */
     initialize() {
         this.startTimeUpdates();
-        this.updateDebuggerStatus('info', 'System ready');
+        //this.updateDebuggerStatus('info', 'System ready');
         
         // Start task service updates and fetch initial data
         tasksService.startAutoUpdates(5000);

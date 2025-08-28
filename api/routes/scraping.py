@@ -27,6 +27,7 @@ from typing import Dict, Any
 
 from core import FeedType
 from scrapers import ScraperManager
+from symbol_validator import exchange_manager
 from debugger import debug_info, debug_error
 
 # Create router
@@ -123,6 +124,77 @@ async def get_available_feeds():
     })
     
     return feeds
+
+
+@router.get("/symbols/search")
+async def search_symbols(query: str):
+    """
+     ┌─────────────────────────────────────┐
+     │         SEARCH_SYMBOLS              │
+     └─────────────────────────────────────┘
+     Search for trading symbols using TradingView API
+     
+     Returns list of matching symbols with exchange information
+     and suggested exchange for each symbol.
+    """
+    try:
+        if not query or len(query.strip()) < 1:
+            return {"suggestions": []}
+        
+        # Search symbols using exchange manager
+        results = exchange_manager.search_symbol(query.strip())
+        
+        # Process results to match frontend expectations
+        suggestions = []
+        seen_symbols = set()
+        
+        # Group results by symbol to show multiple exchange options
+        symbol_groups = {}
+        for result in results:
+            symbol = result.symbol.upper()
+            if symbol not in symbol_groups:
+                symbol_groups[symbol] = []
+            symbol_groups[symbol].append(result)
+        
+        # Show multiple exchange options for each symbol, respecting TradingView's ranking
+        # No hardcoded preferences - let TradingView's API determine what's most relevant
+        for symbol, group in list(symbol_groups.items())[:5]:  # Limit to 5 unique symbols
+            # For symbols with multiple exchanges, show up to 6 options
+            # For symbols with single exchange, show just that one
+            if len(group) > 1:
+                # Show multiple exchange options, respecting TradingView's order
+                # Filter for spot trading first (most relevant for users)
+                spot_results = [r for r in group if r.type == 'spot']
+                other_results = [r for r in group if r.type != 'spot']
+                
+                # Combine spot results first, then others, respecting TradingView's ranking
+                all_results = spot_results + other_results
+                top_exchanges = all_results[:6]
+                
+                for result in top_exchanges:
+                    suggestions.append({
+                        "symbol": result.symbol,
+                        "description": result.description,
+                        "exchange": result.exchange,
+                        "type": result.type,
+                        "provider_id": result.provider_id
+                    })
+            else:
+                # Single exchange result
+                best_result = group[0]
+                suggestions.append({
+                    "symbol": best_result.symbol,
+                    "description": best_result.description,
+                    "exchange": best_result.exchange,
+                    "type": best_result.type,
+                    "provider_id": best_result.provider_id
+                })
+        
+        return {"suggestions": suggestions}
+        
+    except Exception as e:
+        debug_error(f"Symbol search failed: {e}")
+        return {"suggestions": [], "error": str(e)}
 
 
 
