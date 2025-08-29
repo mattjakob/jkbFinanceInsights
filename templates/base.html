@@ -51,10 +51,10 @@
          * ┌─────────────────────────────────────┐
          * │        SYMBOLS DROPDOWN            │
          * └─────────────────────────────────────┘
-         * Populate symbols dropdown with data from API
+         * Populate symbols dropdown with full symbol data
          * 
-         * Fetches normalized symbols from the insights API
-         * and populates the dropdown menu with clickable links.
+         * Fetches normalized symbols from insights API and enriches them
+         * with full company names from TradingView search API.
          */
         async function populateSymbolsDropdown() {
             try {
@@ -72,8 +72,11 @@
                         return;
                     }
                     
-                    // Add symbols to dropdown
-                    data.symbols.forEach(symbolData => {
+                    // Enrich symbols with full company names from TradingView
+                    const enrichedSymbols = await enrichSymbolsWithCompanyNames(data.symbols);
+                    
+                    // Add enriched symbols to dropdown
+                    enrichedSymbols.forEach(symbolData => {
                         const listItem = document.createElement('li');
                         const link = document.createElement('a');
                         
@@ -81,51 +84,17 @@
                         link.href = symbolData.url;
                         link.innerHTML = `
                             <div class="symbol-content">
-                                <span class="symbol-text">${symbolData.symbol}</span>
-                                <span class="exchange-tag">${symbolData.exchange}</span>
+                                <div class="symbol-line">
+                                    <span class="symbol-text">${symbolData.symbol}</span>
+                                    <span class="exchange-tag">${symbolData.exchange}</span>
+                                </div>
+                                <span class="company-name">${symbolData.company_name || ''}</span>
                             </div>
                         `;
                         
                         listItem.appendChild(link);
                         dropdownMenu.appendChild(listItem);
                     });
-                    
-                    // Add separator and database utilities
-                    const separator = document.createElement('li');
-                    separator.innerHTML = '<hr class="dropdown-divider">';
-                    dropdownMenu.appendChild(separator);
-                    
-                    // Add database utilities header
-                    const dbHeader = document.createElement('li');
-                    dbHeader.innerHTML = '<div class="dropdown-header">Database Utilities</div>';
-                    dropdownMenu.appendChild(dbHeader);
-                    
-                    // Add database utility items
-                    const dbUtilities = [
-                        { command: 'reset_failed_ai', icon: 'bi-arrow-clockwise', text: 'Reset Failed AI Analysis' },
-                        { command: 'reset_processing_ai', icon: 'bi-hourglass-split', text: 'Reset Processing AI' },
-                        { command: 'cleanup_insights', icon: 'bi-trash', text: 'Cleanup Old Insights' },
-                        { command: 'export_data', icon: 'bi-download', text: 'Export Database' },
-                        { command: 'import_data', icon: 'bi-upload', text: 'Import Database' }
-                    ];
-                    
-                    dbUtilities.forEach(util => {
-                        const listItem = document.createElement('li');
-                        const link = document.createElement('a');
-                        
-                        link.className = 'dropdown-item utility-item';
-                        link.href = '#';
-                        link.dataset.command = util.command;
-                        link.innerHTML = `
-                            <i class="bi ${util.icon}"></i>
-                            <span>${util.text}</span>
-                        `;
-                        
-                        listItem.appendChild(link);
-                        dropdownMenu.appendChild(listItem);
-                    });
-                    
-
                     
                 } else {
                     console.error('Failed to load symbols:', data.error || 'Unknown error');
@@ -137,6 +106,54 @@
                 const dropdownMenu = document.getElementById('symbolsDropdownMenu');
                 dropdownMenu.innerHTML = '<li><div class="dropdown-header text-danger">Failed to load symbols</div></li>';
             }
+        }
+        
+        /**
+         * 
+         * ┌─────────────────────────────────────┐
+         * │    ENRICH_SYMBOLS_WITH_NAMES       │
+         * └─────────────────────────────────────┘
+         * Enrich symbol data with company names from TradingView
+         * 
+         * Uses the same API as the autocomplete dropdown to fetch
+         * full symbol descriptions and company names.
+         */
+        async function enrichSymbolsWithCompanyNames(symbols) {
+            const enrichedSymbols = [];
+            
+            for (const symbolData of symbols) {
+                try {
+                    // Use the same API call as autocomplete to get full symbol info
+                    const response = await fetch(`/api/scraping/symbols/search?query=${encodeURIComponent(symbolData.symbol)}`);
+                    const searchData = await response.json();
+                    
+                    if (searchData.suggestions && searchData.suggestions.length > 0) {
+                        // Find the best match for this symbol
+                        const bestMatch = searchData.suggestions.find(suggestion => 
+                            suggestion.symbol.toUpperCase() === symbolData.symbol.toUpperCase()
+                        );
+                        
+                        if (bestMatch) {
+                            enrichedSymbols.push({
+                                ...symbolData,
+                                company_name: bestMatch.description || ''
+                            });
+                        } else {
+                            // Fallback to original data
+                            enrichedSymbols.push(symbolData);
+                        }
+                    } else {
+                        // Fallback to original data
+                        enrichedSymbols.push(symbolData);
+                    }
+                } catch (error) {
+                    console.warn(`Failed to enrich symbol ${symbolData.symbol}:`, error);
+                    // Fallback to original data
+                    enrichedSymbols.push(symbolData);
+                }
+            }
+            
+            return enrichedSymbols;
         }
         
         // Populate dropdown when page loads

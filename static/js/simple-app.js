@@ -167,6 +167,36 @@ class SimpleApp {
                 this.handleScraping(new FormData(scrapingForm));
             });
         }
+
+        // Table row clicks - navigate to detail page
+        this.setupRowClickHandlers();
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │    SETUP ROW CLICK HANDLERS         │
+     *  └─────────────────────────────────────┘
+     *  Setup event handlers for table row clicks
+     */
+    setupRowClickHandlers() {
+        // Add click handlers to insight rows
+        document.querySelectorAll('.insight-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                // Don't navigate if user clicked on an interactive element
+                if (e.target.closest('button, a, .btn, .clickable')) {
+                    return;
+                }
+                
+                const insightId = row.dataset.insightId;
+                if (insightId) {
+                    window.location.href = `/insight/${insightId}`;
+                }
+            });
+            
+            // Add cursor pointer to indicate clickable rows
+            row.style.cursor = 'pointer';
+        });
     }
 
     /**
@@ -324,8 +354,8 @@ class SimpleApp {
                     // Simply replace the entire table body content
                     currentTable.innerHTML = newTable.innerHTML;
                     
-                    // Re-setup event listeners for new content
-                    this.setupEventListeners();
+                    // Re-setup row click handlers for new content
+                    this.setupRowClickHandlers();
                     
                     // Update ages for new content
                     this.updateAges();
@@ -376,21 +406,28 @@ class SimpleApp {
         if (!dropdown) {
             dropdown = document.createElement('div');
             dropdown.id = 'symbolSuggestions';
-            dropdown.className = 'symbol-suggestions';
+            dropdown.className = 'autocomplete-dropdown';
             document.getElementById('symbolInput').parentNode.appendChild(dropdown);
         }
+        
+        dropdown.style.display = 'block';
 
         dropdown.innerHTML = suggestions.map(suggestion => `
-            <div class="suggestion-item" 
+            <div class="autocomplete-item" 
                  data-symbol="${suggestion.symbol}" 
                  data-exchange="${suggestion.exchange}">
-                <strong>${suggestion.symbol}</strong> - ${suggestion.exchange}
-                <small>${suggestion.description}</small>
+                <div class="symbol-content">
+                    <div class="symbol-line">
+                        <span class="symbol-text">${suggestion.symbol}</span>
+                        <span class="exchange-tag">${suggestion.exchange}</span>
+                    </div>
+                    <span class="company-name">${suggestion.description || ''}</span>
+                </div>
             </div>
         `).join('');
 
         // Add click handlers
-        dropdown.querySelectorAll('.suggestion-item').forEach(item => {
+        dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
             item.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();

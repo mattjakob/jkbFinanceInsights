@@ -99,7 +99,6 @@ if TASK_PROCESSING_TIMEOUT < 1000:  # Less than 1 second
 elif TASK_PROCESSING_TIMEOUT > 3600000:  # More than 1 hour
     TASK_PROCESSING_TIMEOUT = 3600000
     print(f"Warning: TASK_PROCESSING_TIMEOUT too high, setting to maximum 3600000ms (1 hour)")
-TASK_CLEANUP_DAYS = int(os.getenv("TASK_CLEANUP_DAYS", 7))
 TASK_PENDING_TIMEOUT = int(os.getenv("TASK_PENDING_TIMEOUT", 3600000))  # Default: 1 hour in milliseconds
 # Validate TASK_PENDING_TIMEOUT is reasonable
 if TASK_PENDING_TIMEOUT < 60000:  # Less than 1 minute
@@ -146,23 +145,7 @@ TRADINGVIEW_CHART_TIMEZONE = os.getenv("TRADINGVIEW_CHART_TIMEZONE", "America/Ne
 # =============================================================================
 # DEBUG AND LOGGING
 # =============================================================================
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
-LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
-DEBUGGER_ENABLED = os.getenv("DEBUGGER_ENABLED", "true").lower() == "true"
-
-# =============================================================================
-# SECURITY AND RATE LIMITING
-# =============================================================================
-RATE_LIMIT_REQUESTS_PER_MINUTE = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", 100))
-CORS_ENABLED = os.getenv("CORS_ENABLED", "true").lower() == "true"
-CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",")
-
-# =============================================================================
-# DEVELOPMENT SETTINGS
-# =============================================================================
-DEV_MODE = os.getenv("DEV_MODE", "true").lower() == "true"
-FRONTEND_HOT_RELOAD = os.getenv("FRONTEND_HOT_RELOAD", "true").lower() == "true"
-SHOW_DETAILED_ERRORS = os.getenv("SHOW_DETAILED_ERRORS", "true").lower() == "true"
+# Removed unused DEBUG_MODE, LOG_LEVEL, DEBUGGER_ENABLED, RATE_LIMIT_REQUESTS_PER_MINUTE, CORS_ENABLED, CORS_ALLOWED_ORIGINS, DEV_MODE, FRONTEND_HOT_RELOAD, SHOW_DETAILED_ERRORS, TASK_CLEANUP_DAYS
 
 # =============================================================================
 # APPLICATION INFO
@@ -218,7 +201,7 @@ def get_server_info():
         "database": DATABASE_URL,
         "environment": {
             "mode": "development" if UVICORN_RELOAD else "production",
-            "debug": DEBUG_MODE
+            "debug": False # DEBUG_MODE is removed
         }
     }
 
@@ -236,7 +219,7 @@ def get_config_summary():
         },
         "environment": {
             "mode": "development" if UVICORN_RELOAD else "production",
-            "debug": DEBUG_MODE
+            "debug": False # DEBUG_MODE is removed
         },
         "uvicorn": {
             "host": UVICORN_HOST,
