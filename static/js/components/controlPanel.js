@@ -20,10 +20,9 @@
  */
 
 import { config } from '../core/config.js';
-
-import { insightsService } from '../services/insights.js';
-import { scrapingService } from '../services/scraping.js';
-import { analysisService } from '../services/analysis.js';
+import { apiService } from '../core/apiService.js';
+import { urlManager } from '../core/urlManager.js';
+import { refreshManager } from '../core/refreshManager.js';
 
 export class ControlPanel {
     constructor() {
@@ -111,7 +110,7 @@ export class ControlPanel {
             this.setButtonLoading(btn, 'UPDATING...');
             
             // Trigger analysis for current symbol
-            const result = await analysisService.triggerAnalysis(symbol);
+            const result = await apiService.triggerAnalysis(symbol);
             
             if (result.success) {
                 if (result.symbol) {
@@ -124,8 +123,8 @@ export class ControlPanel {
                     );
                 }
                 
-                // Reload page after delay
-                setTimeout(() => window.location.reload(), config.defaults.reloadDelay * 2);
+                // Refresh data after delay
+                setTimeout(() => refreshManager.refreshData(), config.defaults.reloadDelay);
             } else {
                 Debugger.error(`AI analysis failed: ${result.message}`);
             }
@@ -174,23 +173,16 @@ export class ControlPanel {
             // Show loading state
             this.setButtonLoading(btn, 'FETCHING...');
             
-            // Fetch insights
-            const result = await scrapingService.fetchInsights({
-                symbol,
-                exchange,
-                feedType,
-                maxItems
-            });
+            // Trigger scraping for symbol
+            const result = await apiService.triggerScraping(symbol);
             
             if (result.success) {
                 Debugger.success(
-                    `Fetch successful: ${result.created_insights} insights created, ${result.failed_items} failed`
+                    `Fetch successful: ${result.insights_found || 0} insights found, ${result.tasks_created || 0} tasks created`
                 );
                 
-                // Reload if insights were created
-                if (result.created_insights > 0) {
-                    setTimeout(() => window.location.reload(), config.defaults.reloadDelay);
-                }
+                // Refresh data after delay
+                setTimeout(() => refreshManager.refreshData(), config.defaults.reloadDelay);
             } else {
                 Debugger.error(`Fetch failed: ${result.message}`);
             }
@@ -292,30 +284,14 @@ export class ControlPanel {
         const symbol = symbolInput?.value.trim().toUpperCase() || '';
         const exchange = exchangeInput?.value.trim().toUpperCase() || '';
         
-        // Build new URL path using EXCHANGE:SYMBOL format
-        let newPath = '/';
-        if (symbol && exchange) {
-            const exchangeSymbol = `${exchange}:${symbol}`;
-            newPath = `/api/insights/${exchangeSymbol}`;
-            if (filterValue) {
-                // Replace spaces with underscores for URL
-                const urlSafeType = filterValue.replace(/\s+/g, '_');
-                newPath = `/api/insights/${exchangeSymbol}/${urlSafeType}`;
-            }
-        } else if (symbol) {
-            // Fallback to just symbol if no exchange
-            newPath = `/api/insights/${symbol}`;
-            if (filterValue) {
-                // Replace spaces with underscores for URL
-                const urlSafeType = filterValue.replace(/\s+/g, '_');
-                newPath = `/api/insights/${symbol}/${urlSafeType}`;
-            }
-        } else if (filterValue) {
-            // If no symbol but type is selected, stay on current page
-            return;
-        }
+        // Build and navigate to new URL
+        const filters = { symbol, exchange, type: filterValue };
+        const newPath = urlManager.buildInsightsURL(filters);
         
-        window.location.href = newPath;
+        // Only navigate if we have a valid path
+        if (newPath !== '/' || !filterValue) {
+            urlManager.navigateTo(newPath);
+        }
     }
 
 
