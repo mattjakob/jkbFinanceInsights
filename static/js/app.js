@@ -20,18 +20,18 @@
  */
 
 import { config } from './core/config.js';
-import { refreshManager } from './core/refreshManager.js';
-import { apiService } from './core/apiService.js';
-import { urlManager } from './core/urlManager.js';
 
 import { ControlPanel } from './components/controlPanel.js';
 import { InsightsTable } from './components/insightsTable.js';
 import { StatusBar } from './components/statusBar.js';
 import { SymbolSearch } from './components/symbolSearch.js';
 
+import { insightsService } from './services/insights.js';
+
 class App {
     constructor() {
         this.components = {};
+        this.refreshInterval = null;
     }
 
     /**
@@ -63,20 +63,12 @@ class App {
                 this.components.symbolSearch = new SymbolSearch(symbolInput, exchangeInput);
             }
             
-            // Register refreshable components
-            refreshManager.registerComponent(this.components.insightsTable);
-            refreshManager.registerComponent(this.components.statusBar);
-            
             // Initialize additional features
             this.initializeResetButtons();
+            this.initializeAutoRefresh();
             
-            // Load initial data and start auto-refresh
-            await refreshManager.refreshData();
-            
-            // Start auto-refresh if enabled
-            if (config.defaults.autoRefresh && localStorage.getItem('autoRefresh') !== 'false') {
-                refreshManager.startAutoRefresh();
-            }
+            // Load initial data
+            await this.loadInitialData();
             
         } catch (error) {
             console.error('Error during initialization:', error);
@@ -150,16 +142,20 @@ class App {
             button.textContent = 'Resetting...';
             button.disabled = true;
             
-            // Reset AI analysis using API service
-            const result = await apiService.makeRequest(`/api/insights/${insightId}/reset-ai`, {
-                method: 'POST'
-            });
+            // Reset AI analysis
+            const result = await insightsService.resetAIAnalysis(insightId);
             
             if (result.success) {
                 Debugger.success(`AI analysis reset for insight #${insightId}`);
                 
-                // Refresh data to show updated state
-                await refreshManager.refreshData();
+                // Update the row
+                const row = button.closest('tr');
+                if (row) {
+                    const aiCell = row.querySelector('.ai-analysis-cell');
+                    if (aiCell) {
+                        aiCell.innerHTML = '<span class="text-muted">Pending</span>';
+                    }
+                }
             } else {
                 Debugger.error(`Failed to reset AI analysis: ${result.message}`);
             }
@@ -172,7 +168,188 @@ class App {
         }
     }
 
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      LOAD INITIAL DATA              │
+     *  └─────────────────────────────────────┘
+     *  Loads initial data from API
+     * 
+     *  Parameters:
+     *  - None
+     * 
+     *  Returns:
+     *  - Promise
+     */
+    async loadInitialData() {
+        try {
+            // Extract filters from path
+            const pathParts = window.location.pathname.split('/').filter(p => p);
+            let exchangeSymbol = '';
+            let type = '';
+            
+            // Check if we're on a filtered route
+            if (pathParts[0] === 'api' && pathParts[1] === 'insights') {
+                exchangeSymbol = pathParts[2] || '';
+                type = pathParts[3] ? pathParts[3].replace(/_/g, ' ') : '';
+            }
+            
+            // Parse exchange-symbol format
+            let symbol = '';
+            let exchange = '';
+            if (exchangeSymbol && exchangeSymbol.includes(':')) {
+                const parts = exchangeSymbol.split(':', 2);
+                exchange = parts[0];
+                symbol = parts[1];
+            } else if (exchangeSymbol) {
+                symbol = exchangeSymbol;
+            }
+            
+            // Fetch insights
+            const insights = await insightsService.fetchInsights(symbol, type);
+            
+            // Update cache
+            insightsService.updateCache(insights);
+        } catch (error) {
+            console.error('Error loading initial data:', error);
+        }
+    }
 
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │    INITIALIZE AUTO REFRESH          │
+     *  └─────────────────────────────────────┘
+     *  Sets up automatic page refresh
+     * 
+     *  Parameters:
+     *  - None
+     * 
+     *  Returns:
+     *  - None
+     */
+    initializeAutoRefresh() {
+        // Check for auto-refresh preference from config
+        const autoRefreshEnabled = window.AppConfig?.app_auto_refresh !== false && 
+                                 localStorage.getItem('autoRefresh') !== 'false';
+        
+        if (autoRefreshEnabled) {
+            Debugger.info('Auto-refresh enabled, starting refresh interval');
+            this.startAutoRefresh();
+        } else {
+            Debugger.info('Auto-refresh disabled by user preference or configuration');
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │       START AUTO REFRESH            │
+     *  └─────────────────────────────────────┘
+     *  Starts automatic refresh interval
+     * 
+     *  Parameters:
+     *  - None
+     * 
+     *  Returns:
+     *  - None
+     */
+    startAutoRefresh() {
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
+        
+        // Use the new simplified config
+        const refreshInterval = window.AppConfig?.frontend_table_refresh_interval || config.refreshIntervals.table;
+        
+        this.refreshInterval = setInterval(async () => {
+            try {
+                // Refresh data
+                await this.refreshData();
+            } catch (error) {
+                console.error('Auto-refresh error:', error);
+            }
+        }, refreshInterval);
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │         REFRESH DATA                │
+     *  └─────────────────────────────────────┘
+     *  Refreshes application data
+     * 
+     *  Parameters:
+     *  - None
+     * 
+     *  Returns:
+     *  - Promise
+     */
+    async refreshData() {
+        try {
+            // Extract filters from path
+            const pathParts = window.location.pathname.split('/').filter(p => p);
+            let exchangeSymbol = '';
+            let type = '';
+            
+            // Check if we're on a filtered route
+            if (pathParts[0] === 'api' && pathParts[1] === 'insights') {
+                exchangeSymbol = pathParts[2] || '';
+                type = pathParts[3] ? pathParts[3].replace(/_/g, ' ') : '';
+            }
+            
+            // Parse exchange-symbol format
+            let symbol = '';
+            let exchange = '';
+            if (exchangeSymbol && exchangeSymbol.includes(':')) {
+                const parts = exchangeSymbol.split(':', 2);
+                exchange = parts[0];
+                symbol = parts[1];
+            } else if (exchangeSymbol) {
+                symbol = exchangeSymbol;
+            }
+            
+            // Fetch fresh insights
+            const insights = await insightsService.fetchInsights(symbol, type);
+            
+            // Validate data before updating table
+            if (insights && Array.isArray(insights)) {
+                // Update table
+                if (this.components.insightsTable) {
+                    await this.components.insightsTable.updateTableRows(insights);
+                }
+                
+                // Update cache
+                insightsService.updateCache(insights);
+                
+            } else {
+                console.warn('Auto-refresh received invalid data, skipping table update');
+            }
+        } catch (error) {
+            console.error('Error refreshing data:', error);
+            // Don't update table on error to preserve existing data
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │         STOP AUTO REFRESH           │
+     *  └─────────────────────────────────────┘
+     *  Stops automatic refresh
+     * 
+     *  Parameters:
+     *  - None
+     * 
+     *  Returns:
+     *  - None
+     */
+    stopAutoRefresh() {
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+            this.refreshInterval = null;
+        }
+    }
 
     /**
      * 
@@ -188,8 +365,7 @@ class App {
      *  - None
      */
     cleanup() {
-        // Clean up refresh manager
-        refreshManager.cleanup();
+        this.stopAutoRefresh();
         
         // Clean up components
         if (this.components.insightsTable) {

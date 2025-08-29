@@ -257,22 +257,7 @@ export class InsightsTable {
         });
     }
 
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │            REFRESH                  │
-     *  └─────────────────────────────────────┘
-     *  Refresh table with new data
-     * 
-     *  Parameters:
-     *  - insights: Array of insights
-     * 
-     *  Returns:
-     *  - Promise
-     */
-    async refresh(insights) {
-        return this.updateTableRows(insights);
-    }
+
 
     /**
      * 

@@ -19,8 +19,7 @@
  *  - Shows system status and messages
  */
 
-import { apiService } from '../core/apiService.js';
-import { config } from '../core/config.js';
+import { tasksService } from '../services/tasks.js';
 
 export class StatusBar {
     constructor() {
@@ -42,25 +41,6 @@ export class StatusBar {
     /**
      * 
      *  ┌─────────────────────────────────────┐
-     *  │            REFRESH                  │
-     *  └─────────────────────────────────────┘
-     *  Refresh status bar (for RefreshManager)
-     * 
-     *  Parameters:
-     *  - data: Refresh data (optional)
-     * 
-     *  Returns:
-     *  - Promise
-     */
-    async refresh(data) {
-        // Update task status
-        await this.updateTaskStatus();
-        return Promise.resolve();
-    }
-
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
      *  │         INITIALIZE                  │
      *  └─────────────────────────────────────┘
      *  Initializes the status bar
@@ -74,7 +54,10 @@ export class StatusBar {
     initialize() {
         this.startTimeUpdates();
         this.startDebuggerUpdates();
-        this.startTaskUpdates();
+        
+        // Start task service updates and fetch initial data
+        tasksService.startAutoUpdates(5000);
+        tasksService.fetchTaskStats(); // Fetch immediately
         
         // Make this instance globally available for debugger integration
         window.statusBar = this;
@@ -98,106 +81,13 @@ export class StatusBar {
         this.updateTime();
         
         // Update every second
-        const updateInterval = config.refreshIntervals.status;
+        const updateInterval = window.AppConfig?.frontend_status_refresh_interval || 1000;
         this.updateInterval = setInterval(() => {
             this.updateTime();
         }, updateInterval);
     }
 
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │       START TASK UPDATES            │
-     *  └─────────────────────────────────────┘
-     *  Starts automatic task status updates
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - None
-     */
-    startTaskUpdates() {
-        // Initial update
-        this.updateTaskStatus();
-        
-        // Update periodically
-        const interval = config.refreshIntervals.status * 2; // Less frequent than time
-        this.taskUpdateInterval = setInterval(() => {
-            this.updateTaskStatus();
-        }, interval);
-    }
 
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │       UPDATE TASK STATUS            │
-     *  └─────────────────────────────────────┘
-     *  Updates task status counts
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - Promise
-     */
-    async updateTaskStatus() {
-        try {
-            const stats = await apiService.getTaskStatus();
-            
-            if (stats && stats.stats) {
-                // Update counts
-                if (this.statusRunning) {
-                    this.statusRunning.textContent = stats.stats.running || 0;
-                }
-                if (this.statusQueued) {
-                    this.statusQueued.textContent = stats.stats.pending || 0;
-                }
-                if (this.statusFailed) {
-                    this.statusFailed.textContent = stats.stats.failed || 0;
-                }
-                
-                // Update icon based on status
-                this.updateStatusIcon(stats.stats);
-            }
-        } catch (error) {
-            console.error('Error updating task status:', error);
-        }
-    }
-
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │       UPDATE STATUS ICON            │
-     *  └─────────────────────────────────────┘
-     *  Updates status icon based on task stats
-     * 
-     *  Parameters:
-     *  - stats: Task statistics
-     * 
-     *  Returns:
-     *  - None
-     */
-    updateStatusIcon(stats) {
-        if (!this.statusIcon) return;
-        
-        // Remove all status classes
-        this.statusIcon.className = 'bi';
-        
-        if (stats.running > 0) {
-            // Active processing
-            this.statusIcon.classList.add('bi-lightning-charge-fill', 'text-warning');
-        } else if (stats.pending > 0) {
-            // Tasks waiting
-            this.statusIcon.classList.add('bi-hourglass-split', 'text-info');
-        } else if (stats.failed > 0) {
-            // Has failures
-            this.statusIcon.classList.add('bi-exclamation-triangle-fill', 'text-danger');
-        } else {
-            // All clear
-            this.statusIcon.classList.add('bi-check-circle-fill', 'text-success');
-        }
-    }
 
     /**
      * 
@@ -543,8 +433,6 @@ export class StatusBar {
      */
     destroy() {
         this.stopUpdates();
-        if (this.taskUpdateInterval) {
-            clearInterval(this.taskUpdateInterval);
-        }
+        tasksService.stopAutoUpdates();
     }
 }
