@@ -112,11 +112,7 @@
 
 
 
-<!-- Message Area -->
-<div id="messageArea" class="alert alert-dismissible fade show d-none" role="alert">
-    <span id="messageText"></span>
-    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-</div>
+
 
 <!-- Control Panel -->
 <div class="control-panel mb-4">
@@ -245,59 +241,94 @@
     </div>
 </div>
 
-<!-- Report Block -->
+<!-- Report Block - Enhanced Visual Design -->
 <div class="report-block mb-3 {% if not latest_report %}d-none{% endif %}" id="reportBlock">
-    <div class="terminal-section">
-        <div class="section-header">
-            <span class="section-label">REPORT</span>
-            <span class="report-symbol" id="reportSymbol">{% if latest_report %}{{ latest_report.symbol }}{% endif %}</span>
+    <div class="report-container">
+        <div class="report-header">
+            <div class="report-title-section">
+                <div class="report-badge">
+                    <span class="report-icon">▢</span>
+                    <span class="report-label">REPORT</span>
+                </div>
+                <div class="report-symbol-section">
+                    <span class="report-symbol" id="reportSymbol">{% if latest_report %}{{ latest_report.symbol }}{% endif %}</span>
+                    <span class="report-time" id="reportTimeFetched">
+                        {% if latest_report %}{{ latest_report.timeFetched }}{% else %}-{% endif %}
+                    </span>
+                </div>
+            </div>
         </div>
-        <div class="terminal-content">
-            <div id="reportContent">
-                <div class="report-fields">
-                    <div class="report-field">
-                        <span class="field-label">Time Fetched:</span>
-                        <span class="field-value" id="reportTimeFetched">
-                            {% if latest_report %}{{ latest_report.timeFetched }}{% else %}-{% endif %}
-                        </span>
-                    </div>
-                    <div class="report-field">
-                        <span class="field-label">AI Summary:</span>
-                        <span class="field-value" id="reportAISummary">
-                            {% if latest_report and latest_report.AISummary %}{{ latest_report.AISummary }}{% else %}-{% endif %}
-                        </span>
-                    </div>
-                    <div class="report-field">
-                        <span class="field-label">AI Action:</span>
-                        <span class="field-value action-badge" id="reportAIAction">
+        
+        <div class="report-content" id="reportContent">
+            <div class="summary-section">
+                <div class="section-indicator">
+                    <span class="indicator-bar"></span>
+                    <span class="section-title">AI ANALYSIS</span>
+                </div>
+                <div class="summary-text" id="reportAISummary">
+                    {% if latest_report and latest_report.AISummary %}{{ latest_report.AISummary }}{% else %}No AI summary available{% endif %}
+                </div>
+            </div>
+            
+            <div class="metrics-section">
+                <div class="section-indicator">
+                    <span class="indicator-bar"></span>
+                    <span class="section-title">METRICS</span>
+                </div>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card action-card">
+                        <div class="metric-header">
+                            <span class="metric-icon">→</span>
+                            <span class="metric-title">ACTION</span>
+                        </div>
+                        <div class="metric-content" id="reportAIAction">
                             {% if latest_report and latest_report.AIAction %}{{ action_badge(latest_report.AIAction) }}{% else %}-{% endif %}
-                        </span>
+                        </div>
                     </div>
-                    <div class="report-field">
-                        <span class="field-label">AI Confidence:</span>
-                        <span class="field-value confidence-badge" id="reportAIConfidence">
+                    
+                    <div class="metric-card confidence-card">
+                        <div class="metric-header">
+                            <span class="metric-icon">%</span>
+                            <span class="metric-title">CONFIDENCE</span>
+                        </div>
+                        <div class="metric-content confidence-value" id="reportAIConfidence">
                             {% if latest_report and latest_report.AIConfidence is not none %}{{ "%.0f%%"|format(latest_report.AIConfidence * 100) }}{% else %}-{% endif %}
-                        </span>
+                        </div>
                     </div>
-                    <div class="report-field">
-                        <span class="field-label">AI Event Time:</span>
-                        <span class="field-value" id="reportAIEventTime">
+                    
+                    <div class="metric-card event-card">
+                        <div class="metric-header">
+                            <span class="metric-icon">⏰</span>
+                            <span class="metric-title">EVENT TIME</span>
+                        </div>
+                        <div class="metric-content" id="reportAIEventTime">
                             {% if latest_report and latest_report.AIEventTime %}{{ latest_report.AIEventTime }}{% else %}-{% endif %}
-                        </span>
+                        </div>
                     </div>
-                    <div class="report-field">
-                        <span class="field-label">AI Levels:</span>
-                        <span class="field-value levels-text" id="reportAILevels">
-                            {% if latest_report and latest_report.AILevels %}{{ latest_report.AILevels }}{% else %}-{% endif %}
-                        </span>
-                    </div>
-                    <div class="report-field">
-                        <span class="field-label">AI Analysis Status:</span>
-                        <span class="field-value status-badge" id="reportAIAnalysisStatus">
-                            {% if latest_report and latest_report.TaskStatus %}{{ latest_report.TaskStatus }}{% else %}-{% endif %}
-                        </span>
+                    
+                    <div class="metric-card status-card">
+                        <div class="metric-header">
+                            <span class="metric-icon">●</span>
+                            <span class="metric-title">STATUS</span>
+                        </div>
+                        <div class="metric-content status-indicator" id="reportAIAnalysisStatus">
+                            {% if latest_report and latest_report.TaskStatus %}{{ latest_report.TaskStatus|upper }}{% else %}-{% endif %}
+                        </div>
                     </div>
                 </div>
+            </div>
+            
+            <div class="levels-section" id="reportAILevels">
+                {% if latest_report and latest_report.AILevels %}
+                    <div class="section-indicator">
+                        <span class="indicator-bar"></span>
+                        <span class="section-title">PRICE LEVELS</span>
+                    </div>
+                    <div class="levels-display">
+                        <div class="levels-content">{{ latest_report.AILevels }}</div>
+                    </div>
+                {% endif %}
             </div>
         </div>
     </div>

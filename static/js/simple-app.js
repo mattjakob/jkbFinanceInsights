@@ -256,20 +256,77 @@ class SimpleApp {
      *  ┌─────────────────────────────────────┐
      *  │      UPDATE DEBUG STATUS            │
      *  └─────────────────────────────────────┘
-     *  Update debug status display
+     *  Update debug status display in status bar
      */
     async updateDebugStatus() {
         try {
             const response = await fetch('/api/debug-status');
             const data = await response.json();
             
-            const statusElement = document.getElementById('debugStatus');
-            if (statusElement && data.message) {
-                statusElement.textContent = data.message;
-                statusElement.className = `status ${data.status || 'info'}`;
+            const statusMessageElement = document.getElementById('statusMessage');
+            const statusIconElement = document.getElementById('statusIcon');
+            
+            if (statusMessageElement && data.message) {
+                statusMessageElement.textContent = data.message.toUpperCase();
+                
+                // Update icon based on status
+                if (statusIconElement) {
+                    const iconClass = this.getStatusIcon(data.status);
+                    statusIconElement.innerHTML = `<i class="${iconClass}"></i>`;
+                }
             }
         } catch (error) {
             console.warn('Failed to update debug status:', error);
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      GET STATUS ICON                │
+     *  └─────────────────────────────────────┘
+     *  Get appropriate icon for status type
+     */
+    getStatusIcon(status) {
+        switch (status) {
+            case 'success':
+                return 'bi bi-check-circle';
+            case 'error':
+                return 'bi bi-x-circle';
+            case 'warning':
+                return 'bi bi-exclamation-triangle';
+            default:
+                return 'bi bi-terminal';
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      SEND DEBUG MESSAGE             │
+     *  └─────────────────────────────────────┘
+     *  Send message to centralized debugger
+     */
+    async sendDebugMessage(message, status = 'info') {
+        try {
+            // Send to server debugger (for console logging)
+            await fetch('/api/debug-message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    status: status
+                })
+            });
+            
+            // Update local status display immediately
+            this.updateDebugStatus();
+        } catch (error) {
+            console.warn('Failed to send debug message:', error);
+            // Fallback to console log
+            console.log(`[${status.toUpperCase()}]`, message);
         }
     }
 
@@ -512,14 +569,14 @@ class SimpleApp {
             const result = await response.json();
             
             if (result.success) {
-                this.showMessage(`Successfully fetched ${result.created_insights} new insights`, 'success');
+                this.sendDebugMessage(`Successfully fetched ${result.created_insights} new insights`, 'success');
                 // Refresh table after successful scraping
                 setTimeout(() => this.refreshTable(), 1000);
             } else {
-                this.showMessage(`Scraping failed: ${result.message}`, 'error');
+                this.sendDebugMessage(`Scraping failed: ${result.message}`, 'error');
             }
         } catch (error) {
-            this.showMessage(`Scraping failed: ${error.message}`, 'error');
+            this.sendDebugMessage(`Scraping failed: ${error.message}`, 'error');
         } finally {
             if (submitButton) {
                 submitButton.disabled = false;
@@ -544,13 +601,13 @@ class SimpleApp {
             const result = await response.json();
             
             if (result.success) {
-                this.showMessage('AI analysis reset successfully', 'success');
+                this.sendDebugMessage('AI analysis reset successfully', 'success');
                 setTimeout(() => this.refreshTable(), 1000);
             } else {
-                this.showMessage('Failed to reset AI analysis', 'error');
+                this.sendDebugMessage('Failed to reset AI analysis', 'error');
             }
         } catch (error) {
-            this.showMessage(`Reset failed: ${error.message}`, 'error');
+            this.sendDebugMessage(`Reset failed: ${error.message}`, 'error');
         }
     }
 
@@ -568,13 +625,13 @@ class SimpleApp {
             });
 
             if (response.ok) {
-                this.showMessage('Insight deleted successfully', 'success');
+                this.sendDebugMessage('Insight deleted successfully', 'success');
                 setTimeout(() => this.refreshTable(), 1000);
             } else {
-                this.showMessage('Failed to delete insight', 'error');
+                this.sendDebugMessage('Failed to delete insight', 'error');
             }
         } catch (error) {
-            this.showMessage(`Delete failed: ${error.message}`, 'error');
+            this.sendDebugMessage(`Delete failed: ${error.message}`, 'error');
         }
     }
 
@@ -595,7 +652,7 @@ class SimpleApp {
         const maxItems = parseInt(itemsSelect?.value) || this.config.appMaxItems || 50;
         
         if (!symbol) {
-            this.showMessage('Please enter a symbol', 'warning');
+            this.sendDebugMessage('Please enter a symbol', 'warning');
             return;
         }
 
@@ -616,13 +673,13 @@ class SimpleApp {
             const result = await response.json();
             
             if (result.success) {
-                this.showMessage(`Successfully fetched ${result.created_insights} new insights`, 'success');
+                this.sendDebugMessage(`Successfully fetched ${result.created_insights} new insights`, 'success');
                 setTimeout(() => this.refreshTable(), 1000);
             } else {
-                this.showMessage(`Fetch failed: ${result.message}`, 'error');
+                this.sendDebugMessage(`Fetch failed: ${result.message}`, 'error');
             }
         } catch (error) {
-            this.showMessage(`Fetch failed: ${error.message}`, 'error');
+            this.sendDebugMessage(`Fetch failed: ${error.message}`, 'error');
         }
     }
 
@@ -652,12 +709,12 @@ class SimpleApp {
             const result = await response.json();
             
             if (result.success) {
-                this.showMessage(`AI analysis task queued (${result.tasks_created} tasks for ${result.insights_found} insights)`, 'success');
+                this.sendDebugMessage(`AI analysis task queued (${result.tasks_created} tasks for ${result.insights_found} insights)`, 'success');
             } else {
-                this.showMessage(`Analysis failed: ${result.message}`, 'error');
+                this.sendDebugMessage(`Analysis failed: ${result.message}`, 'error');
             }
         } catch (error) {
-            this.showMessage(`Analysis failed: ${error.message}`, 'error');
+            this.sendDebugMessage(`Analysis failed: ${error.message}`, 'error');
         }
     }
 
@@ -673,7 +730,7 @@ class SimpleApp {
         const exchange = document.getElementById('exchangeInput')?.value.trim();
         
         if (!symbol) {
-            this.showMessage('Please enter a symbol for report generation', 'warning');
+            this.sendDebugMessage('Please enter a symbol for report generation', 'warning');
             return;
         }
 
@@ -708,7 +765,7 @@ class SimpleApp {
             
             if (result.success) {
                 // Show success message and task info
-                this.showMessage(`AI report generation task created for ${result.symbol} (${result.insights_count} insights)`, 'success');
+                this.sendDebugMessage(`AI report generation task created for ${result.symbol} (${result.insights_count} insights)`, 'success');
                 
                 // Try to get the latest report after a short delay
                 setTimeout(async () => {
@@ -751,13 +808,13 @@ class SimpleApp {
                     `;
                 }
             } else {
-                this.showMessage(`Report generation failed: ${result.message || result.error || 'Unknown error'}`, 'error');
+                this.sendDebugMessage(`Report generation failed: ${result.message || result.error || 'Unknown error'}`, 'error');
                 if (generateBlock) {
                     generateBlock.classList.add('d-none');
                 }
             }
         } catch (error) {
-            this.showMessage(`Generate failed: ${error.message}`, 'error');
+            this.sendDebugMessage(`Generate failed: ${error.message}`, 'error');
             if (generateBlock) {
                 generateBlock.classList.add('d-none');
             }
@@ -787,59 +844,19 @@ class SimpleApp {
             const result = await response.json();
             
             if (result.success) {
-                this.showMessage(`Deleted ${result.deleted_count} insights`, 'success');
+                this.sendDebugMessage(`Deleted ${result.deleted_count} insights`, 'success');
                 setTimeout(() => this.refreshTable(), 1000);
             } else {
-                this.showMessage(`Delete failed: ${result.message || 'Unknown error'}`, 'error');
+                this.sendDebugMessage(`Delete failed: ${result.message || 'Unknown error'}`, 'error');
             }
         } catch (error) {
-            this.showMessage(`Delete failed: ${error.message}`, 'error');
+            this.sendDebugMessage(`Delete failed: ${error.message}`, 'error');
         }
     }
 
 
 
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │        SHOW MESSAGE                 │
-     *  └─────────────────────────────────────┘
-     *  Show a temporary message
-     */
-    showMessage(message, type = 'info') {
-        const messageArea = document.getElementById('messageArea');
-        const messageText = document.getElementById('messageText');
-        
-        if (messageArea && messageText) {
-            // Map our types to Bootstrap alert classes
-            const typeMap = {
-                'info': 'alert-info',
-                'success': 'alert-success',
-                'warning': 'alert-warning',
-                'error': 'alert-danger'
-            };
-            
-            // Remove all alert type classes
-            messageArea.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger');
-            
-            // Add the appropriate class
-            messageArea.classList.add(typeMap[type] || 'alert-info');
-            
-            // Set message text
-            messageText.textContent = message;
-            
-            // Show the message
-            messageArea.classList.remove('d-none');
-            
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                messageArea.classList.add('d-none');
-            }, 5000);
-        } else {
-            // Fallback to console log
-            console.log(`[${type.toUpperCase()}]`, message);
-        }
-    }
+
 
     /**
      * 

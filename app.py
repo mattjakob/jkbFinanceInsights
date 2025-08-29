@@ -127,6 +127,19 @@ async def get_debug_status():
     from debugger import debugger
     return debugger.get_current_status()
 
+@app.post("/api/debug-message")
+async def send_debug_message(request: dict):
+    """Send debug message to centralized debugger"""
+    from debugger import debugger
+    
+    message = request.get('message', '')
+    status = request.get('status', 'info')
+    
+    if message:
+        debugger.debug(message, status)
+    
+    return {"success": True}
+
 
 @app.get("/api/symbols")
 async def get_normalized_symbols():

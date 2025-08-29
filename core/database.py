@@ -56,7 +56,7 @@ class DatabaseManager:
                 conn.execute("PRAGMA synchronous=NORMAL")
                 conn.execute("PRAGMA cache_size=10000")
                 conn.execute("PRAGMA temp_store=MEMORY")
-                debug_info("WAL mode enabled for database connection")
+                #debug_info("WAL mode enabled for database connection")
             except Exception as e:
                 debug_warning(f"Failed to enable WAL mode: {e}")
     
