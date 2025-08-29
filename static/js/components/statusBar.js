@@ -81,13 +81,11 @@ export class StatusBar {
         this.updateTime();
         
         // Update every second
-        const updateInterval = window.AppConfig?.frontend_status_refresh_interval || 1000;
+        const updateInterval = window.AppConfig?.frontend_status_update_interval || 1000;
         this.updateInterval = setInterval(() => {
             this.updateTime();
         }, updateInterval);
     }
-
-
 
     /**
      * 

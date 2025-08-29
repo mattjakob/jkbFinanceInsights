@@ -20,6 +20,8 @@
  */
 
 import { config } from '../core/config.js';
+
+import { insightsService } from '../services/insights.js';
 import { scrapingService } from '../services/scraping.js';
 import { analysisService } from '../services/analysis.js';
 
@@ -53,44 +55,30 @@ export class ControlPanel {
      *  - None
      */
     initializeEventListeners() {
-        console.log('Setting up ControlPanel event listeners...');
-        
         // Update button
         if (this.elements.updateBtn) {
-            console.log('Setting up update button listener');
             this.elements.updateBtn.addEventListener('click', () => this.handleUpdate());
         }
         
         // Fetch button
         if (this.elements.fetchBtn) {
-            console.log('Setting up fetch button listener');
             this.elements.fetchBtn.addEventListener('click', () => this.handleFetch());
         }
         
         // Delete button
         if (this.elements.deleteBtn) {
-            console.log('Setting up delete button listener');
             this.elements.deleteBtn.addEventListener('click', () => this.handleDelete());
         }
         
         // Generate button
         if (this.elements.generateBtn) {
-            console.log('Setting up generate button listener');
             this.elements.generateBtn.addEventListener('click', () => this.handleGenerate());
         }
         
         // Type filter
         if (this.elements.typeFilter) {
-            console.log('Setting up type filter listener');
-            this.elements.typeFilter.addEventListener('change', (e) => {
-                console.log('Type filter changed to:', e.target.value);
-                this.handleTypeFilterChange(e);
-            });
-        } else {
-            console.log('Type filter element not found');
+            this.elements.typeFilter.addEventListener('change', (e) => this.handleTypeFilterChange(e));
         }
-        
-        console.log('ControlPanel event listeners set up complete');
     }
 
     /**
@@ -111,11 +99,8 @@ export class ControlPanel {
         if (!btn || btn.disabled) return;
         
         try {
-            // Get current filters from UI
+            // Get current symbol from UI
             const symbol = this.elements.symbolInput?.value.trim().toUpperCase() || '';
-            const type = this.elements.typeFilter?.value || '';
-            
-            console.log('ANALYZE button - Symbol:', symbol, 'Type:', type);
             
             if (!symbol) {
                 Debugger.error('Symbol is required for analysis. Please enter a symbol first.');
@@ -125,14 +110,8 @@ export class ControlPanel {
             // Show loading state
             this.setButtonLoading(btn, 'UPDATING...');
             
-            // Trigger analysis for current symbol and type
-            const analysisData = { symbol };
-            if (type) {
-                analysisData.type = type;
-            }
-            
-            console.log('Sending analysis request with data:', analysisData);
-            const result = await analysisService.triggerAnalysis(analysisData);
+            // Trigger analysis for current symbol
+            const result = await analysisService.triggerAnalysis(symbol);
             
             if (result.success) {
                 if (result.symbol) {
@@ -307,16 +286,11 @@ export class ControlPanel {
      *  - None
      */
     handleTypeFilterChange(event) {
-        console.log('handleTypeFilterChange called with event:', event);
         const filterValue = event.target.value;
-        console.log('Filter value:', filterValue);
-        
         const symbolInput = document.getElementById('symbolInput');
         const exchangeInput = document.getElementById('exchangeInput');
         const symbol = symbolInput?.value.trim().toUpperCase() || '';
         const exchange = exchangeInput?.value.trim().toUpperCase() || '';
-        
-        console.log('Current values - Symbol:', symbol, 'Exchange:', exchange);
         
         // Build new URL path using EXCHANGE:SYMBOL format
         let newPath = '/';
@@ -338,11 +312,9 @@ export class ControlPanel {
             }
         } else if (filterValue) {
             // If no symbol but type is selected, stay on current page
-            console.log('No symbol provided, staying on current page');
             return;
         }
         
-        console.log('Navigating to new path:', newPath);
         window.location.href = newPath;
     }
 
