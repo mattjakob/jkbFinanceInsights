@@ -123,7 +123,7 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         raise
 
 
-async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
+async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kwargs) -> Dict[str, Any]:
     """
      ┌─────────────────────────────────────┐
      │      HANDLE_BULK_ANALYSIS           │
@@ -131,11 +131,11 @@ async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
      Handle bulk AI analysis
      
      Creates individual analysis tasks for insights
-     needing analysis. If symbol is provided, only
-     processes insights for that symbol.
+     needing analysis. Supports filtering by symbol and/or type.
      
      Parameters:
      - symbol: Optional symbol to filter insights
+     - type_filter: Optional type to filter insights
      
      Returns:
      - Dictionary with task creation results
@@ -150,7 +150,8 @@ async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
                 'success': True,
                 'insights_found': 0,
                 'tasks_created': 0,
-                'symbol': symbol
+                'symbol': symbol,
+                'type_filter': type_filter
             }
         
         # Filter by symbol if provided
@@ -159,13 +160,27 @@ async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
             insights = [insight for insight in insights if insight.symbol and insight.symbol.upper() == symbol]
             debug_info(f"Filtered to {len(insights)} insights for symbol {symbol}")
         
+        # Filter by type if provided
+        if type_filter:
+            type_filter = type_filter.upper()
+            insights = [insight for insight in insights if insight.type and insight.type.upper() == type_filter]
+            debug_info(f"Filtered to {len(insights)} insights for type {type_filter}")
+        
         if not insights:
-            debug_info(f"No insights need AI analysis for symbol {symbol}" if symbol else "No insights need AI analysis")
+            filter_desc = []
+            if symbol:
+                filter_desc.append(f"symbol {symbol}")
+            if type_filter:
+                filter_desc.append(f"type {type_filter}")
+            filter_text = " and ".join(filter_desc) if filter_desc else ""
+            
+            debug_info(f"No insights need AI analysis{' for ' + filter_text if filter_text else ''}")
             return {
                 'success': True,
                 'insights_found': 0,
                 'tasks_created': 0,
-                'symbol': symbol
+                'symbol': symbol,
+                'type_filter': type_filter
             }
         
         # Import task queue here
@@ -182,14 +197,22 @@ async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
             )
             task_ids.append(task_id)
         
-        debug_success(f"Created {len(task_ids)} AI analysis tasks for symbol {symbol}" if symbol else f"Created {len(task_ids)} AI analysis tasks")
+        filter_desc = []
+        if symbol:
+            filter_desc.append(f"symbol {symbol}")
+        if type_filter:
+            filter_desc.append(f"type {type_filter}")
+        filter_text = " for " + " and ".join(filter_desc) if filter_desc else ""
+        
+        debug_success(f"Created {len(task_ids)} AI analysis tasks{filter_text}")
         
         return {
             'success': True,
             'insights_found': len(insights),
             'tasks_created': len(task_ids),
             'task_ids': task_ids,
-            'symbol': symbol
+            'symbol': symbol,
+            'type_filter': type_filter
         }
         
     except Exception as e:

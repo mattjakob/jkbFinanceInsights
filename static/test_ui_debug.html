@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>UI Debug Test</title>
+</head>
+<body>
+    <h1>Testing UI Components</h1>
+    
+    <h2>Type Filter Test</h2>
+    <select id="typeFilter">
+        <option value="">ALL</option>
+        <option value="TD NEWS">TD NEWS</option>
+        <option value="TD IDEAS RECENT">TD IDEAS RECENT</option>
+    </select>
+    <div id="typeResult"></div>
+    
+    <h2>Symbol Input Test</h2>
+    <input type="text" id="symbolInput" placeholder="Enter symbol">
+    <input type="text" id="exchangeInput" placeholder="Enter exchange">
+    <div id="symbolResult"></div>
+    
+    <script type="module">
+        // Test if we can load the modules
+        try {
+            const { config } = await import('http://localhost:8001/static/js/core/config.js');
+            console.log('Config loaded:', config);
+            document.body.innerHTML += '<p style="color: green;">✓ Config loaded successfully</p>';
+        } catch (e) {
+            console.error('Config error:', e);
+            document.body.innerHTML += '<p style="color: red;">✗ Config failed: ' + e.message + '</p>';
+        }
+        
+        try {
+            const { ControlPanel } = await import('http://localhost:8001/static/js/components/controlPanel.js');
+            console.log('ControlPanel loaded');
+            document.body.innerHTML += '<p style="color: green;">✓ ControlPanel loaded successfully</p>';
+        } catch (e) {
+            console.error('ControlPanel error:', e);
+            document.body.innerHTML += '<p style="color: red;">✗ ControlPanel failed: ' + e.message + '</p>';
+        }
+        
+        try {
+            const { SymbolSearch } = await import('http://localhost:8001/static/js/components/symbolSearch.js');
+            console.log('SymbolSearch loaded');
+            document.body.innerHTML += '<p style="color: green;">✓ SymbolSearch loaded successfully</p>';
+        } catch (e) {
+            console.error('SymbolSearch error:', e);
+            document.body.innerHTML += '<p style="color: red;">✗ SymbolSearch failed: ' + e.message + '</p>';
+        }
+    </script>
+</body>
+</html>

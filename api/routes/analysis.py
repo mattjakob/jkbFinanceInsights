@@ -51,16 +51,22 @@ async def analyze_insights(request: Dict[str, Any]):
      - symbol: Optional symbol to filter insights (e.g., "BTCUSD")
     """
     try:
-        # Extract symbol from request body
+        # Extract filters from request body
         symbol = request.get('symbol')
+        type_filter = request.get('type')
         
         # Use bulk analysis handler to create tasks
-        result = await handle_bulk_analysis(symbol=symbol)
+        result = await handle_bulk_analysis(symbol=symbol, type_filter=type_filter)
         
+        # Build descriptive message
+        filter_parts = []
         if symbol:
-            message = f"Created {result['tasks_created']} analysis tasks for {result['insights_found']} insights of symbol {symbol}"
-        else:
-            message = f"Created {result['tasks_created']} analysis tasks for {result['insights_found']} insights"
+            filter_parts.append(f"symbol {symbol}")
+        if type_filter:
+            filter_parts.append(f"type {type_filter}")
+        
+        filter_text = " for " + " and ".join(filter_parts) if filter_parts else ""
+        message = f"Created {result['tasks_created']} analysis tasks for {result['insights_found']} insights{filter_text}"
         
         return {
             "success": result['success'],

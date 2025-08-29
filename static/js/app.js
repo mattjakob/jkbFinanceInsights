@@ -49,26 +49,48 @@ class App {
      */
     async initialize() {
         try {
+            console.log('Starting app initialization...');
             Debugger.info('Initializing JKB Finance Terminal...');
             
             // Initialize components
+            console.log('Creating ControlPanel...');
             this.components.controlPanel = new ControlPanel();
+            console.log('ControlPanel created successfully');
+            
+            console.log('Creating InsightsTable...');
             this.components.insightsTable = new InsightsTable();
+            console.log('InsightsTable created successfully');
+            
+            console.log('Creating StatusBar...');
             this.components.statusBar = new StatusBar();
+            console.log('StatusBar created successfully');
             
             // Initialize symbol search if input exists
             const symbolInput = document.getElementById('symbolInput');
             const exchangeInput = document.getElementById('exchangeInput');
+            console.log('Symbol input element:', symbolInput);
+            console.log('Exchange input element:', exchangeInput);
+            
             if (symbolInput) {
+                console.log('Creating SymbolSearch...');
                 this.components.symbolSearch = new SymbolSearch(symbolInput, exchangeInput);
+                console.log('SymbolSearch created successfully');
+            } else {
+                console.log('No symbol input found, skipping SymbolSearch');
             }
             
             // Initialize additional features
+            console.log('Initializing reset buttons...');
             this.initializeResetButtons();
+            
+            console.log('Initializing auto refresh...');
             this.initializeAutoRefresh();
             
             // Load initial data
+            console.log('Loading initial data...');
             await this.loadInitialData();
+            
+            console.log('App initialization completed successfully');
             
         } catch (error) {
             console.error('Error during initialization:', error);

@@ -36,12 +36,12 @@ class AnalysisService {
      *  Triggers AI analysis for pending insights
      * 
      *  Parameters:
-     *  - symbol: Optional symbol to filter insights for analysis
+     *  - filters: Object with symbol and/or type filters, or just symbol string (backward compatible)
      * 
      *  Returns:
      *  - Analysis operation result
      */
-    async triggerAnalysis(symbol = null) {
+    async triggerAnalysis(filters = null) {
         if (this.isAnalyzing) {
             throw new Error('Analysis already in progress');
         }
@@ -49,7 +49,17 @@ class AnalysisService {
         this.isAnalyzing = true;
         
         try {
-            const requestBody = symbol ? { symbol } : {};
+            let requestBody = {};
+            
+            // Handle backward compatibility (string symbol) and new object format
+            if (typeof filters === 'string') {
+                requestBody = { symbol: filters };
+            } else if (filters && typeof filters === 'object') {
+                if (filters.symbol) requestBody.symbol = filters.symbol;
+                if (filters.type) requestBody.type = filters.type;
+            }
+            
+            console.log('Analysis service sending request:', requestBody);
             const result = await apiClient.post(`${config.api.analysis}/analyze`, requestBody);
             this.lastAnalysisStatus = result;
             return result;

@@ -46,8 +46,10 @@ export class SymbolSearch {
      *  Initializes symbol search functionality
      */
     initialize() {
+        console.log('SymbolSearch initializing...');
         this.createDropdown();
         this.setupEventListeners();
+        console.log('SymbolSearch initialization complete');
     }
 
     /**
@@ -85,11 +87,17 @@ export class SymbolSearch {
      *  Sets up all event handlers for the component
      */
     setupEventListeners() {
+        console.log('Setting up SymbolSearch event listeners...');
+        
         // Debounced input handler for search
-        const debounceDelay = window.AppConfig?.app_symbol_search_debounce || 200;
+        const debounceDelay = window.AppConfig?.app_search_debounce || 300;
+        console.log('Using debounce delay:', debounceDelay);
         const debouncedSearch = debounce((e) => this.handleSearch(e), debounceDelay);
         
-        this.input.addEventListener('input', debouncedSearch);
+        this.input.addEventListener('input', (e) => {
+            console.log('Symbol input changed:', e.target.value);
+            debouncedSearch(e);
+        });
         this.input.addEventListener('focus', (e) => this.handleFocus(e));
         this.input.addEventListener('blur', (e) => this.handleBlur(e));
         this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
@@ -103,15 +111,19 @@ export class SymbolSearch {
         
         // Add change listeners to update TradingView chart when inputs change
         this.input.addEventListener('change', () => {
+            console.log('Symbol input change event triggered');
             this.updateTradingViewChart();
             this.updateSymbolFilter();
         });
         if (this.exchangeInput) {
             this.exchangeInput.addEventListener('change', () => {
+                console.log('Exchange input change event triggered');
                 this.updateTradingViewChart();
                 this.updateSymbolFilter();
             });
         }
+        
+        console.log('SymbolSearch event listeners set up complete');
     }
 
     /**
@@ -531,7 +543,7 @@ export class SymbolSearch {
         }
         
         // Set new timeout
-        const filterDelay = window.AppConfig?.app_symbol_filter_delay || 800;
+        const filterDelay = window.AppConfig?.app_search_debounce || 300;
         this.symbolUpdateTimeout = setTimeout(() => {
             window.location.href = newPath;
         }, filterDelay); // Configurable delay to allow for rapid typing
