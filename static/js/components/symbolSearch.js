@@ -86,7 +86,8 @@ export class SymbolSearch {
      */
     setupEventListeners() {
         // Debounced input handler for search
-        const debouncedSearch = debounce((e) => this.handleSearch(e), 200);
+        const debounceDelay = window.AppConfig?.app_symbol_search_debounce || 200;
+        const debouncedSearch = debounce((e) => this.handleSearch(e), debounceDelay);
         
         this.input.addEventListener('input', debouncedSearch);
         this.input.addEventListener('focus', (e) => this.handleFocus(e));
@@ -474,32 +475,45 @@ export class SymbolSearch {
      *  └─────────────────────────────────────┘
      *  Updates the table filtering based on symbol input
      * 
-     *  Extracts just the symbol part (ignoring exchange suffix)
-     *  and updates URL parameters to filter the table.
+     *  Uses path-based routing to navigate to filtered views.
      */
     updateSymbolFilter() {
         const currentValues = this.getCurrentValues();
-        let symbol = currentValues.symbol;
+        const symbol = currentValues.symbol;
+        const exchange = currentValues.exchange;
         
-        // Extract symbol part only, discarding exchange suffix
-        // Handle formats like "AAPL:NASDAQ" -> "AAPL"
-        if (symbol.includes(':')) {
-            symbol = symbol.split(':')[0];
+        // Get current type filter from page
+        const typeFilter = document.getElementById('typeFilter')?.value || '';
+        
+        // Build new URL path using EXCHANGE:SYMBOL format
+        let newPath = '/';
+        if (symbol && exchange) {
+            const exchangeSymbol = `${exchange}:${symbol}`;
+            newPath = `/api/insights/${exchangeSymbol}`;
+            if (typeFilter) {
+                // Replace spaces with underscores for URL
+                const urlSafeType = typeFilter.replace(/\s+/g, '_');
+                newPath = `/api/insights/${exchangeSymbol}/${urlSafeType}`;
+            }
+        } else if (symbol) {
+            // Fallback to just symbol if no exchange
+            newPath = `/api/insights/${symbol}`;
+            if (typeFilter) {
+                // Replace spaces with underscores for URL
+                const urlSafeType = typeFilter.replace(/\s+/g, '_');
+                newPath = `/api/insights/${symbol}/${urlSafeType}`;
+            }
+        } else if (typeFilter) {
+            // If no symbol but type is selected, don't navigate
+            return;
         }
         
-        // Update URL parameters for table filtering
-        const url = new URL(window.location);
-        const currentSymbolParam = url.searchParams.get('symbol') || '';
+        // Get current path
+        const currentPath = window.location.pathname;
         
-        // Only update if symbol has changed to avoid unnecessary reloads
-        if (symbol && symbol !== currentSymbolParam) {
-            url.searchParams.set('symbol', symbol);
-            // Debounce the reload to avoid rapid page refreshes
-            this.debounceSymbolUpdate(url.toString());
-        } else if (!symbol && currentSymbolParam) {
-            // Clear symbol filter if input is empty
-            url.searchParams.delete('symbol');
-            this.debounceSymbolUpdate(url.toString());
+        // Only navigate if path has changed
+        if (newPath !== currentPath) {
+            this.debounceSymbolUpdate(newPath);
         }
     }
 
@@ -510,15 +524,16 @@ export class SymbolSearch {
      *  └─────────────────────────────────────┘
      *  Debounces symbol filter updates to avoid rapid page reloads
      */
-    debounceSymbolUpdate(newUrl) {
+    debounceSymbolUpdate(newPath) {
         // Clear existing timeout
         if (this.symbolUpdateTimeout) {
             clearTimeout(this.symbolUpdateTimeout);
         }
         
         // Set new timeout
+        const filterDelay = window.AppConfig?.app_symbol_filter_delay || 800;
         this.symbolUpdateTimeout = setTimeout(() => {
-            window.location.href = newUrl;
-        }, 800); // 800ms delay to allow for rapid typing
+            window.location.href = newPath;
+        }, filterDelay); // Configurable delay to allow for rapid typing
     }
 }

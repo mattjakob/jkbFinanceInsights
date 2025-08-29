@@ -27,9 +27,9 @@ const TRADINGVIEW_CONFIG = {
     base: {
         "autosize": false,
         "width": "100%",
-        "height": 400,
-        "interval": "1",
-        "timezone": "America/New_York",
+        "height": window.AppConfig?.tradingview_chart_height || 400,
+        "interval": window.AppConfig?.tradingview_chart_interval || "1",
+        "timezone": window.AppConfig?.tradingview_chart_timezone || "America/New_York",
         "theme": "dark",
         "style": "1",
         "locale": "en",
@@ -143,8 +143,15 @@ const TRADINGVIEW_CONFIG = {
 * - Uses predefined TRADINGVIEW_CONFIG for consistent styling
 * - Loads TradingView library if not already available
 */
-function initializeTradingView(containerId = 'tradingview_widget_container', symbol = 'BTCUSD') {
+function initializeTradingView(containerId = 'tradingview_widget_container', symbol = '') {
             //Debugger.info('TradingView: Initializing widget with symbol:', symbol);
+    
+    if (!symbol) {
+        if (window.Debugger) {
+            window.Debugger.warn('TradingView: No symbol provided for chart initialization');
+        }
+        return;
+    }
     
     // Create widget configuration
     const config = {
@@ -252,7 +259,7 @@ function updateTradingViewChart(symbol) {
 * Update chart symbol based on symbol and exchange inputs
 *
 * Combines symbol and exchange inputs to create a properly formatted
-* TradingView symbol (e.g., "NASDAQ:AAPL") and updates the chart.
+* TradingView symbol (e.g., "BINANCE:BTCUSD") and updates the chart.
 *
 * Parameters:
 * - None (reads from DOM inputs)
@@ -262,8 +269,8 @@ function updateTradingViewChart(symbol) {
 *
 * Notes:
 * - Reads from #symbolInput and #exchangeInput elements
-* - Formats symbol as "EXCHANGE:SYMBOL" when exchange is provided
-* - Uses symbol alone when no exchange is specified
+* - Always formats symbol as "EXCHANGE:SYMBOL" format
+* - Requires both inputs to be valid
 * - Debounced to prevent excessive API calls
 */
 function updateTradingViewChartFromInputs() {
@@ -286,13 +293,13 @@ function updateTradingViewChartFromInputs() {
         return;
     }
     
-    // Create TradingView symbol format
-    let tradingViewSymbol;
-    if (exchange && exchange !== '') {
-        tradingViewSymbol = `${exchange.toUpperCase()}:${symbol.toUpperCase()}`;
-    } else {
-        tradingViewSymbol = symbol.toUpperCase();
+    if (!exchange) {
+        Debugger.warn('TradingView: No exchange provided, skipping update');
+        return;
     }
+    
+    // Create TradingView symbol format - always use EXCHANGE:SYMBOL
+    const tradingViewSymbol = `${exchange.toUpperCase()}:${symbol.toUpperCase()}`;
     
             //Debugger.info('TradingView: Final symbol format:', tradingViewSymbol);
     

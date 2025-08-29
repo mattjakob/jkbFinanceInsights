@@ -152,9 +152,10 @@ export class InsightsTable {
         this.updateAllAges();
         
         // Set up periodic updates
+        const ageInterval = window.AppConfig?.frontend_age_refresh_interval || config.refreshIntervals.age;
         const intervalId = setInterval(() => {
             this.updateAllAges();
-        }, config.refreshIntervals.age);
+        }, ageInterval);
         
         this.updateIntervals.set('age', intervalId);
     }
@@ -285,17 +286,108 @@ export class InsightsTable {
             return;
         }
         
-        // Clear existing rows
-        tbody.innerHTML = '';
-        
-        // Add new rows
-        insights.forEach(insight => {
-            const row = this.createInsightRow(insight);
-            tbody.appendChild(row);
+        // Smart update: preserve existing rows and update only changed data
+        const existingRows = new Map();
+        tbody.querySelectorAll('tr').forEach(row => {
+            const insightId = row.dataset.insightId;
+            if (insightId) {
+                existingRows.set(parseInt(insightId), row);
+            }
         });
         
-        // Reinitialize features
+        // Update or add rows
+        insights.forEach(insight => {
+            const existingRow = existingRows.get(insight.id);
+            
+            if (existingRow) {
+                // Update existing row
+                this.updateExistingRow(existingRow, insight);
+                existingRows.delete(insight.id); // Mark as processed
+            } else {
+                // Add new row
+                const newRow = this.createInsightRow(insight);
+                tbody.appendChild(newRow);
+            }
+        });
+        
+        // Remove rows that no longer exist in the data
+        existingRows.forEach(row => {
+            row.remove();
+        });
+        
+        // Reinitialize features for new rows only
         this.initializeTableFeatures();
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      UPDATE EXISTING ROW            │
+     *  └─────────────────────────────────────┘
+     *  Updates an existing table row with new data
+     * 
+     *  Parameters:
+     *  - row: Existing TR element
+     *  - insight: Updated insight data
+     * 
+     *  Returns:
+     *  - None
+     */
+    updateExistingRow(row, insight) {
+        // Update symbol
+        const symbolCell = row.querySelector('td:nth-child(1)');
+        if (symbolCell) {
+            symbolCell.textContent = insight.symbol || '-';
+        }
+        
+        // Update type (preserve icon)
+        const typeCell = row.querySelector('td:nth-child(2)');
+        if (typeCell) {
+            typeCell.innerHTML = `${this.getTypeIcon(insight.type)} ${insight.type || '-'}`;
+        }
+        
+        // Update age
+        const ageCell = row.querySelector('.age-cell');
+        if (ageCell) {
+            ageCell.setAttribute('data-timestamp', insight.timePosted);
+            ageCell.textContent = calculateAge(insight.timePosted);
+        }
+        
+        // Update confidence
+        const confidenceCell = row.querySelector('td:nth-child(4)');
+        if (confidenceCell) {
+            confidenceCell.textContent = insight.confidence || '-';
+            // Update confidence styling
+            row.classList.remove(...Object.values(config.cssClasses.confidence));
+            const confidenceClass = getConfidenceClass(insight.confidence);
+            row.classList.add(confidenceClass);
+        }
+        
+        // Update horizon
+        const horizonCell = row.querySelector('.horizon-cell');
+        if (horizonCell) {
+            horizonCell.setAttribute('data-horizon', JSON.stringify(insight.event_time || {}));
+            horizonCell.innerHTML = formatEventTime(insight.event_time);
+        }
+        
+        // Update levels
+        const levelCell = row.querySelector('.level-cell');
+        if (levelCell) {
+            levelCell.setAttribute('data-levels', JSON.stringify(insight.levels || {}));
+            levelCell.innerHTML = formatLevels(insight.levels);
+        }
+        
+        // Update AI analysis
+        const aiCell = row.querySelector('.ai-analysis-cell');
+        if (aiCell) {
+            aiCell.innerHTML = this.formatAIAnalysis(insight);
+        }
+        
+        // Update content (if expandable)
+        const contentCell = row.querySelector('.expandable-content');
+        if (contentCell) {
+            contentCell.innerHTML = this.formatContent(insight);
+        }
     }
 
     /**

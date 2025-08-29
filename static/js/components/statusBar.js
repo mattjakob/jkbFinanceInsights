@@ -81,9 +81,10 @@ export class StatusBar {
         this.updateTime();
         
         // Update every second
+        const updateInterval = window.AppConfig?.frontend_status_update_interval || 1000;
         this.updateInterval = setInterval(() => {
             this.updateTime();
-        }, 1000);
+        }, updateInterval);
     }
 
     /**
@@ -149,9 +150,10 @@ export class StatusBar {
         this.fetchDebuggerStatus();
         
         // Update every 2 seconds
+        const debuggerInterval = window.AppConfig?.frontend_debugger_fetch_interval || 5000;
         this.debuggerFetchInterval = setInterval(() => {
             this.fetchDebuggerStatus();
-        }, 2000);
+        }, debuggerInterval);
     }
 
     /**

@@ -34,7 +34,12 @@ from api import api_router
 from core import get_db_manager
 from tasks import WorkerPool, HANDLERS
 from debugger import debug_success, debug_info
-from config import SERVER_HOST, SERVER_PORT
+from config import (
+    SERVER_HOST, SERVER_PORT, 
+    FRONTEND_REFRESH_INTERVALS, APP_BEHAVIOR,
+    TRADINGVIEW_CHART_HEIGHT, TRADINGVIEW_CHART_INTERVAL, 
+    TRADINGVIEW_CHART_TIMEZONE
+)
 
 # Global worker pool
 worker_pool: Optional[WorkerPool] = None
@@ -79,8 +84,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Include API routes
-app.include_router(api_router)
+# Include API routes after web routes to avoid conflicts
+# Web routes will take precedence for HTML responses
 
 # Setup templates and static files
 templates = Jinja2Templates(directory="templates")
@@ -89,22 +94,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Web routes
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request, type: Optional[str] = None):
+async def home(request: Request):
     """
      ┌─────────────────────────────────────┐
      │             HOME                    │
      └─────────────────────────────────────┘
      Display the main web interface
      
-     Shows insights table with optional filtering.
+     Shows all insights without filtering.
     """
     from data import InsightsRepository
     from core import FeedType
     
     repo = InsightsRepository()
     
-    # Get insights
-    insights = repo.find_all(type_filter=type)
+    # Get all insights
+    insights = repo.find_all()
     
     # Convert to dict for template
     insights_data = [insight.to_dict() for insight in insights]
@@ -119,7 +124,150 @@ async def home(request: Request, type: Optional[str] = None):
         "request": request,
         "insights": insights_data,
         "feed_names": feed_names,
-        "selected_type": type or ""
+        "selected_symbol": "",
+        "selected_exchange": "",
+        "selected_type": "",
+        "config": {
+            "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
+            "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
+            "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
+            "app_reload_delay": APP_BEHAVIOR["reload_delay"],
+            "app_max_items": APP_BEHAVIOR["max_items"],
+            "app_search_debounce": APP_BEHAVIOR["search_debounce"],
+            "app_auto_refresh": APP_BEHAVIOR["auto_refresh"],
+            "tradingview_chart_height": TRADINGVIEW_CHART_HEIGHT,
+            "tradingview_chart_interval": TRADINGVIEW_CHART_INTERVAL,
+            "tradingview_chart_timezone": TRADINGVIEW_CHART_TIMEZONE
+        }
+    })
+
+
+@app.get("/api/insights/{exchange_symbol}", response_class=HTMLResponse)
+async def insights_by_symbol(request: Request, exchange_symbol: str, type: Optional[str] = None):
+    """
+     ┌─────────────────────────────────────┐
+     │      INSIGHTS BY EXCHANGE-SYMBOL    │
+     └─────────────────────────────────────┘
+     Display insights filtered by exchange and symbol
+     
+     Shows insights for a specific exchange-symbol combination.
+     Also supports type filtering via query parameter for backward compatibility.
+    """
+    from data import InsightsRepository
+    from core import FeedType
+    
+    repo = InsightsRepository()
+    
+    # Parse exchange-symbol format (e.g., "BINANCE:BTCUSD" -> exchange="BINANCE", symbol="BTCUSD")
+    exchange = ""
+    symbol = exchange_symbol.upper()
+    
+    if ':' in exchange_symbol:
+        parts = exchange_symbol.split(':', 1)
+        if len(parts) == 2:
+            exchange = parts[0].upper()
+            symbol = parts[1].upper()
+    
+
+    
+    # Clean type filter if provided via query parameter
+    clean_type = ""
+    if type:
+        clean_type = type.replace('+', ' ').upper()
+    
+    # Get filtered insights
+    insights = repo.find_all(symbol_filter=symbol, type_filter=clean_type if clean_type else None)
+    
+    # Convert to dict for template
+    insights_data = [insight.to_dict() for insight in insights]
+    
+    # Get feed types for filter dropdown
+    feed_names = [
+        {"name": feed_type.value, "description": f"{feed_type.value} feed"}
+        for feed_type in FeedType
+    ]
+    
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "insights": insights_data,
+        "feed_names": feed_names,
+        "selected_symbol": symbol,
+        "selected_exchange": exchange,
+        "selected_type": clean_type,
+        "config": {
+            "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
+            "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
+            "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
+            "app_reload_delay": APP_BEHAVIOR["reload_delay"],
+            "app_max_items": APP_BEHAVIOR["max_items"],
+            "app_search_debounce": APP_BEHAVIOR["search_debounce"],
+            "app_auto_refresh": APP_BEHAVIOR["auto_refresh"],
+            "tradingview_chart_height": TRADINGVIEW_CHART_HEIGHT,
+            "tradingview_chart_interval": TRADINGVIEW_CHART_INTERVAL,
+            "tradingview_chart_timezone": TRADINGVIEW_CHART_TIMEZONE
+        }
+    })
+
+
+@app.get("/api/insights/{exchange_symbol}/{type_filter}", response_class=HTMLResponse)
+async def insights_by_symbol_and_type(request: Request, exchange_symbol: str, type_filter: str):
+    """
+     ┌─────────────────────────────────────┐
+     │ INSIGHTS BY EXCHANGE-SYMBOL AND TYPE│
+     └─────────────────────────────────────┘
+     Display insights filtered by exchange, symbol and type
+     
+     Shows insights for a specific exchange-symbol combination and feed type.
+    """
+    from data import InsightsRepository
+    from core import FeedType
+    
+    repo = InsightsRepository()
+    
+    # Parse exchange-symbol format (e.g., "BINANCE:BTCUSD" -> exchange="BINANCE", symbol="BTCUSD")
+    exchange = ""
+    symbol = exchange_symbol.upper()
+    
+    if ':' in exchange_symbol:
+        parts = exchange_symbol.split(':', 1)
+        if len(parts) == 2:
+            exchange = parts[0].upper()
+            symbol = parts[1].upper()
+    
+    # Clean type filter - replace underscores with spaces
+    clean_type = type_filter.replace('_', ' ').upper()
+    
+    # Get filtered insights
+    insights = repo.find_all(symbol_filter=symbol, type_filter=clean_type)
+    
+    # Convert to dict for template
+    insights_data = [insight.to_dict() for insight in insights]
+    
+    # Get feed types for filter dropdown
+    feed_names = [
+        {"name": feed_type.value, "description": f"{feed_type.value} feed"}
+        for feed_type in FeedType
+    ]
+    
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "insights": insights_data,
+        "feed_names": feed_names,
+        "selected_symbol": symbol,
+        "selected_exchange": exchange,
+        "selected_type": clean_type,
+        "config": {
+            "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
+            "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
+            "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
+            "app_reload_delay": APP_BEHAVIOR["reload_delay"],
+            "app_max_items": APP_BEHAVIOR["max_items"],
+            "app_search_debounce": APP_BEHAVIOR["search_debounce"],
+            "app_auto_refresh": APP_BEHAVIOR["auto_refresh"],
+            "tradingview_chart_height": TRADINGVIEW_CHART_HEIGHT,
+            "tradingview_chart_interval": TRADINGVIEW_CHART_INTERVAL,
+            "tradingview_chart_timezone": TRADINGVIEW_CHART_TIMEZONE
+        }
     })
 
 
@@ -194,16 +342,13 @@ async def get_debug_status():
 
 
 @app.get("/summary")
-async def get_summary(
-    type_filter: Optional[str] = None,
-    symbol_filter: Optional[str] = None
-):
-    """Get text summary of high-confidence insights"""
+async def get_summary():
+    """Get text summary of all high-confidence insights"""
     from data import InsightsRepository
     from fastapi.responses import PlainTextResponse
     
     repo = InsightsRepository()
-    insights = repo.find_all(type_filter=type_filter, symbol_filter=symbol_filter)
+    insights = repo.find_all()
     
     # Filter high confidence
     high_confidence = [
@@ -218,12 +363,6 @@ async def get_summary(
     lines = []
     lines.append("JKB FINANCE INSIGHTS SUMMARY (CONFIDENCE > 50%)")
     lines.append("=" * 60)
-    
-    if type_filter:
-        lines.append(f"Filtered by type: {type_filter}")
-    if symbol_filter:
-        lines.append(f"Filtered by symbol: {symbol_filter}")
-    
     lines.append(f"Total insights: {len(high_confidence)}")
     lines.append("")
     
@@ -252,6 +391,70 @@ async def get_summary(
         lines.append("-" * 40)
     
     return PlainTextResponse("\n".join(lines))
+
+
+@app.get("/summary/{exchange_symbol}")
+async def get_summary_by_symbol(exchange_symbol: str):
+    """Get text summary of high-confidence insights for an exchange-symbol combination"""
+    from data import InsightsRepository
+    from fastapi.responses import PlainTextResponse
+    
+    repo = InsightsRepository()
+    
+    # Parse exchange-symbol format
+    exchange = ""
+    symbol = exchange_symbol.upper()
+    
+    if ':' in exchange_symbol:
+        parts = exchange_symbol.split(':', 1)
+        if len(parts) == 2:
+            exchange = parts[0].upper()
+            symbol = parts[1].upper()
+    
+    insights = repo.find_all(symbol_filter=symbol)
+    
+    # Filter high confidence
+    high_confidence = [
+        i for i in insights 
+        if i.ai_confidence and i.ai_confidence > 0.5
+    ]
+    
+    if not high_confidence:
+        return PlainTextResponse(f"No insights found for {exchange}:{symbol} with confidence > 50%.")
+    
+    # Build text summary
+    lines = []
+    lines.append(f"JKB FINANCE INSIGHTS SUMMARY - {exchange}:{symbol} (CONFIDENCE > 50%)")
+    lines.append("=" * 60)
+    lines.append(f"Total insights: {len(high_confidence)}")
+    lines.append("")
+    
+    for insight in high_confidence:
+        if insight.time_posted:
+            lines.append(f"Posted: {insight.time_posted.strftime('%m-%d-%Y %H:%M')}")
+        
+        if insight.ai_summary:
+            lines.append(insight.ai_summary)
+        
+        if insight.ai_action:
+            lines.append(f"Proposed action: {insight.ai_action.value}")
+        
+        if insight.ai_confidence:
+            lines.append(f"Confidence: {insight.ai_confidence:.0%}")
+        
+        if insight.ai_levels:
+            lines.append(f"Levels: {insight.ai_levels}")
+        
+        if insight.ai_event_time:
+            lines.append(f"Event Time: {insight.ai_event_time}")
+        
+        lines.append("-" * 40)
+    
+    return PlainTextResponse("\n".join(lines))
+
+
+# Include API routes at the end so web routes take precedence
+app.include_router(api_router)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
  *  ┌─────────────────────────────────────┐
  *  │         CONFIGURATION               │
  *  └─────────────────────────────────────┘
- *  Simplified configuration management
+ *  Comprehensive configuration management
  * 
  *  Centralizes all configuration with sensible defaults
  *  and clear organization by module.
@@ -18,6 +18,7 @@
  *  Notes:
  *  - Uses environment variables with defaults
  *  - Organized by functional area
+ *  - All hardcoded values moved to environment variables
  */
 """
 
@@ -27,19 +28,27 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Server Configuration
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
 SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("SERVER_PORT", 8000))
 
-# Database Configuration
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
 DATABASE_URL = os.getenv("DATABASE_URL", "finance_insights.db")
 
-# Scraper Configuration
+# =============================================================================
+# SCRAPER CONFIGURATION
+# =============================================================================
 SCRAPER_TIMEOUT = int(os.getenv("SCRAPER_TIMEOUT", 30))
 SCRAPER_MAX_RETRIES = int(os.getenv("SCRAPER_MAX_RETRIES", 3))
 SCRAPER_RETRY_DELAY = int(os.getenv("SCRAPER_RETRY_DELAY", 1))
 
-# AI Configuration
+# =============================================================================
+# AI CONFIGURATION
+# =============================================================================
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4-vision-preview")
 
@@ -51,21 +60,78 @@ OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID = os.getenv("OPENAI_PROMPT_BRIEFSTRATEGY_
 AI_CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("AI_CIRCUIT_BREAKER_THRESHOLD", 3))
 AI_CIRCUIT_BREAKER_RESET_MINUTES = int(os.getenv("AI_CIRCUIT_BREAKER_RESET_MINUTES", 60))
 
-# Task Queue Configuration
+# =============================================================================
+# TASK QUEUE CONFIGURATION
+# =============================================================================
 TASK_WORKER_COUNT = int(os.getenv("TASK_WORKER_COUNT", 3))
 TASK_MAX_RETRIES = int(os.getenv("TASK_MAX_RETRIES", 3))
 TASK_CLEANUP_DAYS = int(os.getenv("TASK_CLEANUP_DAYS", 7))
 
-# Application Info
+# =============================================================================
+# FRONTEND REFRESH INTERVALS (in milliseconds)
+# =============================================================================
+# Core refresh intervals for different UI components
+FRONTEND_REFRESH_INTERVALS = {
+    "age": int(os.getenv("FRONTEND_AGE_REFRESH_INTERVAL", 1000)),      # Age display updates
+    "table": int(os.getenv("FRONTEND_TABLE_REFRESH_INTERVAL", 10000)),  # Table data refresh
+    "status": int(os.getenv("FRONTEND_STATUS_REFRESH_INTERVAL", 2000))  # Status bar updates
+}
+
+# =============================================================================
+# APPLICATION BEHAVIOR SETTINGS
+# =============================================================================
+# Core application behavior configuration
+APP_BEHAVIOR = {
+    "reload_delay": int(os.getenv("APP_RELOAD_DELAY", 1000)),
+    "max_items": int(os.getenv("APP_MAX_ITEMS", 25)),
+    "search_debounce": int(os.getenv("APP_SEARCH_DEBOUNCE", 300)),
+    "auto_refresh": os.getenv("APP_AUTO_REFRESH", "true").lower() == "true"
+}
+
+# =============================================================================
+# TRADINGVIEW CHART CONFIGURATION
+# =============================================================================
+TRADINGVIEW_CHART_HEIGHT = int(os.getenv("TRADINGVIEW_CHART_HEIGHT", 400))
+TRADINGVIEW_CHART_INTERVAL = os.getenv("TRADINGVIEW_CHART_INTERVAL", "1")
+TRADINGVIEW_CHART_TIMEZONE = os.getenv("TRADINGVIEW_CHART_TIMEZONE", "America/New_York")
+
+# =============================================================================
+# DEBUG AND LOGGING
+# =============================================================================
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
+DEBUGGER_ENABLED = os.getenv("DEBUGGER_ENABLED", "true").lower() == "true"
+
+# =============================================================================
+# SECURITY AND RATE LIMITING
+# =============================================================================
+RATE_LIMIT_REQUESTS_PER_MINUTE = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", 100))
+CORS_ENABLED = os.getenv("CORS_ENABLED", "true").lower() == "true"
+CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",")
+
+# =============================================================================
+# DEVELOPMENT SETTINGS
+# =============================================================================
+DEV_MODE = os.getenv("DEV_MODE", "true").lower() == "true"
+FRONTEND_HOT_RELOAD = os.getenv("FRONTEND_HOT_RELOAD", "true").lower() == "true"
+SHOW_DETAILED_ERRORS = os.getenv("SHOW_DETAILED_ERRORS", "true").lower() == "true"
+
+# =============================================================================
+# APPLICATION INFO
+# =============================================================================
 APP_NAME = "JKB Finance Insights"
 APP_VERSION = "2.0.0"
 
-# Server Management Constants
+# =============================================================================
+# SERVER MANAGEMENT CONSTANTS
+# =============================================================================
 MAIN_FILE = "main.py"
 DEFAULT_PORT = SERVER_PORT
 VENV_ACTIVATE = "venv/bin/activate"
 
-# Uvicorn Configuration
+# =============================================================================
+# UVICORN CONFIGURATION
+# =============================================================================
 UVICORN_HOST = SERVER_HOST
 UVICORN_RELOAD = os.getenv("UVICORN_RELOAD", "true").lower() == "true"  # Default to true
 UVICORN_RELOAD_DIR = os.getenv("UVICORN_RELOAD_DIR", ".") or "."  # Ensure it's never empty
@@ -104,7 +170,7 @@ def get_server_info():
         "database": DATABASE_URL,
         "environment": {
             "mode": "development" if UVICORN_RELOAD else "production",
-            "debug": True
+            "debug": DEBUG_MODE
         }
     }
 
@@ -115,17 +181,28 @@ def get_config_summary():
             "host": SERVER_HOST,
             "port": SERVER_PORT,
             "reload": UVICORN_RELOAD,
-            "workers": 1
+            "workers": TASK_WORKER_COUNT
         },
         "database": {
             "url": DATABASE_URL
         },
         "environment": {
             "mode": "development" if UVICORN_RELOAD else "production",
-            "debug": True
+            "debug": DEBUG_MODE
         },
         "uvicorn": {
             "host": UVICORN_HOST,
             "log_level": UVICORN_LOG_LEVEL
+        },
+        "frontend": {
+            "age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
+            "table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
+            "status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
+            "auto_refresh": APP_BEHAVIOR["auto_refresh"]
+        },
+        "app": {
+            "reload_delay": APP_BEHAVIOR["reload_delay"],
+            "max_items": APP_BEHAVIOR["max_items"],
+            "search_debounce": APP_BEHAVIOR["search_debounce"]
         }
     }

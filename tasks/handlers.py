@@ -123,7 +123,7 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         raise
 
 
-async def handle_bulk_analysis(**kwargs) -> Dict[str, Any]:
+async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
     """
      ┌─────────────────────────────────────┐
      │      HANDLE_BULK_ANALYSIS           │
@@ -131,7 +131,11 @@ async def handle_bulk_analysis(**kwargs) -> Dict[str, Any]:
      Handle bulk AI analysis
      
      Creates individual analysis tasks for insights
-     needing analysis.
+     needing analysis. If symbol is provided, only
+     processes insights for that symbol.
+     
+     Parameters:
+     - symbol: Optional symbol to filter insights
      
      Returns:
      - Dictionary with task creation results
@@ -145,7 +149,23 @@ async def handle_bulk_analysis(**kwargs) -> Dict[str, Any]:
             return {
                 'success': True,
                 'insights_found': 0,
-                'tasks_created': 0
+                'tasks_created': 0,
+                'symbol': symbol
+            }
+        
+        # Filter by symbol if provided
+        if symbol:
+            symbol = symbol.upper()
+            insights = [insight for insight in insights if insight.symbol and insight.symbol.upper() == symbol]
+            debug_info(f"Filtered to {len(insights)} insights for symbol {symbol}")
+        
+        if not insights:
+            debug_info(f"No insights need AI analysis for symbol {symbol}" if symbol else "No insights need AI analysis")
+            return {
+                'success': True,
+                'insights_found': 0,
+                'tasks_created': 0,
+                'symbol': symbol
             }
         
         # Import task queue here
@@ -162,13 +182,14 @@ async def handle_bulk_analysis(**kwargs) -> Dict[str, Any]:
             )
             task_ids.append(task_id)
         
-        debug_success(f"Created {len(task_ids)} AI analysis tasks")
+        debug_success(f"Created {len(task_ids)} AI analysis tasks for symbol {symbol}" if symbol else f"Created {len(task_ids)} AI analysis tasks")
         
         return {
             'success': True,
             'insights_found': len(insights),
             'tasks_created': len(task_ids),
-            'task_ids': task_ids
+            'task_ids': task_ids,
+            'symbol': symbol
         }
         
     except Exception as e:

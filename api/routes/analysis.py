@@ -37,24 +37,37 @@ insights_repo = InsightsRepository()
 
 
 @router.post("/analyze")
-async def analyze_insights():
+async def analyze_insights(request: Dict[str, Any]):
     """
      ┌─────────────────────────────────────┐
      │       ANALYZE_INSIGHTS              │
      └─────────────────────────────────────┘
-     Trigger AI analysis for all pending insights
+     Trigger AI analysis for pending insights
      
      Creates analysis tasks for insights that need AI processing.
+     If symbol is provided, only analyzes insights for that symbol.
+     
+     Parameters:
+     - symbol: Optional symbol to filter insights (e.g., "BTCUSD")
     """
     try:
+        # Extract symbol from request body
+        symbol = request.get('symbol')
+        
         # Use bulk analysis handler to create tasks
-        result = await handle_bulk_analysis()
+        result = await handle_bulk_analysis(symbol=symbol)
+        
+        if symbol:
+            message = f"Created {result['tasks_created']} analysis tasks for {result['insights_found']} insights of symbol {symbol}"
+        else:
+            message = f"Created {result['tasks_created']} analysis tasks for {result['insights_found']} insights"
         
         return {
             "success": result['success'],
-            "message": f"Created {result['tasks_created']} analysis tasks for {result['insights_found']} insights",
+            "message": message,
             "insights_found": result['insights_found'],
-            "tasks_created": result['tasks_created']
+            "tasks_created": result['tasks_created'],
+            "symbol": symbol
         }
         
     except Exception as e:

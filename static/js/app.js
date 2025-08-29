@@ -92,14 +92,30 @@ class App {
      */
     async loadInitialData() {
         try {
-            // Get URL parameters for filters
-            const urlParams = new URLSearchParams(window.location.search);
-            const symbol = urlParams.get('symbol') || '';
-            const type = urlParams.get('type') || '';
+            // Extract filters from path
+            const pathParts = window.location.pathname.split('/').filter(p => p);
+            let exchangeSymbol = '';
+            let type = '';
+            
+            // Check if we're on a filtered route
+            if (pathParts[0] === 'api' && pathParts[1] === 'insights') {
+                exchangeSymbol = pathParts[2] || '';
+                type = pathParts[3] ? pathParts[3].replace(/_/g, ' ') : '';
+            }
+            
+            // Parse exchange-symbol format
+            let symbol = '';
+            let exchange = '';
+            if (exchangeSymbol && exchangeSymbol.includes(':')) {
+                const parts = exchangeSymbol.split(':', 2);
+                exchange = parts[0];
+                symbol = parts[1];
+            } else if (exchangeSymbol) {
+                symbol = exchangeSymbol;
+            }
             
             // Fetch insights
             const insights = await insightsService.fetchInsights(symbol, type);
-            //Debugger.info(`Loaded ${insights.length} insights`);
             
             // Update cache
             insightsService.updateCache(insights);
@@ -212,14 +228,15 @@ class App {
      *  - None
      */
     initializeAutoRefresh() {
-        // Check for auto-refresh preference
-        const autoRefreshEnabled = localStorage.getItem('autoRefresh') !== 'false';
+        // Check for auto-refresh preference from config
+        const autoRefreshEnabled = window.AppConfig?.app_auto_refresh !== false && 
+                                 localStorage.getItem('autoRefresh') !== 'false';
         
         if (autoRefreshEnabled) {
             Debugger.info('Auto-refresh enabled, starting refresh interval');
             this.startAutoRefresh();
         } else {
-            Debugger.info('Auto-refresh disabled by user preference');
+            Debugger.info('Auto-refresh disabled by user preference or configuration');
         }
     }
 
@@ -241,6 +258,9 @@ class App {
             clearInterval(this.refreshInterval);
         }
         
+        // Use the new simplified config
+        const refreshInterval = window.AppConfig?.frontend_table_refresh_interval || config.refreshIntervals.table;
+        
         this.refreshInterval = setInterval(async () => {
             try {
                 // Refresh data
@@ -248,7 +268,7 @@ class App {
             } catch (error) {
                 console.error('Auto-refresh error:', error);
             }
-        }, config.refreshIntervals.autoRefresh);
+        }, refreshInterval);
     }
 
     /**
@@ -266,10 +286,27 @@ class App {
      */
     async refreshData() {
         try {
-            // Get current filters
-            const urlParams = new URLSearchParams(window.location.search);
-            const symbol = urlParams.get('symbol') || '';
-            const type = urlParams.get('type') || '';
+            // Extract filters from path
+            const pathParts = window.location.pathname.split('/').filter(p => p);
+            let exchangeSymbol = '';
+            let type = '';
+            
+            // Check if we're on a filtered route
+            if (pathParts[0] === 'api' && pathParts[1] === 'insights') {
+                exchangeSymbol = pathParts[2] || '';
+                type = pathParts[3] ? pathParts[3].replace(/_/g, ' ') : '';
+            }
+            
+            // Parse exchange-symbol format
+            let symbol = '';
+            let exchange = '';
+            if (exchangeSymbol && exchangeSymbol.includes(':')) {
+                const parts = exchangeSymbol.split(':', 2);
+                exchange = parts[0];
+                symbol = parts[1];
+            } else if (exchangeSymbol) {
+                symbol = exchangeSymbol;
+            }
             
             // Fetch fresh insights
             const insights = await insightsService.fetchInsights(symbol, type);
@@ -284,7 +321,6 @@ class App {
                 // Update cache
                 insightsService.updateCache(insights);
                 
-                //Debugger.info(`Data refreshed successfully: ${insights.length} insights`);
             } else {
                 console.warn('Auto-refresh received invalid data, skipping table update');
             }

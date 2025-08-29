@@ -15,12 +15,22 @@ import signal
 import time
 import argparse
 from pathlib import Path
-from debugger import debug_info, debug_warning, debug_error, debug_success
-from config import (
-    APP_NAME, MAIN_FILE, DEFAULT_PORT, VENV_ACTIVATE,
-    UVICORN_HOST, UVICORN_RELOAD, UVICORN_RELOAD_DIR, UVICORN_LOG_LEVEL,
-    get_uvicorn_command, get_server_info
-)
+
+# Add the current directory to Python path to ensure imports work
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from debugger import debug_info, debug_warning, debug_error, debug_success
+    from config import (
+        APP_NAME, MAIN_FILE, DEFAULT_PORT, VENV_ACTIVATE,
+        UVICORN_HOST, UVICORN_RELOAD, UVICORN_RELOAD_DIR, UVICORN_LOG_LEVEL,
+        get_uvicorn_command, get_server_info
+    )
+except ImportError as e:
+    print(f"Error importing required modules: {e}")
+    print("Please ensure you're running this from the project directory with the virtual environment activated.")
+    print("Run: source venv/bin/activate && python3 server.py [command]")
+    sys.exit(1)
 
 def get_python_processes():
     """Get all running Python processes for this app"""

@@ -33,18 +33,18 @@ export const config = {
         }
     },
     
-    // UI refresh intervals (in milliseconds)
+    // UI refresh intervals (in milliseconds) - use global config if available
     refreshIntervals: {
-        age: 1000,        // 1 second
-        autoRefresh: 6000 // 1 minut
+        age: window.AppConfig?.frontend_age_refresh_interval || 1000,
+        table: window.AppConfig?.frontend_table_refresh_interval || 10000,
+        status: window.AppConfig?.frontend_status_refresh_interval || 2000
     },
     
-    // Default values
+    // Default values - use global config if available
     defaults: {
-        symbol: 'BTCUSD',
-        exchange: 'BINANCE',
-        maxItems: 10,
-        reloadDelay: 1000
+        maxItems: window.AppConfig?.app_max_items || 25,
+        reloadDelay: window.AppConfig?.app_reload_delay || 1000,
+        autoRefresh: window.AppConfig?.app_auto_refresh !== false
     },
     
     // Confidence levels and thresholds

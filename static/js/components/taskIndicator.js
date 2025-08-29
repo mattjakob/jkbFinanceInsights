@@ -95,7 +95,8 @@ export class TaskIndicator {
      */
     startUpdates() {
         // Start task service updates
-        tasksService.startAutoUpdates(5000);
+        const taskUpdateInterval = window.AppConfig?.frontend_task_update_interval || 5000;
+        tasksService.startAutoUpdates(taskUpdateInterval);
         
         // Update display every 2 seconds
         this.updateInterval = setInterval(() => {

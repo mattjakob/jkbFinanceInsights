@@ -45,6 +45,11 @@ class ScrapingService {
      *  - Fetch operation result
      */
     async fetchInsights({ symbol, exchange, feedType = '', maxItems = 10 }) {
+        // Ensure both symbol and exchange are provided
+        if (!symbol || !exchange) {
+            throw new Error('Both symbol and exchange are required');
+        }
+        
         const requestBody = {
             symbol: symbol.toUpperCase(),
             exchange: exchange.toUpperCase(),

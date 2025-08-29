@@ -36,12 +36,12 @@ class AnalysisService {
      *  Triggers AI analysis for pending insights
      * 
      *  Parameters:
-     *  - None
+     *  - symbol: Optional symbol to filter insights for analysis
      * 
      *  Returns:
      *  - Analysis operation result
      */
-    async triggerAnalysis() {
+    async triggerAnalysis(symbol = null) {
         if (this.isAnalyzing) {
             throw new Error('Analysis already in progress');
         }
@@ -49,7 +49,8 @@ class AnalysisService {
         this.isAnalyzing = true;
         
         try {
-            const result = await apiClient.post(`${config.api.analysis}/analyze`, {});
+            const requestBody = symbol ? { symbol } : {};
+            const result = await apiClient.post(`${config.api.analysis}/analyze`, requestBody);
             this.lastAnalysisStatus = result;
             return result;
         } catch (error) {

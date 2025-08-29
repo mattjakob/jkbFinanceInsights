@@ -46,6 +46,8 @@ class InsightsService {
      *  - Array of insights
      */
     async fetchInsights(symbol = '', type = '') {
+        // For now, we'll use query parameters as before
+        // The URL-based filtering is handled by the web routes
         const params = new URLSearchParams();
         if (symbol) params.append('symbol', symbol);
         if (type) params.append('type', type);

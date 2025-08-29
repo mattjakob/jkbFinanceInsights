@@ -42,7 +42,32 @@
         <script type="text/javascript" src="/static/tradingview-chart.js"></script>
         <script type="text/javascript">
         document.addEventListener('DOMContentLoaded', function() {
-            TradingViewChart.initialize('tradingview_widget_container', 'BTCUSD');
+            // Get initial values from template variables
+            const initialSymbol = '{{ selected_symbol or "" }}';
+            const initialExchange = '{{ selected_exchange or "" }}';
+            
+            // Get configuration from template
+            const config = {
+                frontend_age_refresh_interval: {{ config.frontend_age_refresh_interval }},
+                frontend_table_refresh_interval: {{ config.frontend_table_refresh_interval }},
+                frontend_status_refresh_interval: {{ config.frontend_status_refresh_interval }},
+                app_reload_delay: {{ config.app_reload_delay }},
+                app_max_items: {{ config.app_max_items }},
+                app_search_debounce: {{ config.app_search_debounce }},
+                app_auto_refresh: {{ config.app_auto_refresh|lower }},
+                tradingview_chart_height: {{ config.tradingview_chart_height }},
+                tradingview_chart_interval: '{{ config.tradingview_chart_interval }}',
+                tradingview_chart_timezone: '{{ config.tradingview_chart_timezone }}'
+            };
+            
+            // Make config available globally
+            window.AppConfig = config;
+            
+            // Only initialize chart if both values are provided
+            if (initialSymbol && initialExchange) {
+                const tradingViewSymbol = `${initialExchange}:${initialSymbol}`;
+                TradingViewChart.initialize('tradingview_widget_container', tradingViewSymbol);
+            }
         });
         </script>
     </div>
@@ -59,8 +84,8 @@
                     <input type="text" class="symbol-input" 
                            id="symbolInput" 
                            title="Trading Symbol" 
-                           placeholder="BTCUSD" 
-                           value="BTCUSD"
+                           placeholder="Enter symbol" 
+                           value="{{ selected_symbol or '' }}"
                            pattern="[A-Za-z0-9]{2,20}"
                            autocomplete="off"
                            data-bs-toggle="tooltip"
@@ -70,8 +95,8 @@
                     <input type="text" class="exchange-input" 
                            id="exchangeInput" 
                            title="Trading Exchange" 
-                           placeholder="BINANCE" 
-                           value="BINANCE"
+                           placeholder="Enter exchange" 
+                           value="{{ selected_exchange or '' }}"
                            autocomplete="off"
                            data-bs-toggle="tooltip"
                            data-bs-placement="bottom"
@@ -97,10 +122,10 @@
             <div class="input-group input-group-sm">
                 <span class="input-group-text">INTERVAL</span>
                 <select class="form-select form-select-sm" title="Update Interval">
-                    <option selected>60s</option>
-                    <option>5m</option>
-                    <option>15m</option>
-                    <option>1h</option>
+                    <option value="60" selected>60s</option>
+                    <option value="300">5m</option>
+                    <option value="900">15m</option>
+                    <option value="3600">1h</option>
                 </select>
             </div>
         </div>
@@ -108,10 +133,10 @@
             <div class="input-group input-group-sm">
                 <span class="input-group-text">ITEMS</span>
                 <select class="form-select form-select-sm" title="Number of Items">
-                    <option selected>10</option>
-                    <option>25</option>
-                    <option>50</option>
-                    <option>100</option>
+                    <option value="{{ config.app_max_items }}" selected>{{ config.app_max_items }}</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
                 </select>
             </div>
         </div>

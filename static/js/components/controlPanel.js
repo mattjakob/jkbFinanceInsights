@@ -99,16 +99,30 @@ export class ControlPanel {
         if (!btn || btn.disabled) return;
         
         try {
+            // Get current symbol from UI
+            const symbol = this.elements.symbolInput?.value.trim().toUpperCase() || '';
+            
+            if (!symbol) {
+                Debugger.error('Symbol is required for analysis. Please enter a symbol first.');
+                return;
+            }
+            
             // Show loading state
             this.setButtonLoading(btn, 'UPDATING...');
             
-            // Trigger analysis
-            const result = await analysisService.triggerAnalysis();
+            // Trigger analysis for current symbol
+            const result = await analysisService.triggerAnalysis(symbol);
             
             if (result.success) {
-                Debugger.success(
-                    `AI analysis started: ${result.insights_found} insights found, ${result.tasks_created} tasks created`
-                );
+                if (result.symbol) {
+                    Debugger.success(
+                        `AI analysis started for ${result.symbol}: ${result.insights_found} insights found, ${result.tasks_created} tasks created`
+                    );
+                } else {
+                    Debugger.success(
+                        `AI analysis started: ${result.insights_found} insights found, ${result.tasks_created} tasks created`
+                    );
+                }
                 
                 // Reload page after delay
                 setTimeout(() => window.location.reload(), config.defaults.reloadDelay * 2);
@@ -142,10 +156,20 @@ export class ControlPanel {
         
         try {
             // Get form values
-            const symbol = this.elements.symbolInput?.value.trim().toUpperCase() || config.defaults.symbol;
-            const exchange = this.elements.exchangeInput?.value.trim().toUpperCase() || config.defaults.exchange;
+            const symbol = this.elements.symbolInput?.value.trim().toUpperCase() || '';
+            const exchange = this.elements.exchangeInput?.value.trim().toUpperCase() || '';
             const feedType = this.elements.typeFilter?.value || '';
             const maxItems = parseInt(this.elements.itemsSelect?.value) || config.defaults.maxItems;
+            
+            // Validate required fields
+            if (!symbol) {
+                Debugger.error('Symbol is required');
+                return;
+            }
+            if (!exchange) {
+                Debugger.error('Exchange is required');
+                return;
+            }
             
             // Show loading state
             this.setButtonLoading(btn, 'FETCHING...');
@@ -263,46 +287,38 @@ export class ControlPanel {
      */
     handleTypeFilterChange(event) {
         const filterValue = event.target.value;
+        const symbolInput = document.getElementById('symbolInput');
+        const exchangeInput = document.getElementById('exchangeInput');
+        const symbol = symbolInput?.value.trim().toUpperCase() || '';
+        const exchange = exchangeInput?.value.trim().toUpperCase() || '';
         
-        // Reload page with type filter parameter
-        const url = new URL(window.location);
-        if (filterValue) {
-            url.searchParams.set('type', filterValue);
-        } else {
-            url.searchParams.delete('type');
+        // Build new URL path using EXCHANGE:SYMBOL format
+        let newPath = '/';
+        if (symbol && exchange) {
+            const exchangeSymbol = `${exchange}:${symbol}`;
+            newPath = `/api/insights/${exchangeSymbol}`;
+            if (filterValue) {
+                // Replace spaces with underscores for URL
+                const urlSafeType = filterValue.replace(/\s+/g, '_');
+                newPath = `/api/insights/${exchangeSymbol}/${urlSafeType}`;
+            }
+        } else if (symbol) {
+            // Fallback to just symbol if no exchange
+            newPath = `/api/insights/${symbol}`;
+            if (filterValue) {
+                // Replace spaces with underscores for URL
+                const urlSafeType = filterValue.replace(/\s+/g, '_');
+                newPath = `/api/insights/${symbol}/${urlSafeType}`;
+            }
+        } else if (filterValue) {
+            // If no symbol but type is selected, stay on current page
+            return;
         }
-        window.location.href = url.toString();
+        
+        window.location.href = newPath;
     }
 
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │       APPLY TYPE FILTER             │
-     *  └─────────────────────────────────────┘
-     *  Applies type filter to table rows
-     * 
-     *  Parameters:
-     *  - filterValue: Filter value
-     * 
-     *  Returns:
-     *  - None
-     */
-    applyTypeFilter(filterValue) {
-        const rows = document.querySelectorAll('tbody tr');
-        
-        rows.forEach(row => {
-            const typeCell = row.querySelector('td:nth-child(2)');
-            if (!typeCell) return;
-            
-            const rowType = typeCell.textContent.trim();
-            
-            if (filterValue === '' || rowType === filterValue) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    }
+
 
     /**
      * 
