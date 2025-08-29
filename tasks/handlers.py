@@ -134,7 +134,8 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         # Only update status if insight still exists
         try:
             if insights_repo.get_by_id(insight_id):
-                insights_repo.update_ai_status(insight_id, AIAnalysisStatus.FAILED)
+                # Reset status to EMPTY on failure so it can be retried
+                insights_repo.update_ai_status(insight_id, AIAnalysisStatus.EMPTY)
         except Exception:
             debug_warning(f"Could not update status for insight {insight_id} - may have been deleted")
         
@@ -213,9 +214,12 @@ async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
         from .queue import TaskQueue
         queue = TaskQueue()
         
-        # Create tasks for each insight
+        # Create tasks for each insight and update status to PENDING
         task_ids = []
         for insight in insights:
+            # Update status to PENDING when task is queued
+            insights_repo.update_ai_status(insight.id, AIAnalysisStatus.PENDING)
+            
             task_id = queue.add_task(
                 'ai_analysis',
                 {'insight_id': insight.id},

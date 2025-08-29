@@ -142,16 +142,16 @@ async def reset_queue() -> Dict[str, Any]:
         # Cancel all pending and processing tasks
         cancelled_count = queue.cancel_all_tasks()
         
-        # Reset all insights with failed AI analysis back to pending
+        # Reset all insights with failed AI analysis back to EMPTY
         from data import InsightsRepository
         from core.models import AIAnalysisStatus
         
         insights_repo = InsightsRepository()
         
-        # Reset insights with failed status back to pending
+        # Reset insights with failed status back to EMPTY
         failed_reset_count = insights_repo.reset_failed_ai_analysis()
         
-        # Reset insights with processing status back to pending
+        # Reset insights with processing status back to EMPTY
         processing_reset_count = insights_repo.reset_processing_ai_analysis()
         
         total_reset_count = failed_reset_count + processing_reset_count

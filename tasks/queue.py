@@ -348,13 +348,13 @@ class TaskQueue:
                 
                 # Update entity status based on task type and entity type
                 if entity_type == 'insight' and entity_id:
-                    # Update insight AI analysis status to failed
+                    # Update insight AI analysis status to EMPTY so it can be retried
                     conn.execute("""
                         UPDATE insights
                         SET AIAnalysisStatus = ?
                         WHERE id = ?
-                    """, ('failed', entity_id))
-                    debug_info(f"Updated insight {entity_id} AI status to failed due to task {task_id}")
+                    """, ('empty', entity_id))
+                    debug_info(f"Updated insight {entity_id} AI status to EMPTY due to task {task_id} failure")
                 
                 elif entity_type == 'symbol' and task_type == 'ai_report_generation':
                     # For report generation tasks, we need to find the most recent report

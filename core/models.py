@@ -51,10 +51,11 @@ class AIAnalysisStatus(str, Enum):
      
      Tracks the lifecycle of AI processing.
     """
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    EMPTY = "empty"        # No task has operated on the insight yet
+    PENDING = "pending"     # Task is queued for processing
+    PROCESSING = "processing"  # Task is currently running
+    COMPLETED = "completed"    # Task completed successfully
+    FAILED = "failed"       # Task failed
 
 
 class AIAction(str, Enum):
@@ -116,7 +117,7 @@ class InsightModel:
     ai_confidence: Optional[float] = None
     ai_event_time: Optional[str] = None
     ai_levels: Optional[str] = None
-    ai_analysis_status: AIAnalysisStatus = AIAnalysisStatus.PENDING
+    ai_analysis_status: AIAnalysisStatus = AIAnalysisStatus.EMPTY
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database operations"""
@@ -158,7 +159,7 @@ class InsightModel:
             ai_confidence=data.get('AIConfidence'),
             ai_event_time=data.get('AIEventTime'),
             ai_levels=data.get('AILevels'),
-            ai_analysis_status=AIAnalysisStatus(data.get('AIAnalysisStatus', 'pending'))
+            ai_analysis_status=AIAnalysisStatus(data.get('AIAnalysisStatus', 'empty'))
         )
 
 

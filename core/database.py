@@ -216,7 +216,7 @@ class DatabaseManager:
             AIConfidence REAL,
             AIEventTime TEXT,
             AILevels TEXT,
-            AIAnalysisStatus TEXT DEFAULT 'pending',
+            AIAnalysisStatus TEXT DEFAULT 'empty',
             FOREIGN KEY (type) REFERENCES feed_names (name)
         );
         

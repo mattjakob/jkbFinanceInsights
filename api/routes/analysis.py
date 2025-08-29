@@ -121,6 +121,16 @@ async def analyze_single_insight(insight_id: int):
         if not insight:
             raise HTTPException(status_code=404, detail="Insight not found")
         
+        # Check if insight is in EMPTY status (ready for analysis)
+        if insight.ai_analysis_status != AIAnalysisStatus.EMPTY:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Insight {insight_id} is not ready for analysis. Current status: {insight.ai_analysis_status.value}"
+            )
+        
+        # Update status to PENDING when task is queued
+        insights_repo.update_ai_status(insight_id, AIAnalysisStatus.PENDING)
+        
         # Create analysis task
         task_id = task_queue.add_task(
             'ai_analysis',

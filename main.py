@@ -191,7 +191,7 @@ async def get_normalized_symbols():
         # Sort by symbol for consistent ordering
         normalized_symbols.sort(key=lambda x: x["symbol"])
         
-        debug_info(f"Returned {len(normalized_symbols)} normalized symbols")
+        #debug_info(f"Returned {len(normalized_symbols)} normalized symbols")
         
         return {
             "success": True,

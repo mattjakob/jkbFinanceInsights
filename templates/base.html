@@ -55,6 +55,20 @@
                         <li><a class="dropdown-item utility-item" href="#" data-command="get_status">
                             <i class="bi bi-info-circle"></i> Task Status
                         </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><div class="dropdown-header">Advanced Features</div></li>
+                        <li><a class="dropdown-item utility-item" href="#" data-command="open_dashboard">
+                            <i class="bi bi-speedometer2"></i> Real-time Dashboard
+                        </a></li>
+                        <li><a class="dropdown-item utility-item" href="#" data-command="system_monitor">
+                            <i class="bi bi-activity"></i> System Monitor
+                        </a></li>
+                        <li><a class="dropdown-item utility-item" href="#" data-command="database_backup">
+                            <i class="bi bi-database-check"></i> Database Backup
+                        </a></li>
+                        <li><a class="dropdown-item utility-item" href="#" data-command="export_data">
+                            <i class="bi bi-file-earmark-arrow-down"></i> Export Data
+                        </a></li>
                     </ul>
                 </div>
             </div>
@@ -103,8 +117,45 @@
                         link.className = 'dropdown-item';
                         link.href = symbolData.url;
                         link.innerHTML = `
-                            <span class="symbol-text">${symbolData.symbol}</span>
-                            <small class="exchange-text">${symbolData.exchange}</small>
+                            <div class="symbol-content">
+                                <span class="symbol-text">${symbolData.symbol}</span>
+                                <span class="exchange-tag">${symbolData.exchange}</span>
+                            </div>
+                        `;
+                        
+                        listItem.appendChild(link);
+                        dropdownMenu.appendChild(listItem);
+                    });
+                    
+                    // Add separator and database utilities
+                    const separator = document.createElement('li');
+                    separator.innerHTML = '<hr class="dropdown-divider">';
+                    dropdownMenu.appendChild(separator);
+                    
+                    // Add database utilities header
+                    const dbHeader = document.createElement('li');
+                    dbHeader.innerHTML = '<div class="dropdown-header">Database Utilities</div>';
+                    dropdownMenu.appendChild(dbHeader);
+                    
+                    // Add database utility items
+                    const dbUtilities = [
+                        { command: 'reset_failed_ai', icon: 'bi-arrow-clockwise', text: 'Reset Failed AI Analysis' },
+                        { command: 'reset_processing_ai', icon: 'bi-hourglass-split', text: 'Reset Processing AI' },
+                        { command: 'cleanup_insights', icon: 'bi-trash', text: 'Cleanup Old Insights' },
+                        { command: 'export_data', icon: 'bi-download', text: 'Export Database' },
+                        { command: 'import_data', icon: 'bi-upload', text: 'Import Database' }
+                    ];
+                    
+                    dbUtilities.forEach(util => {
+                        const listItem = document.createElement('li');
+                        const link = document.createElement('a');
+                        
+                        link.className = 'dropdown-item utility-item';
+                        link.href = '#';
+                        link.dataset.command = util.command;
+                        link.innerHTML = `
+                            <i class="bi ${util.icon}"></i>
+                            <span>${util.text}</span>
                         `;
                         
                         listItem.appendChild(link);
@@ -200,6 +251,30 @@
                                 
                             case 'get_status':
                                 result = await fetch('/api/tasks/status');
+                                break;
+                                
+                            case 'open_dashboard':
+                                // Open dashboard in new window
+                                window.open('/utilities/dashboard', '_blank', 'width=1400,height=900');
+                                item.innerHTML = '<i class="bi bi-check-circle"></i> Dashboard Opened!';
+                                item.style.color = '#28a745';
+                                setTimeout(() => {
+                                    item.innerHTML = originalText;
+                                    item.style.color = '';
+                                    item.style.pointerEvents = '';
+                                }, 2000);
+                                return;
+                                
+                            case 'system_monitor':
+                                result = await fetch('/api/utilities/system-metrics');
+                                break;
+                                
+                            case 'database_backup':
+                                result = await fetch('/api/utilities/database-backup', { method: 'POST' });
+                                break;
+                                
+                            case 'export_data':
+                                result = await fetch('/api/utilities/export-data?format=json');
                                 break;
                                 
                             default:

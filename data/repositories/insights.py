@@ -225,8 +225,8 @@ class InsightsRepository:
          └─────────────────────────────────────┘
          Find insights needing AI analysis
          
-         Returns insights where analysis is pending or
-         where AISummary is empty.
+         Returns insights where AIAnalysisStatus is EMPTY,
+         meaning no task has operated on them yet.
          
          Returns:
          - List of insights needing analysis
@@ -234,13 +234,7 @@ class InsightsRepository:
         with get_db_session() as conn:
             rows = conn.execute("""
                 SELECT * FROM insights 
-                WHERE (
-                    AIAnalysisStatus = 'pending' 
-                    OR (
-                        (AISummary IS NULL OR AISummary = '')
-                        AND (AIAnalysisStatus IS NULL OR AIAnalysisStatus != 'failed')
-                    )
-                )
+                WHERE AIAnalysisStatus = 'empty'
                 ORDER BY timePosted DESC
             """).fetchall()
             

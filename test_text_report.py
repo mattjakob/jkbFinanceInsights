@@ -32,7 +32,7 @@ insight_id = insights_repo.create(test_insight)
 debug_info(f"Created test insight with ID: {insight_id}")
 
 # Test the text report endpoint
-response = requests.get('http://localhost:8000/api/text-reports/TESTCOIN')
+response = requests.get('http://localhost:8000/api/summaries/TESTCOIN')
 print("\nText Report Response:")
 print("=" * 60)
 print(response.text)

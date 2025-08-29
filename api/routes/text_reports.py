@@ -29,7 +29,7 @@ from debugger import debug_info, debug_error
 
 
 # Create router
-router = APIRouter(prefix="/api/text-reports", tags=["text-reports"])
+router = APIRouter(prefix="/api/summaries", tags=["summaries"])
 
 # Repository instance
 insights_repo = InsightsRepository()
@@ -86,12 +86,10 @@ async def get_symbol_text_report(exchange_symbol: str):
         
         # Build the text report
         report_lines = []
-        report_lines.append(f"INSIGHTS REPORT FOR: {symbol}")
-        if exchange:
-            report_lines.append(f"EXCHANGE: {exchange}")
+        report_lines.append(f"INSIGHTS REPORT FOR {symbol}")
         report_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        report_lines.append(f"Total Insights with AI Analysis: {len(insights_with_ai)}")
-        report_lines.append("=" * 60)
+        report_lines.append(f"Total summaries: {len(insights_with_ai)}")
+        report_lines.append("")
         report_lines.append("")
         
         for insight in insights_with_ai:
