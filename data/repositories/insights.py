@@ -25,7 +25,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import hashlib
 
-from core import InsightModel, FeedType, AIAnalysisStatus, get_db_session
+from core import InsightModel, FeedType, TaskStatus, TaskName, TaskInfo, get_db_session
 from debugger import debug_info, debug_warning, debug_error
 
 
@@ -75,15 +75,15 @@ class InsightsRepository:
                     timeFetched, timePosted, type, title, content,
                     symbol, exchange, imageURL,
                     AIImageSummary, AISummary, AIAction,
-                    AIConfidence, AIEventTime, AILevels, AIAnalysisStatus
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    AIConfidence, AIEventTime, AILevels, TaskStatus, TaskName
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 data['timeFetched'], data['timePosted'], data['type'],
                 data['title'], data['content'], data['symbol'],
                 data['exchange'], data['imageURL'],
                 data['AIImageSummary'], data['AISummary'], data['AIAction'],
                 data['AIConfidence'], data['AIEventTime'], data['AILevels'],
-                data['AIAnalysisStatus']
+                data['TaskStatus'], data['TaskName']
             ))
             
             insight_id = cursor.lastrowid
@@ -225,8 +225,8 @@ class InsightsRepository:
          └─────────────────────────────────────┘
          Find insights needing AI analysis
          
-         Returns insights where AIAnalysisStatus is EMPTY,
-         meaning no task has operated on them yet.
+         Returns insights where TaskStatus is EMPTY or FAILED,
+         meaning no task has operated on them yet or they failed and need retry.
          
          Returns:
          - List of insights needing analysis
@@ -234,27 +234,31 @@ class InsightsRepository:
         with get_db_session() as conn:
             rows = conn.execute("""
                 SELECT * FROM insights 
-                WHERE AIAnalysisStatus = 'empty'
+                WHERE TaskStatus IN ('empty', 'failed')
                 ORDER BY timePosted DESC
             """).fetchall()
             
             return [InsightModel.from_dict(dict(row)) for row in rows]
     
-    def update_ai_status(self, insight_id: int, status: AIAnalysisStatus) -> bool:
+    def update_ai_status(self, insight_id: int, status: TaskStatus, name: TaskName = None) -> bool:
         """
          ┌─────────────────────────────────────┐
          │       UPDATE_AI_STATUS              │
          └─────────────────────────────────────┘
-         Update AI analysis status
+         Update AI task status and optionally name
          
          Parameters:
          - insight_id: Insight to update
-         - status: New analysis status
+         - status: New task status
+         - name: Optional task name (if changing task type)
          
          Returns:
          - True if updated successfully
         """
-        return self.update(insight_id, {'AIAnalysisStatus': status.value})
+        updates = {'TaskStatus': status.value}
+        if name:
+            updates['TaskName'] = name.value
+        return self.update(insight_id, updates)
     
     def delete_by_type(self, feed_type: FeedType) -> Tuple[int, List[int]]:
         """
@@ -354,7 +358,7 @@ class InsightsRepository:
             'ai_confidence': 'AIConfidence',
             'ai_event_time': 'AIEventTime',
             'ai_levels': 'AILevels',
-            'ai_analysis_status': 'AIAnalysisStatus'
+            'ai_analysis_status': 'TaskStatus'
         }
         return mapping.get(field_name, field_name)
     
@@ -371,11 +375,11 @@ class InsightsRepository:
         with get_db_session() as conn:
             reset_count = conn.execute("""
                 UPDATE insights
-                SET AIAnalysisStatus = ?
-                WHERE AIAnalysisStatus = ?
+                SET TaskStatus = ?
+                WHERE TaskStatus = ?
             """, (
-                AIAnalysisStatus.PENDING.value,
-                AIAnalysisStatus.FAILED.value
+                TaskStatus.PENDING.value,
+                TaskStatus.FAILED.value
             )).rowcount
             
             if reset_count > 0:
@@ -396,10 +400,10 @@ class InsightsRepository:
         with get_db_session() as conn:
             reset_count = conn.execute("""
                 UPDATE insights
-                SET AIAnalysisStatus = ?
-                WHERE AIAnalysisStatus = ?
+                SET TaskStatus = ?
+                WHERE TaskStatus = ?
             """, (
-                AIAnalysisStatus.PENDING.value,
+                TaskStatus.PENDING.value,
                 'processing'
             )).rowcount
             
@@ -407,6 +411,121 @@ class InsightsRepository:
                 debug_info(f"Reset {reset_count} insights with processing AI analysis back to pending")
             
             return reset_count
+    
+    def reset_stuck_insights(self) -> int:
+        """
+         ┌─────────────────────────────────────┐
+         │       RESET_STUCK_INSIGHTS          │
+         └─────────────────────────────────────┘
+         Reset insights stuck in PENDING, PROCESSING, or FAILED
+         
+         Resets AI analysis status to EMPTY for insights
+         that are stuck in PENDING, PROCESSING, or FAILED states.
+         Also clears any AI analysis results.
+         
+         Returns:
+         - Number of insights reset
+        """
+        with get_db_session() as conn:
+            cursor = conn.cursor()
+            
+            # Reset insights stuck in PENDING, PROCESSING, or FAILED to EMPTY
+            reset_count = cursor.execute("""
+                UPDATE insights 
+                SET TaskStatus = ?,
+                    AISummary = NULL,
+                    AIAction = NULL,
+                    AIConfidence = NULL,
+                    AIEventTime = NULL,
+                    AILevels = NULL,
+                    AIImageSummary = NULL
+                WHERE TaskStatus IN ('pending', 'processing', 'failed')
+            """, (TaskStatus.EMPTY.value,)).rowcount
+            
+            if reset_count > 0:
+                debug_info(f"Reset {reset_count} stuck insights to EMPTY status")
+            
+            return reset_count
+    
+    def reset_insights_by_symbol_and_type(self, symbol: str, feed_type: Optional[FeedType] = None) -> Tuple[int, int]:
+        """
+         ┌─────────────────────────────────────┐
+         │   RESET_INSIGHTS_BY_SYMBOL_TYPE    │
+         └─────────────────────────────────────┘
+         Reset insights for specific symbol and type
+         
+         Resets AI analysis status to EMPTY for insights
+         matching the given symbol and optionally type.
+         
+         Parameters:
+         - symbol: Symbol to reset
+         - feed_type: Optional feed type to filter by
+         
+         Returns:
+         - Tuple of (insights_reset_count, tasks_cancelled_count)
+        """
+        with get_db_session() as conn:
+            # First get the insights to reset
+            query = """
+                SELECT id, TaskStatus 
+                FROM insights 
+                WHERE symbol = ?
+            """
+            params = [symbol]
+            
+            if feed_type:
+                query += " AND type = ?"
+                params.append(feed_type.value)
+                
+            insights = conn.execute(query, params).fetchall()
+            
+            if not insights:
+                debug_info(f"No insights found for symbol {symbol}" + (f" and type {feed_type.value}" if feed_type else ""))
+                return 0, 0
+            
+            insight_ids = [insight['id'] for insight in insights]
+            
+            # Reset all insights to EMPTY status
+            placeholders = ','.join(['?' for _ in insight_ids])
+            reset_count = conn.execute(f"""
+                UPDATE insights
+                SET TaskStatus = ?,
+                    AISummary = NULL,
+                    AIAction = NULL,
+                    AIConfidence = NULL,
+                    AIEventTime = NULL,
+                    AILevels = NULL,
+                    AIImageSummary = NULL
+                WHERE id IN ({placeholders})
+            """, [TaskStatus.EMPTY.value] + insight_ids).rowcount
+            
+            # Also cancel any associated tasks in the queue
+            tasks_cancelled = 0
+            try:
+                # Cancel tasks for these insights
+                tasks_result = conn.execute(f"""
+                    UPDATE simple_tasks
+                    SET status = ?, completed_at = ?, error = ?
+                    WHERE entity_type = 'insight' 
+                    AND entity_id IN ({placeholders})
+                    AND status IN (?, ?, ?)
+                """, [
+                    TaskStatus.CANCELLED.value,
+                    datetime.now().isoformat(),
+                    f"Reset tasks for symbol {symbol}" + (f" type {feed_type.value}" if feed_type else ""),
+                ] + insight_ids + [
+                    TaskStatus.PENDING.value,
+                    TaskStatus.PROCESSING.value,
+                    TaskStatus.FAILED.value
+                ])
+                tasks_cancelled = tasks_result.rowcount
+            except Exception as e:
+                debug_error(f"Error cancelling tasks: {e}")
+            
+            debug_info(f"Reset {reset_count} insights and cancelled {tasks_cancelled} tasks for symbol {symbol}" + 
+                      (f" type {feed_type.value}" if feed_type else ""))
+            
+            return reset_count, tasks_cancelled
 
 
 

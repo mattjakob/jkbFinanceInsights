@@ -144,7 +144,7 @@ async def reset_queue() -> Dict[str, Any]:
         
         # Reset all insights with failed AI analysis back to EMPTY
         from data import InsightsRepository
-        from core.models import AIAnalysisStatus
+        from core.models import TaskStatus
         
         insights_repo = InsightsRepository()
         

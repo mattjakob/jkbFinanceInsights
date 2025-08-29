@@ -33,6 +33,41 @@
     <div class="loading-spinner"></div>
 {%- endmacro %}
 
+{# Macro for AI analysis status indicators #}
+{% macro ai_status_indicator(status, content=None) -%}
+    {% if status == 'pending' %}
+        <div class="ai-status-pending">
+            <span class="status-spinner-wrapper">
+                <div class="loading-spinner pending"></div>
+            </span>
+        </div>
+    {% elif status == 'processing' %}
+        <div class="ai-status-processing">
+            <span class="status-spinner-wrapper">
+                <div class="loading-spinner processing"></div>
+            </span>
+        </div>
+    {% elif status == 'failed' %}
+        <div class="ai-status-failed">
+            <span class="status-icon-wrapper">
+                <i class="bi bi-activity"></i>
+            </span>
+        </div>
+    {% elif status == 'empty' %}
+        <div class="ai-status-empty">
+            <span class="status-placeholder">-</span>
+        </div>
+    {% elif status == 'completed' and content %}
+        <div class="ai-status-completed">
+            <span class="status-content">{{ content }}</span>
+        </div>
+    {% else %}
+        <div class="ai-status-empty">
+            <span class="status-placeholder">-</span>
+        </div>
+    {% endif %}
+{%- endmacro %}
+
 {% block content %}
 <div class="trading-chart-section mb-4">
     <!-- TradingView Widget BEGIN -->
@@ -76,6 +111,12 @@
 </div>
 
 
+
+<!-- Message Area -->
+<div id="messageArea" class="alert alert-dismissible fade show d-none" role="alert">
+    <span id="messageText"></span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
 
 <!-- Control Panel -->
 <div class="control-panel mb-4">
@@ -263,7 +304,7 @@
                     <th>LEVELS</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="insightsTableBody">
                 {% for insight in insights %}
                 <tr class="insight-row" data-insight-id="{{ insight.id }}">
                     <td class="type-col">
@@ -284,28 +325,20 @@
                             <strong>{{ insight.title[:80] }}{% if insight.title|length > 80 %}...{% endif %}</strong>
                         </div>
                     </td>
-                    <td class="summary-col">
-                        {% if insight.AISummary %}
-                            {{ insight.AISummary[:100] }}{% if insight.AISummary|length > 100 %}...{% endif %}
-                        {% elif insight.AIAnalysisStatus == 'processing' %}
-                            {{ loading_spinner() }}
+                    <td class="summary-col ai-col-left">
+                        {{ ai_status_indicator(insight.TaskStatus, insight.AISummary[:100] ~ ('...' if insight.AISummary and insight.AISummary|length > 100 else '') if insight.AISummary else None) }}
+                    </td>
+                    <td class="action-col ai-col-center">
+                        {{ ai_status_indicator(insight.TaskStatus, action_badge(insight.AIAction) if insight.AIAction else None) }}
+                    </td>
+                    <td class="confidence-col ai-col-center">
+                        {% if insight.TaskStatus == 'completed' and insight.AIConfidence is not none %}
+                            {{ ai_status_indicator(insight.TaskStatus, "%.0f%%"|format(insight.AIConfidence * 100)) }}
+                        {% else %}
+                            {{ ai_status_indicator(insight.TaskStatus) }}
                         {% endif %}
                     </td>
-                    <td class="action-col">
-                        {% if insight.AIAction %}
-                            {{ action_badge(insight.AIAction) }}
-                        {% elif insight.AIAnalysisStatus == 'processing' %}
-                            {{ loading_spinner() }}
-                        {% endif %}
-                    </td>
-                    <td class="confidence-col">
-                        {% if insight.AIConfidence is not none %}
-                            <span class="confidence-value">{{ "%.0f"|format(insight.AIConfidence * 100) }}%</span>
-                        {% elif insight.AIAnalysisStatus == 'processing' %}
-                            {{ loading_spinner() }}
-                        {% endif %}
-                    </td>
-                    <td class="horizon-col">
+                    <td class="horizon-col ai-col-center">
                         <span class="horizon-text" data-horizon="{{ insight.AIEventTime or '' }}">
                             {% if insight.AIEventTime %}
                                 <span class="horizon-display">-</span>
@@ -314,15 +347,9 @@
                             {% endif %}
                         </span>
                     </td>
-                    <td class="levels-col">
+                    <td class="levels-col ai-col-left">
                         <span class="levels-text" data-levels="{{ insight.AILevels or '' }}">
-                            {% if insight.AILevels %}
-                                {{ insight.AILevels }}
-                            {% elif insight.AIAnalysisStatus == 'processing' %}
-                                {{ loading_spinner() }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {{ ai_status_indicator(insight.TaskStatus, insight.AILevels if insight.AILevels else None) }}
                         </span>
                     </td>
                 </tr>
@@ -346,5 +373,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script type="module" src="/static/js/app.js"></script>
+<script src="/static/js/simple-app.js"></script>
 {% endblock %}

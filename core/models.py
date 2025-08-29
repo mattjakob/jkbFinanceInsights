@@ -42,20 +42,101 @@ class FeedType(str, Enum):
     TD_OPINIONS = "TD OPINIONS"
 
 
-class AIAnalysisStatus(str, Enum):
+# Task system components defined here to avoid circular imports
+class TaskStatus(str, Enum):
     """
      ┌─────────────────────────────────────┐
-     │        AIANALYSISSTATUS             │
+     │           TASK STATUS               │
      └─────────────────────────────────────┘
-     Status of AI analysis for an insight
+     Universal task lifecycle states
      
-     Tracks the lifecycle of AI processing.
+     Used across the system to track the progress of any task type.
     """
-    EMPTY = "empty"        # No task has operated on the insight yet
-    PENDING = "pending"     # Task is queued for processing
+    EMPTY = "empty"        # No task has been created yet
+    PENDING = "pending"    # Task is queued for processing
     PROCESSING = "processing"  # Task is currently running
     COMPLETED = "completed"    # Task completed successfully
-    FAILED = "failed"       # Task failed
+    FAILED = "failed"      # Task failed
+    CANCELLED = "cancelled"  # Task was cancelled
+
+
+class TaskName(str, Enum):
+    """
+     ┌─────────────────────────────────────┐
+     │           TASK NAME                 │
+     └─────────────────────────────────────┘
+     Standard task names used in the system
+     
+     Defines all supported task operations with consistent naming.
+    """
+    AI_ANALYSIS = "ai_analysis"
+    AI_IMAGE_ANALYSIS = "ai_image_analysis" 
+    AI_TEXT_ANALYSIS = "ai_text_analysis"
+    AI_SUMMARY = "ai_summary"
+    BULK_ANALYSIS = "bulk_analysis"
+    CLEANUP = "cleanup"
+    REPORT_GENERATION = "ai_report_generation"
+
+
+@dataclass
+class TaskInfo:
+    """
+     ┌─────────────────────────────────────┐
+     │           TASK INFO                 │
+     └─────────────────────────────────────┘
+     Task information for tracking operations
+     
+     Lightweight object to track task status and name for any entity.
+     Used by insights and other objects to track their processing state.
+     
+     Parameters:
+     - name: Type of task being performed
+     - status: Current lifecycle state
+     
+     Returns:
+     - TaskInfo instance
+     
+     Notes:
+     - Embedded in other models
+     - Serializable for database storage
+    """
+    name: TaskName = TaskName.AI_ANALYSIS
+    status: TaskStatus = TaskStatus.EMPTY
+    
+    def to_dict(self) -> Dict[str, str]:
+        """Convert to dictionary for serialization"""
+        return {
+            'name': self.name.value,
+            'status': self.status.value
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, str]) -> 'TaskInfo':
+        """Create from dictionary"""
+        return cls(
+            name=TaskName(data.get('name', TaskName.AI_ANALYSIS.value)),
+            status=TaskStatus(data.get('status', TaskStatus.EMPTY.value))
+        )
+    
+    def is_pending(self) -> bool:
+        """Check if task is pending"""
+        return self.status == TaskStatus.PENDING
+    
+    def is_processing(self) -> bool:
+        """Check if task is currently processing"""
+        return self.status == TaskStatus.PROCESSING
+    
+    def is_completed(self) -> bool:
+        """Check if task is completed"""
+        return self.status == TaskStatus.COMPLETED
+    
+    def is_failed(self) -> bool:
+        """Check if task failed"""
+        return self.status == TaskStatus.FAILED
+    
+    def needs_processing(self) -> bool:
+        """Check if task needs processing (empty or failed)"""
+        return self.status in [TaskStatus.EMPTY, TaskStatus.FAILED]
 
 
 class AIAction(str, Enum):
@@ -117,7 +198,7 @@ class InsightModel:
     ai_confidence: Optional[float] = None
     ai_event_time: Optional[str] = None
     ai_levels: Optional[str] = None
-    ai_analysis_status: AIAnalysisStatus = AIAnalysisStatus.EMPTY
+    ai_task: TaskInfo = field(default_factory=TaskInfo)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database operations"""
@@ -137,7 +218,8 @@ class InsightModel:
             'AIConfidence': self.ai_confidence,
             'AIEventTime': self.ai_event_time,
             'AILevels': self.ai_levels,
-            'AIAnalysisStatus': self.ai_analysis_status.value
+            'TaskStatus': self.ai_task.status.value,
+            'TaskName': self.ai_task.name.value
         }
     
     @classmethod
@@ -159,7 +241,10 @@ class InsightModel:
             ai_confidence=data.get('AIConfidence'),
             ai_event_time=data.get('AIEventTime'),
             ai_levels=data.get('AILevels'),
-            ai_analysis_status=AIAnalysisStatus(data.get('AIAnalysisStatus', 'empty'))
+            ai_task=TaskInfo(
+                name=TaskName(data.get('TaskName') or 'ai_analysis'),
+                status=TaskStatus(data.get('TaskStatus') or 'empty')
+            )
         )
 
 
@@ -290,7 +375,7 @@ class ReportModel:
     ai_confidence: float
     ai_event_time: Optional[str] = None
     ai_levels: Optional[str] = None
-    ai_analysis_status: AIAnalysisStatus = AIAnalysisStatus.COMPLETED
+    ai_task: TaskInfo = field(default_factory=lambda: TaskInfo(name=TaskName.AI_ANALYSIS, status=TaskStatus.COMPLETED))
     
     # Optional fields
     id: Optional[int] = None
@@ -306,7 +391,8 @@ class ReportModel:
             'AIConfidence': self.ai_confidence,
             'AIEventTime': self.ai_event_time,
             'AILevels': self.ai_levels,
-            'AIAnalysisStatus': self.ai_analysis_status.value
+            'TaskStatus': self.ai_task.status.value,
+            'TaskName': self.ai_task.name.value
         }
     
     @classmethod
@@ -321,7 +407,10 @@ class ReportModel:
             ai_confidence=data['AIConfidence'],
             ai_event_time=data.get('AIEventTime'),
             ai_levels=data.get('AILevels'),
-            ai_analysis_status=AIAnalysisStatus(data.get('AIAnalysisStatus', 'completed'))
+            ai_task=TaskInfo(
+                name=TaskName(data.get('TaskName') or 'ai_analysis'),
+                status=TaskStatus(data.get('TaskStatus') or 'completed')
+            )
         )
 
 

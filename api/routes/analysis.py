@@ -24,8 +24,10 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 
-from tasks import TaskQueue, handle_bulk_analysis
+from tasks import TaskQueue
+from tasks.handlers import handle_bulk_analysis
 from data import InsightsRepository
+from core import TaskStatus, TaskName
 from debugger import debug_info, debug_error, debug_success
 
 # Create router
@@ -51,23 +53,46 @@ async def analyze_insights(request: Dict[str, Any]):
      - symbol: Optional symbol to filter insights (e.g., "BTCUSD")
     """
     try:
-        # Extract symbol from request body
+        # Extract symbol and type from request body
         symbol = request.get('symbol')
+        type_filter = request.get('type')
         
         # Use bulk analysis handler to create tasks
-        result = await handle_bulk_analysis(symbol=symbol)
+        result = await handle_bulk_analysis(symbol=symbol, type_filter=type_filter)
         
+        # Extract values from result
+        tasks_created = result.get('tasks_created', 0)
+        image_tasks = result.get('image_tasks', 0)
+        text_tasks = result.get('text_tasks', 0)
+        insights_found = result.get('insights_found', 0)
+        
+        # Build message based on filters and task types
+        filters = []
         if symbol:
-            message = f"Created {result['tasks_created']} analysis tasks for {result['insights_found']} insights of symbol {symbol}"
+            filters.append(f"symbol {symbol}")
+        if type_filter:
+            filters.append(f"type {type_filter}")
+        
+        if filters:
+            if image_tasks > 0 and text_tasks > 0:
+                message = f"Created {tasks_created} tasks for {insights_found} insights ({', '.join(filters)}): {image_tasks} image + {text_tasks} text"
+            else:
+                message = f"Created {tasks_created} tasks for {insights_found} insights ({', '.join(filters)})"
         else:
-            message = f"Created {result['tasks_created']} analysis tasks for {result['insights_found']} insights"
+            if image_tasks > 0 and text_tasks > 0:
+                message = f"Created {tasks_created} tasks for {insights_found} insights: {image_tasks} image + {text_tasks} text"
+            else:
+                message = f"Created {tasks_created} tasks for {insights_found} insights"
         
         return {
-            "success": result['success'],
+            "success": result.get('success', False),
             "message": message,
-            "insights_found": result['insights_found'],
-            "tasks_created": result['tasks_created'],
-            "symbol": symbol
+            "insights_found": insights_found,
+            "tasks_created": tasks_created,
+            "image_tasks": image_tasks,
+            "text_tasks": text_tasks,
+            "symbol": symbol,
+            "type_filter": type_filter
         }
         
     except Exception as e:
@@ -122,20 +147,22 @@ async def analyze_single_insight(insight_id: int):
             raise HTTPException(status_code=404, detail="Insight not found")
         
         # Check if insight is in EMPTY status (ready for analysis)
-        if insight.ai_analysis_status != AIAnalysisStatus.EMPTY:
+        if insight.ai_analysis_status != TaskStatus.EMPTY:
             raise HTTPException(
                 status_code=400, 
                 detail=f"Insight {insight_id} is not ready for analysis. Current status: {insight.ai_analysis_status.value}"
             )
         
         # Update status to PENDING when task is queued
-        insights_repo.update_ai_status(insight_id, AIAnalysisStatus.PENDING)
+        insights_repo.update_ai_status(insight_id, TaskStatus.PENDING, TaskName.AI_ANALYSIS)
         
         # Create analysis task
         task_id = task_queue.add_task(
-            'ai_analysis',
+            TaskName.AI_ANALYSIS.value,
             {'insight_id': insight_id},
-            max_retries=3
+            max_retries=3,
+            entity_type='insight',
+            entity_id=insight_id
         )
         
         debug_success(f"Created analysis task {task_id} for insight {insight_id}")
@@ -198,7 +225,7 @@ async def generate_ai_report(request: Dict[str, Any]):
         task_queue = TaskQueue()
         
         task_id = task_queue.add_task(
-            task_type="ai_report_generation",
+            task_type=TaskName.REPORT_GENERATION.value,
             payload={
                 "symbol": symbol,
                 "content": content,

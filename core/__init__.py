@@ -7,7 +7,9 @@ and database management functionality.
 
 from .models import (
     FeedType,
-    AIAnalysisStatus,
+    TaskStatus,
+    TaskName,
+    TaskInfo,
     AIAction,
     InsightModel,
     ScrapedItem,
@@ -25,11 +27,14 @@ from .database import (
 __all__ = [
     # Models
     'FeedType',
-    'AIAnalysisStatus',
     'AIAction',
     'InsightModel',
     'ScrapedItem',
     'AIAnalysisResult',
+    # Task System
+    'TaskStatus',
+    'TaskName',
+    'TaskInfo',
     # Database
     'DatabaseConfig',
     'DatabaseManager',

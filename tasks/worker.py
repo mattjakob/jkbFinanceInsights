@@ -29,7 +29,7 @@ import sys
 
 from .queue import TaskQueue, Task
 from debugger import debug_info, debug_error, debug_warning, debug_success
-from config import TASK_TIMEOUT
+from config import TASK_PROCESSING_TIMEOUT
 
 
 class TaskWorker:
@@ -91,9 +91,10 @@ class TaskWorker:
             debug_info(f"Worker {self.worker_id} processing {task.task_type} task {task.id}")
             
             # Call handler with timeout
+            timeout_seconds = TASK_PROCESSING_TIMEOUT / 1000.0
             try:
                 if asyncio.iscoroutinefunction(handler):
-                    result = await asyncio.wait_for(handler(**task.payload), timeout=TASK_TIMEOUT / 1000.0)
+                    result = await asyncio.wait_for(handler(**task.payload), timeout=timeout_seconds)
                 else:
                     # Run sync handler in thread pool with timeout
                     loop = asyncio.get_event_loop()
@@ -104,18 +105,19 @@ class TaskWorker:
                         # Handler expects a single payload parameter
                         result = await asyncio.wait_for(
                             loop.run_in_executor(None, handler, task.payload), 
-                            timeout=TASK_TIMEOUT / 1000.0
+                            timeout=timeout_seconds
                         )
                     else:
                         # Handler expects individual parameters
                         result = await asyncio.wait_for(
                             loop.run_in_executor(None, handler, **task.payload), 
-                            timeout=TASK_TIMEOUT / 1000.0
+                            timeout=timeout_seconds
                         )
             except asyncio.TimeoutError:
-                error_msg = f"Task {task.id} timed out after {TASK_TIMEOUT}ms"
+                error_msg = f"Task {task.id} timed out after {timeout_seconds:.1f}s (config: {TASK_PROCESSING_TIMEOUT}ms)"
                 debug_error(error_msg)
-                self.queue.fail_task(task.id, error_msg)
+                # Handle timeout as a regular failure (allows retries)
+                self.queue.fail_task(task.id, error_msg, permanent=False)
                 # Note: fail_task will automatically call _update_entity_status_on_failure
                 return
             
@@ -215,6 +217,11 @@ class TaskWorker:
             cleaned_count = self.queue.cleanup_old_tasks(days=7)
             if cleaned_count > 0:
                 debug_info(f"Cleaned up {cleaned_count} old tasks")
+            
+            # Clean up stale pending tasks
+            stale_count = self.queue.cleanup_stale_pending_tasks()
+            if stale_count > 0:
+                debug_info(f"Cleaned up {stale_count} stale pending tasks")
             
             # Log health metrics
             health = self.queue.get_health_metrics()

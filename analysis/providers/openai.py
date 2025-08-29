@@ -25,6 +25,7 @@ import json
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 
+import time
 from openai import OpenAI
 
 from .base import AIProvider
@@ -35,6 +36,44 @@ from config import (
     AI_CIRCUIT_BREAKER_THRESHOLD, AI_CIRCUIT_BREAKER_RESET_MINUTES
 )
 from debugger import debug_info, debug_error, debug_warning, debug_success
+
+
+class RateLimiter:
+    """Simple rate limiter to prevent API overload"""
+    
+    def __init__(self, max_calls_per_minute: int = 10):
+        self.max_calls_per_minute = max_calls_per_minute
+        self.calls = []
+        self.min_delay_between_calls = 1.0  # Minimum 1 second between calls
+        self.last_call_time = 0
+    
+    def wait_if_needed(self):
+        """Wait if we're hitting rate limits"""
+        now = time.time()
+        
+        # Ensure minimum delay between calls
+        time_since_last_call = now - self.last_call_time
+        if time_since_last_call < self.min_delay_between_calls:
+            delay = self.min_delay_between_calls - time_since_last_call
+            debug_info(f"Rate limiter: waiting {delay:.2f}s before next call")
+            time.sleep(delay)
+            now = time.time()
+        
+        # Remove calls older than 1 minute
+        self.calls = [call_time for call_time in self.calls if now - call_time < 60]
+        
+        # If we've hit the limit, wait
+        if len(self.calls) >= self.max_calls_per_minute:
+            wait_time = 60 - (now - self.calls[0]) + 1
+            debug_warning(f"Rate limit reached ({self.max_calls_per_minute} calls/min), waiting {wait_time:.2f}s")
+            time.sleep(wait_time)
+            # Clean up old calls after waiting
+            now = time.time()
+            self.calls = [call_time for call_time in self.calls if now - call_time < 60]
+        
+        # Record this call
+        self.calls.append(now)
+        self.last_call_time = now
 
 
 class CircuitBreaker:
@@ -104,6 +143,8 @@ class OpenAIProvider(AIProvider):
             threshold=AI_CIRCUIT_BREAKER_THRESHOLD,
             reset_minutes=AI_CIRCUIT_BREAKER_RESET_MINUTES
         )
+        # Add rate limiter - 10 calls per minute to stay well under OpenAI limits
+        self.rate_limiter = RateLimiter(max_calls_per_minute=10)
     
     def analyze_text(self, request: AnalysisRequest) -> AnalysisResult:
         """
@@ -118,6 +159,9 @@ class OpenAIProvider(AIProvider):
         # Check circuit breaker
         if not self.circuit_breaker.is_available():
             raise Exception("OpenAI API temporarily unavailable (circuit breaker open)")
+        
+        # Apply rate limiting
+        self.rate_limiter.wait_if_needed()
         
         try:
             # Use prompt template if configured
@@ -150,6 +194,9 @@ class OpenAIProvider(AIProvider):
         # Check circuit breaker
         if not self.circuit_breaker.is_available():
             raise Exception("OpenAI API temporarily unavailable (circuit breaker open)")
+        
+        # Apply rate limiting
+        self.rate_limiter.wait_if_needed()
         
         try:
             prompt = self._build_image_prompt(request.symbol)

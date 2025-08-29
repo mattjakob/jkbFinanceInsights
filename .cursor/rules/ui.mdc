@@ -1,0 +1,5 @@
+---
+description: use monochromatic color values (mostly white / black and dark gray for accent or secondary states)
+globs:
+alwaysApply: true
+---

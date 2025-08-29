@@ -24,8 +24,8 @@
 from typing import Dict, Any, Optional
 
 from data import InsightsRepository
-from core import AIAnalysisStatus
-from debugger import debug_info, debug_error, debug_success
+from core import TaskStatus, TaskName
+from debugger import debug_info, debug_error, debug_success, debug_warning
 
 
 # Initialize repository
@@ -61,8 +61,9 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
                 'should_retry': False
             }
         
-        # Update status to processing
-        insights_repo.update_ai_status(insight_id, AIAnalysisStatus.PROCESSING)
+        # Update status to processing (this ensures consistency)
+        insights_repo.update_ai_status(insight_id, TaskStatus.PROCESSING)
+        debug_info(f"Updated insight {insight_id} status to PROCESSING")
         
         # Import AI module here to avoid circular imports
         import sys
@@ -118,9 +119,9 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         }
         
         insights_repo.update(insight_id, updates)
-        insights_repo.update_ai_status(insight_id, AIAnalysisStatus.COMPLETED)
+        insights_repo.update_ai_status(insight_id, TaskStatus.COMPLETED)
         
-        debug_success(f"AI analysis completed for #{insight_id}")
+        debug_success(f"AI analysis completed for #{insight_id} - status updated to COMPLETED")
         
         return {
             'success': True,
@@ -131,52 +132,288 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
     except Exception as e:
         debug_error(f"AI analysis failed for insight {insight_id}: {e}")
         
-        # Only update status if insight still exists
+        # Update status to failed
         try:
-            if insights_repo.get_by_id(insight_id):
-                # Reset status to EMPTY on failure so it can be retried
-                insights_repo.update_ai_status(insight_id, AIAnalysisStatus.EMPTY)
-        except Exception:
-            debug_warning(f"Could not update status for insight {insight_id} - may have been deleted")
+            insights_repo.update_ai_status(insight_id, TaskStatus.FAILED)
+            debug_warning(f"Updated insight {insight_id} status to FAILED")
+        except Exception as status_error:
+            debug_error(f"Failed to update insight {insight_id} status to FAILED: {status_error}")
         
-        # Check if this is a recoverable error
-        error_msg = str(e).lower()
-        should_retry = not any(phrase in error_msg for phrase in [
-            'not found',
-            'deleted',
-            'does not exist',
-            'invalid insight'
-        ])
+        return {
+            'success': False,
+            'insight_id': insight_id,
+            'error': str(e),
+            'should_retry': True
+        }
+
+
+async def handle_image_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │      HANDLE_IMAGE_ANALYSIS          │
+     └─────────────────────────────────────┘
+     Handle image analysis for an insight
+     
+     Performs image analysis and then creates a text analysis task.
+     
+     Parameters:
+     - insight_id: ID of insight to analyze
+     - **kwargs: Additional parameters
+     
+     Returns:
+     - Dictionary with analysis results
+     
+     Notes:
+     - This is the first phase of analysis
+     - After completion, creates a text analysis task
+    """
+    try:
+        # Get insight from database
+        insight = insights_repo.get_by_id(insight_id)
+        if not insight:
+            debug_warning(f"Insight {insight_id} not found - likely deleted")
+            return {
+                'success': False,
+                'insight_id': insight_id,
+                'error': 'Insight not found - may have been deleted',
+                'should_retry': False
+            }
         
-        if not should_retry:
-            # Don't retry for permanent failures
+        # Update status to PROCESSING now that task is actually running
+        insights_repo.update_ai_status(insight_id, TaskStatus.PROCESSING)
+        debug_info(f"Updated insight {insight_id} status to PROCESSING")
+        
+        # Verify image URL still exists
+        if not insight.image_url or not insight.image_url.strip():
+            debug_warning(f"Insight {insight_id} has no valid image URL, skipping image analysis")
+            # Create text analysis task directly
+            await _create_text_analysis_task(insight_id)
+            return {
+                'success': True,
+                'insight_id': insight_id,
+                'message': 'No image URL, proceeding to text analysis'
+            }
+        
+        # Import AI module here to avoid circular imports
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from analysis import AnalysisService, OpenAIProvider
+        
+        # Create analysis service
+        service = AnalysisService(OpenAIProvider())
+        
+        # Perform image analysis
+        debug_info(f"Analyzing image for insight {insight_id}")
+        try:
+            image_result = await service.analyze_image_async(
+                insight.image_url,
+                context={
+                    'symbol': insight.symbol,
+                    'insight_id': insight_id
+                }
+            )
+            
+            # Update database with image analysis result
+            insights_repo.update(insight_id, {
+                'ai_image_summary': image_result
+            })
+            
+            debug_success(f"Image analysis completed for insight {insight_id}")
+            
+            # Create text analysis task
+            await _create_text_analysis_task(insight_id)
+            
+            return {
+                'success': True,
+                'insight_id': insight_id,
+                'image_result': image_result
+            }
+            
+        except Exception as e:
+            debug_error(f"Image analysis failed for insight {insight_id}: {e}")
+            
+            # Update status to failed
+            insights_repo.update_ai_status(insight_id, TaskStatus.FAILED)
+            
             return {
                 'success': False,
                 'insight_id': insight_id,
                 'error': str(e),
+                'should_retry': True
+            }
+        
+    except Exception as e:
+        debug_error(f"Image analysis handler failed for insight {insight_id}: {e}")
+        
+        # Update status to failed
+        try:
+            insights_repo.update_ai_status(insight_id, TaskStatus.FAILED)
+        except Exception as status_error:
+            debug_error(f"Failed to update insight {insight_id} status to FAILED: {status_error}")
+        
+        return {
+            'success': False,
+            'insight_id': insight_id,
+            'error': str(e),
+            'should_retry': True
+        }
+
+
+async def handle_text_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │      HANDLE_TEXT_ANALYSIS           │
+     └─────────────────────────────────────┘
+     Handle text analysis for an insight
+     
+     Performs text analysis using any available image analysis results.
+     
+     Parameters:
+     - insight_id: ID of insight to analyze
+     - **kwargs: Additional parameters
+     
+     Returns:
+     - Dictionary with analysis results
+     
+     Notes:
+     - This is the final phase of analysis
+     - Uses image analysis results if available
+    """
+    try:
+        # Get insight from database
+        insight = insights_repo.get_by_id(insight_id)
+        if not insight:
+            debug_warning(f"Insight {insight_id} not found - likely deleted")
+            return {
+                'success': False,
+                'insight_id': insight_id,
+                'error': 'Insight not found - may have been deleted',
                 'should_retry': False
             }
         
-        # Re-raise for retry-able errors
+        # Update status to PROCESSING now that task is actually running
+        insights_repo.update_ai_status(insight_id, TaskStatus.PROCESSING)
+        debug_info(f"Updated insight {insight_id} status to PROCESSING")
+        
+        # Import AI module here to avoid circular imports
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from analysis import AnalysisService, OpenAIProvider
+        
+        # Create analysis service
+        service = AnalysisService(OpenAIProvider())
+        
+        # Perform text analysis
+        debug_info(f"Analyzing text for insight {insight_id}")
+        
+        # Get image analysis result if available
+        image_context = insight.ai_image_summary if insight.ai_image_summary else ""
+        
+        analysis_result = await service.analyze_text_async(
+            text=insight.content,
+            context={
+                'symbol': insight.symbol,
+                'type': insight.type.value,
+                'title': insight.title,
+                'technical': image_context,
+                'insight_id': insight_id
+            }
+        )
+        
+        # Update database with results
+        updates = {
+            'ai_summary': analysis_result.summary,
+            'ai_action': analysis_result.action.value,
+            'ai_confidence': analysis_result.confidence,
+            'ai_event_time': analysis_result.event_time,
+            'ai_levels': analysis_result.format_levels()
+        }
+        
+        insights_repo.update(insight_id, updates)
+        insights_repo.update_ai_status(insight_id, TaskStatus.COMPLETED)
+        
+        debug_success(f"Text analysis completed for insight {insight_id} - status updated to COMPLETED")
+        
+        return {
+            'success': True,
+            'insight_id': insight_id,
+            'updates': updates
+        }
+        
+    except Exception as e:
+        debug_error(f"Text analysis failed for insight {insight_id}: {e}")
+        
+        # Update status to failed
+        try:
+            insights_repo.update_ai_status(insight_id, TaskStatus.FAILED)
+        except Exception as status_error:
+            debug_error(f"Failed to update insight {insight_id} status to FAILED: {status_error}")
+        
+        return {
+            'success': False,
+            'insight_id': insight_id,
+            'error': str(e),
+            'should_retry': True
+        }
+
+
+async def _create_text_analysis_task(insight_id: int) -> str:
+    """
+     ┌─────────────────────────────────────┐
+     │    _CREATE_TEXT_ANALYSIS_TASK       │
+     └─────────────────────────────────────┘
+     Helper function to create text analysis task
+     
+     Parameters:
+     - insight_id: ID of insight for text analysis
+     
+     Returns:
+     - Task ID of created task
+    """
+    try:
+        from .queue import TaskQueue
+        queue = TaskQueue()
+        
+        task_id = queue.add_task(
+            TaskName.AI_TEXT_ANALYSIS.value,
+            {'insight_id': insight_id},
+            max_retries=None,  # Use config value
+            entity_type='insight',
+            entity_id=insight_id
+        )
+        
+        debug_info(f"Created text analysis task {task_id} for insight {insight_id}")
+        return task_id
+        
+    except Exception as e:
+        debug_error(f"Failed to create text analysis task for insight {insight_id}: {e}")
         raise
 
 
-async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
+async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kwargs) -> Dict[str, Any]:
     """
      ┌─────────────────────────────────────┐
      │      HANDLE_BULK_ANALYSIS           │
      └─────────────────────────────────────┘
-     Handle bulk AI analysis
+     Handle bulk AI analysis with proper sequencing
      
-     Creates individual analysis tasks for insights
-     needing analysis. If symbol is provided, only
-     processes insights for that symbol.
+     Creates tasks in two phases:
+     1. Image analysis tasks (only for insights with valid image URLs)
+     2. Text analysis tasks (after image analysis completes or if no image needed)
      
      Parameters:
      - symbol: Optional symbol to filter insights
+     - type_filter: Optional type to filter insights
      
      Returns:
      - Dictionary with task creation results
+     
+     Notes:
+     - Image analysis must complete before text analysis
+     - Only creates tasks when actually needed
+     - Ensures proper dependency management
     """
     try:
         # Get insights needing analysis
@@ -188,7 +425,8 @@ async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
                 'success': True,
                 'insights_found': 0,
                 'tasks_created': 0,
-                'symbol': symbol
+                'symbol': symbol,
+                'type_filter': type_filter
             }
         
         # Debug: Show what we found
@@ -201,40 +439,111 @@ async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
             insights = [insight for insight in insights if insight.symbol and insight.symbol.upper() == symbol]
             debug_info(f"Filtered from {original_count} to {len(insights)} insights for symbol {symbol}")
         
+        # Filter by type if provided
+        if type_filter and type_filter != '':
+            original_count = len(insights)
+            insights = [insight for insight in insights if insight.type == type_filter]
+            debug_info(f"Filtered from {original_count} to {len(insights)} insights for type {type_filter}")
+        
         if not insights:
-            debug_info(f"No insights need AI analysis for symbol {symbol}" if symbol else "No insights need AI analysis")
+            filters = []
+            if symbol:
+                filters.append(f"symbol {symbol}")
+            if type_filter:
+                filters.append(f"type {type_filter}")
+            
+            if filters:
+                debug_info(f"No insights need AI analysis for {', '.join(filters)}")
+            else:
+                debug_info("No insights need AI analysis")
+            
             return {
                 'success': True,
                 'insights_found': 0,
                 'tasks_created': 0,
-                'symbol': symbol
+                'symbol': symbol,
+                'type_filter': type_filter
             }
         
         # Import task queue here
         from .queue import TaskQueue
         queue = TaskQueue()
         
-        # Create tasks for each insight and update status to PENDING
-        task_ids = []
-        for insight in insights:
-            # Update status to PENDING when task is queued
-            insights_repo.update_ai_status(insight.id, AIAnalysisStatus.PENDING)
-            
-            task_id = queue.add_task(
-                'ai_analysis',
-                {'insight_id': insight.id},
-                max_retries=3
-            )
-            task_ids.append(task_id)
+        # Phase 1: Create image analysis tasks (only for insights with valid image URLs)
+        image_tasks_created = 0
+        text_tasks_created = 0
+        failed_insights = []
         
-        debug_success(f"Created {len(task_ids)} AI analysis tasks for symbol {symbol}" if symbol else f"Created {len(task_ids)} AI analysis tasks")
+        for insight in insights:
+            try:
+                # Check if insight needs image analysis
+                needs_image_analysis = bool(insight.image_url and insight.image_url.strip())
+                
+                if needs_image_analysis:
+                    # Create image analysis task first
+                    insights_repo.update_ai_status(insight.id, TaskStatus.PENDING, TaskName.AI_IMAGE_ANALYSIS)
+                    debug_info(f"Updated insight {insight.id} status to PENDING for image analysis")
+                    
+                    task_id = queue.add_task(
+                        TaskName.AI_IMAGE_ANALYSIS.value,
+                        {'insight_id': insight.id},
+                        max_retries=None,  # Use config value
+                        entity_type='insight',
+                        entity_id=insight.id
+                    )
+                    image_tasks_created += 1
+                    debug_info(f"Created image analysis task {task_id} for insight {insight.id}")
+                else:
+                    # No image needed, create text analysis task directly
+                    insights_repo.update_ai_status(insight.id, TaskStatus.PENDING, TaskName.AI_TEXT_ANALYSIS)
+                    debug_info(f"Updated insight {insight.id} status to PENDING for text analysis")
+                    
+                    task_id = queue.add_task(
+                        TaskName.AI_TEXT_ANALYSIS.value,
+                        {'insight_id': insight.id},
+                        max_retries=None,  # Use config value
+                        entity_type='insight',
+                        entity_id=insight.id
+                    )
+                    text_tasks_created += 1
+                    debug_info(f"Created text analysis task {task_id} for insight {insight.id}")
+                
+            except Exception as e:
+                debug_error(f"Failed to create task for insight {insight.id}: {e}")
+                failed_insights.append(insight.id)
+                
+                # Reset status back to EMPTY on task creation failure
+                try:
+                    insights_repo.update_ai_status(insight.id, TaskStatus.EMPTY)
+                    debug_warning(f"Reset insight {insight.id} status back to EMPTY due to task creation failure")
+                except Exception as reset_error:
+                    debug_error(f"Failed to reset insight {insight.id} status: {reset_error}")
+        
+        if failed_insights:
+            debug_warning(f"Failed to create tasks for {len(failed_insights)} insights: {failed_insights}")
+        
+        total_tasks = image_tasks_created + text_tasks_created
+        
+        # Build success message
+        filters = []
+        if symbol:
+            filters.append(f"symbol {symbol}")
+        if type_filter:
+            filters.append(f"type {type_filter}")
+        
+        if filters:
+            debug_success(f"Created {total_tasks} tasks for {', '.join(filters)}: {image_tasks_created} image + {text_tasks_created} text")
+        else:
+            debug_success(f"Created {total_tasks} tasks: {image_tasks_created} image + {text_tasks_created} text")
         
         return {
             'success': True,
             'insights_found': len(insights),
-            'tasks_created': len(task_ids),
-            'task_ids': task_ids,
-            'symbol': symbol
+            'tasks_created': total_tasks,
+            'image_tasks': image_tasks_created,
+            'text_tasks': text_tasks_created,
+            'symbol': symbol,
+            'type_filter': type_filter
         }
         
     except Exception as e:
@@ -279,8 +588,11 @@ def handle_test_timeout(payload: Dict[str, Any]) -> Dict[str, Any]:
     import time
     import random
     
-    # Simulate work time (random between 1-10 seconds)
-    work_time = random.randint(1, 10)
+    # Get timeout from payload or use default
+    timeout_seconds = payload.get('timeout_seconds', 10)
+    
+    # Simulate work time (will timeout if longer than TASK_PROCESSING_TIMEOUT)
+    work_time = random.randint(1, int(timeout_seconds * 2))
     time.sleep(work_time)
     
     return {
@@ -288,6 +600,46 @@ def handle_test_timeout(payload: Dict[str, Any]) -> Dict[str, Any]:
         'work_time': work_time,
         'message': f'Test task completed in {work_time} seconds'
     }
+
+
+def handle_create_timeout_test(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │      HANDLE_CREATE_TIMEOUT_TEST      │
+     └─────────────────────────────────────┘
+     Create a test task that will likely timeout
+     
+     Useful for testing timeout and retry functionality.
+    """
+    try:
+        from .queue import TaskQueue
+        from config import TASK_PROCESSING_TIMEOUT
+        
+        queue = TaskQueue()
+        
+        # Create a test task with a timeout that will likely exceed TASK_PROCESSING_TIMEOUT
+        timeout_seconds = payload.get('timeout_seconds', TASK_PROCESSING_TIMEOUT / 1000.0 * 1.5)
+        
+        task_id = queue.add_task(
+            'test_timeout',
+            {'timeout_seconds': timeout_seconds},
+            max_retries=None  # Use config value
+        )
+        
+        return {
+            'success': True,
+            'task_id': task_id,
+            'timeout_seconds': timeout_seconds,
+            'config_timeout_ms': TASK_PROCESSING_TIMEOUT,
+            'message': f'Created timeout test task {task_id} with {timeout_seconds}s work time'
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'message': f'Failed to create timeout test: {str(e)}'
+        }
 
 
 def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -320,7 +672,7 @@ def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
         
         # Create a report entry in the database
         from data.repositories.reports import get_reports_repository
-        from core.models import ReportModel, AIAnalysisStatus, AIAction
+        from core.models import ReportModel, AIAction
         from datetime import datetime
         
         reports_repo = get_reports_repository()
@@ -343,7 +695,7 @@ def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
             ai_confidence=confidence_normalized,
             ai_event_time=result.event_time,
             ai_levels=levels_str,
-            ai_analysis_status=AIAnalysisStatus.COMPLETED
+            ai_analysis_status=TaskStatus.COMPLETED
         )
         
         report_id = reports_repo.create(report)
@@ -365,9 +717,12 @@ def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 # Handler registry for easy registration
 HANDLERS = {
-    'ai_analysis': handle_ai_analysis,
-    'bulk_analysis': handle_bulk_analysis,
-    'cleanup': handle_cleanup,
-    'ai_report_generation': handle_ai_report_generation,
-    'test_timeout': handle_test_timeout
+    TaskName.AI_ANALYSIS.value: handle_ai_analysis,
+    TaskName.AI_IMAGE_ANALYSIS.value: handle_image_analysis,
+    TaskName.AI_TEXT_ANALYSIS.value: handle_text_analysis,
+    TaskName.BULK_ANALYSIS.value: handle_bulk_analysis,
+    TaskName.CLEANUP.value: handle_cleanup,
+    TaskName.REPORT_GENERATION.value: handle_ai_report_generation,
+    'test_timeout': handle_test_timeout,
+    'create_timeout_test': handle_create_timeout_test
 }

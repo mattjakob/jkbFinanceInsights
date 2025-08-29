@@ -27,7 +27,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from core.models import ReportModel, AIAction, AIAnalysisStatus
+from core.models import ReportModel, AIAction, TaskStatus
 from data.repositories.reports import get_reports_repository
 from debugger import debug_info, debug_error, debug_success
 
@@ -41,7 +41,7 @@ class ReportCreate(BaseModel):
     ai_confidence: float = Field(alias="AIConfidence")
     ai_event_time: Optional[str] = Field(None, alias="AIEventTime")
     ai_levels: Optional[str] = Field(None, alias="AILevels")
-    ai_analysis_status: Optional[str] = Field("completed", alias="AIAnalysisStatus")
+    ai_analysis_status: Optional[str] = Field("completed", alias="TaskStatus")
     
     class Config:
         populate_by_name = True
@@ -54,7 +54,7 @@ class ReportUpdate(BaseModel):
     ai_confidence: Optional[float] = Field(None, alias="AIConfidence")
     ai_event_time: Optional[str] = Field(None, alias="AIEventTime")
     ai_levels: Optional[str] = Field(None, alias="AILevels")
-    ai_analysis_status: Optional[str] = Field(None, alias="AIAnalysisStatus")
+    ai_analysis_status: Optional[str] = Field(None, alias="TaskStatus")
     
     class Config:
         populate_by_name = True
@@ -70,7 +70,7 @@ class ReportResponse(BaseModel):
     AIConfidence: float
     AIEventTime: Optional[str]
     AILevels: Optional[str]
-    AIAnalysisStatus: str
+    TaskStatus: str
 
 
 # Create router
@@ -97,7 +97,7 @@ async def create_report(report_data: ReportCreate):
             ai_confidence=report_data.ai_confidence,
             ai_event_time=report_data.ai_event_time,
             ai_levels=report_data.ai_levels,
-            ai_analysis_status=AIAnalysisStatus(report_data.ai_analysis_status)
+            ai_analysis_status=TaskStatus(report_data.ai_analysis_status)
         )
         
         # Save to database
@@ -229,7 +229,7 @@ async def update_report(report_id: int, update_data: ReportUpdate):
     if update_data.ai_levels is not None:
         updates["AILevels"] = update_data.ai_levels
     if update_data.ai_analysis_status is not None:
-        updates["AIAnalysisStatus"] = update_data.ai_analysis_status
+        updates["TaskStatus"] = update_data.ai_analysis_status
     
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")

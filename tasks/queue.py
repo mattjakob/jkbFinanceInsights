@@ -28,29 +28,14 @@ from typing import Optional, Dict, Any, List, Tuple
 import json
 import uuid
 
-from core import get_db_session
+from core.database import get_db_session
+from core.models import TaskStatus, TaskName
 from debugger import debug_info, debug_error, debug_warning
 
-
-class TaskStatus(str, Enum):
-    """Task lifecycle states"""
-    PENDING = "pending"
-    PROCESSING = "processing" 
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
+# Legacy Task class for backward compatibility
 @dataclass
 class Task:
-    """
-     ┌─────────────────────────────────────┐
-     │             TASK                    │
-     └─────────────────────────────────────┘
-     Represents a task in the queue
-     
-     Simple data structure for task information.
-    """
+    """Legacy task structure for queue compatibility"""
     task_type: str
     payload: Dict[str, Any]
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -65,15 +50,19 @@ class Task:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage"""
-        data = asdict(self)
-        # Convert enums and datetimes
-        data['status'] = self.status.value
-        data['created_at'] = self.created_at.isoformat()
-        data['started_at'] = self.started_at.isoformat() if self.started_at else None
-        data['completed_at'] = self.completed_at.isoformat() if self.completed_at else None
-        data['payload'] = json.dumps(self.payload)
-        data['result'] = json.dumps(self.result) if self.result else None
-        return data
+        return {
+            'id': self.id,
+            'task_type': self.task_type,
+            'payload': json.dumps(self.payload),
+            'status': self.status.value,
+            'retries': self.retries,
+            'max_retries': self.max_retries,
+            'created_at': self.created_at.isoformat(),
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'result': json.dumps(self.result) if self.result else None,
+            'error': self.error
+        }
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Task':
@@ -124,7 +113,7 @@ class TaskQueue:
                         payload TEXT NOT NULL,
                         status TEXT NOT NULL,
                         retries INTEGER DEFAULT 0,
-                        max_retries INTEGER DEFAULT 3,
+                        max_retries INTEGER DEFAULT 3,  -- Will be overridden by config
                         created_at TEXT NOT NULL,
                         started_at TEXT,
                         completed_at TEXT,
@@ -158,7 +147,7 @@ class TaskQueue:
             except:
                 pass  # Columns may not exist in older schemas
     
-    def add_task(self, task_type: str, payload: Dict[str, Any], max_retries: int = 3, entity_type: str = None, entity_id: int = None) -> str:
+    def add_task(self, task_type: str, payload: Dict[str, Any], max_retries: int = None, entity_type: str = None, entity_id: int = None) -> str:
         """
          ┌─────────────────────────────────────┐
          │          ADD_TASK                   │
@@ -178,6 +167,11 @@ class TaskQueue:
             entity_type = 'insight'
             entity_id = payload['insight_id']
         
+        # Use config value if max_retries not provided
+        if max_retries is None:
+            from config import TASK_MAX_RETRIES
+            max_retries = TASK_MAX_RETRIES
+            
         task = Task(
             task_type=task_type,
             payload=payload,
@@ -346,15 +340,18 @@ class TaskQueue:
                 entity_id = task_row['entity_id']
                 payload = json.loads(task_row['payload']) if task_row['payload'] else {}
                 
-                # Update entity status based on task type and entity type
-                if entity_type == 'insight' and entity_id:
-                    # Update insight AI analysis status to EMPTY so it can be retried
+                # For insight-related tasks, get insight_id from payload if entity_id is empty
+                insight_id = entity_id if entity_id else payload.get('insight_id')
+                
+                # Update entity status based on task type
+                if task_type in ['ai_analysis', 'ai_image_analysis', 'ai_text_analysis'] and insight_id:
+                    # Update insight AI analysis status to FAILED
                     conn.execute("""
                         UPDATE insights
-                        SET AIAnalysisStatus = ?
+                        SET TaskStatus = ?
                         WHERE id = ?
-                    """, ('empty', entity_id))
-                    debug_info(f"Updated insight {entity_id} AI status to EMPTY due to task {task_id} failure")
+                    """, (TaskStatus.FAILED.value, insight_id))
+                    debug_info(f"Updated insight {insight_id} status to FAILED due to task {task_id} failure")
                 
                 elif entity_type == 'symbol' and task_type == 'ai_report_generation':
                     # For report generation tasks, we need to find the most recent report
@@ -364,7 +361,7 @@ class TaskQueue:
                         # Try to find existing report for this symbol
                         report_row = conn.execute("""
                             SELECT id FROM reports
-                            WHERE symbol = ? AND AIAnalysisStatus = 'completed'
+                            WHERE symbol = ? AND TaskStatus = 'completed'
                             ORDER BY timeFetched DESC
                             LIMIT 1
                         """, (symbol,)).fetchone()
@@ -373,17 +370,17 @@ class TaskQueue:
                             # Update existing report to failed
                             conn.execute("""
                                 UPDATE reports
-                                SET AIAnalysisStatus = ?
+                                SET TaskStatus = ?
                                 WHERE id = ?
-                            """, ('failed', report_row['id']))
+                            """, (TaskStatus.FAILED.value, report_row['id']))
                             debug_info(f"Updated report {report_row['id']} status to failed due to task {task_id}")
                         else:
                             # Create a failed report entry
                             from datetime import datetime
                             conn.execute("""
                                 INSERT INTO reports (timeFetched, symbol, AISummary, AIAction, 
-                                                   AIConfidence, AIEventTime, AILevels, AIAnalysisStatus)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                                   AIConfidence, AIEventTime, AILevels, TaskStatus, TaskName)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (
                                 datetime.now().isoformat(),
                                 symbol,
@@ -392,7 +389,8 @@ class TaskQueue:
                                 0.0,
                                 None,
                                 None,
-                                'failed'
+                                TaskStatus.FAILED.value,
+                                'ai_report_generation'
                             ))
                             debug_info(f"Created failed report entry for {symbol} due to task {task_id}")
                 
@@ -501,7 +499,14 @@ class TaskQueue:
     def get_stats(self) -> Dict[str, int]:
         """Get task statistics"""
         with get_db_session() as conn:
-            stats = {}
+            # Initialize stats with all possible statuses
+            stats = {
+                'pending': 0,
+                'processing': 0,
+                'completed': 0,
+                'failed': 0,
+                'cancelled': 0
+            }
             
             rows = conn.execute("""
                 SELECT status, COUNT(*) as count
@@ -534,6 +539,68 @@ class TaskQueue:
                 debug_info(f"Cleaned up {deleted} old tasks")
             
             return deleted
+    
+    def cleanup_stale_pending_tasks(self, timeout_ms: Optional[int] = None) -> int:
+        """
+         ┌─────────────────────────────────────┐
+         │    CLEANUP_STALE_PENDING_TASKS     │
+         └─────────────────────────────────────┘
+         Clean up pending tasks that have exceeded timeout
+         
+         Parameters:
+         - timeout_ms: Timeout in milliseconds (uses TASK_PENDING_TIMEOUT if not provided)
+         
+         Returns:
+         - Number of tasks cleaned up
+         
+         Notes:
+         - Updates entity status back to EMPTY
+         - Marks tasks as CANCELLED
+        """
+        if timeout_ms is None:
+            from config import TASK_PENDING_TIMEOUT
+            timeout_ms = TASK_PENDING_TIMEOUT
+            
+        timeout_seconds = timeout_ms / 1000.0
+        cutoff = datetime.now() - timedelta(seconds=timeout_seconds)
+        
+        debug_info(f"Cleaning up pending tasks older than {timeout_seconds}s")
+        
+        with get_db_session() as conn:
+            # Find stale pending tasks
+            stale_tasks = conn.execute("""
+                SELECT id, entity_type, entity_id FROM simple_tasks
+                WHERE status = ? AND created_at < ?
+            """, (TaskStatus.PENDING.value, cutoff.isoformat())).fetchall()
+            
+            if not stale_tasks:
+                return 0
+            
+            # Update tasks to CANCELLED
+            task_ids = [task['id'] for task in stale_tasks]
+            placeholders = ','.join(['?' for _ in task_ids])
+            conn.execute(f"""
+                UPDATE simple_tasks
+                SET status = ?, completed_at = ?, error = ?
+                WHERE id IN ({placeholders})
+            """, [TaskStatus.CANCELLED.value, datetime.now().isoformat(), 
+                  f"Task cancelled after {timeout_seconds}s pending timeout"] + task_ids)
+            
+            # Update associated entities back to EMPTY status
+            for task in stale_tasks:
+                if task['entity_type'] == 'insight' and task['entity_id']:
+                    try:
+                        conn.execute("""
+                            UPDATE insights 
+                            SET TaskStatus = ?
+                            WHERE id = ?
+                        """, (TaskStatus.EMPTY.value, task['entity_id']))
+                        debug_info(f"Reset insight {task['entity_id']} status to EMPTY")
+                    except Exception as e:
+                        debug_error(f"Failed to update insight {task['entity_id']}: {e}")
+            
+            debug_info(f"Cleaned up {len(stale_tasks)} stale pending tasks")
+            return len(stale_tasks)
     
     def get_orphaned_tasks(self) -> List[Dict[str, Any]]:
         """
@@ -717,6 +784,15 @@ class TaskQueue:
         else:
             health_status = "critical"
         
+        # Add timeout information
+        from config import TASK_PROCESSING_TIMEOUT, TASK_MAX_RETRIES
+        timeout_info = {
+            'timeout_ms': TASK_PROCESSING_TIMEOUT,
+            'timeout_seconds': TASK_PROCESSING_TIMEOUT / 1000.0,
+            'max_retries': TASK_MAX_RETRIES,
+            'max_total_time': (TASK_PROCESSING_TIMEOUT / 1000.0) * (TASK_MAX_RETRIES + 1)
+        }
+        
         return {
             "health_score": max(0, health_score),
             "health_status": health_status,
@@ -724,7 +800,8 @@ class TaskQueue:
             "stuck_tasks": len(stuck),
             "orphaned_tasks": len(orphaned),
             "issues": issues,
-            "recommendations": self._get_health_recommendations(health_status, issues)
+            "recommendations": self._get_health_recommendations(health_status, issues),
+            "timeout_config": timeout_info
         }
     
     def _get_health_recommendations(self, status: str, issues: List[str]) -> List[str]:
@@ -785,8 +862,18 @@ class TaskQueue:
             if cancelled > 0:
                 debug_info(f"Cancelled {cancelled} tasks during queue reset")
                 
-                # Update entity status for all cancelled tasks in a single transaction
-                self._update_entity_status_bulk(conn, tasks_to_cancel, "Task cancelled during queue reset")
+                # Update entity status for all cancelled tasks to EMPTY
+                insight_ids = [task['entity_id'] for task in tasks_to_cancel 
+                             if task['entity_type'] == 'insight' and task['entity_id']]
+                
+                if insight_ids:
+                    placeholders = ','.join(['?' for _ in insight_ids])
+                    conn.execute(f"""
+                        UPDATE insights
+                        SET TaskStatus = ?
+                        WHERE id IN ({placeholders})
+                    """, [TaskStatus.EMPTY.value] + insight_ids)
+                    debug_info(f"Reset {len(insight_ids)} insights to EMPTY status during queue reset")
             
             return cancelled
 

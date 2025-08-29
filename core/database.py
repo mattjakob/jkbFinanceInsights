@@ -216,14 +216,15 @@ class DatabaseManager:
             AIConfidence REAL,
             AIEventTime TEXT,
             AILevels TEXT,
-            AIAnalysisStatus TEXT DEFAULT 'empty',
+            TaskStatus TEXT DEFAULT 'empty',
+            TaskName TEXT DEFAULT 'ai_analysis',
             FOREIGN KEY (type) REFERENCES feed_names (name)
         );
         
         -- Create indexes for performance
         CREATE INDEX IF NOT EXISTS idx_insights_type ON insights(type);
         CREATE INDEX IF NOT EXISTS idx_insights_symbol ON insights(symbol);
-        CREATE INDEX IF NOT EXISTS idx_insights_status ON insights(AIAnalysisStatus);
+        CREATE INDEX IF NOT EXISTS idx_insights_status ON insights(TaskStatus);
         CREATE INDEX IF NOT EXISTS idx_insights_timePosted ON insights(timePosted);
         
         -- Insert default feed names
@@ -243,13 +244,14 @@ class DatabaseManager:
             AIConfidence REAL NOT NULL,
             AIEventTime TEXT,
             AILevels TEXT,
-            AIAnalysisStatus TEXT NOT NULL DEFAULT 'completed'
+            TaskStatus TEXT NOT NULL DEFAULT 'completed',
+            TaskName TEXT NOT NULL DEFAULT 'ai_analysis'
         );
         
         -- Create indexes for reports table
         CREATE INDEX IF NOT EXISTS idx_reports_symbol ON reports(symbol);
         CREATE INDEX IF NOT EXISTS idx_reports_timeFetched ON reports(timeFetched);
-        CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(AIAnalysisStatus);
+        CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(TaskStatus);
         """
         
         self.execute_script(schema_script)

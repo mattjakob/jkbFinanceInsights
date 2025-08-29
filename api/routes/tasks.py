@@ -26,13 +26,15 @@ from typing import Dict, Any
 from datetime import datetime
 
 from tasks import TaskQueue
+from data import InsightsRepository
 from debugger import debug_info, debug_error, debug_success
 
 # Create router
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
-# Initialize task queue
+# Initialize task queue and repositories
 task_queue = TaskQueue()
+insights_repo = InsightsRepository()
 
 
 @router.get("/stats")
@@ -155,6 +157,30 @@ async def cleanup_old_tasks(days: int = 7):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/cleanup-stale-pending")
+async def cleanup_stale_pending_tasks():
+    """
+     ┌─────────────────────────────────────┐
+     │    CLEANUP_STALE_PENDING_TASKS     │
+     └─────────────────────────────────────┘
+     Clean up pending tasks that have exceeded timeout
+     
+     Uses TASK_PENDING_TIMEOUT from config.
+    """
+    try:
+        count = task_queue.cleanup_stale_pending_tasks()
+        
+        return {
+            "success": True,
+            "cleaned": count,
+            "message": f"Cleaned up {count} stale pending tasks"
+        }
+        
+    except Exception as e:
+        debug_error(f"Error cleaning up stale pending tasks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/all")
 async def clear_all_tasks():
     """
@@ -182,3 +208,66 @@ async def clear_all_tasks():
     except Exception as e:
         debug_error(f"Clear tasks failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/reset")
+async def reset_tasks(request: Dict[str, Any] = {}):
+    """
+     ┌─────────────────────────────────────┐
+     │          RESET_TASKS                │
+     └─────────────────────────────────────┘
+     Reset tasks - either all or by symbol/type
+     
+     Can reset all tasks or filter by symbol and type.
+     Sets insight statuses to EMPTY.
+     
+     Parameters:
+     - symbol: Optional symbol to filter by
+     - type: Optional type to filter by
+    """
+    try:
+        symbol = request.get('symbol')
+        type_filter = request.get('type')
+        
+        if symbol:
+            # Reset specific symbol/type
+            feed_type = None
+            if type_filter:
+                from core import FeedType
+                try:
+                    feed_type = FeedType(type_filter)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Invalid feed type: {type_filter}")
+            
+            insights_reset, tasks_cancelled = insights_repo.reset_insights_by_symbol_and_type(symbol, feed_type)
+            
+            debug_info(f"Reset completed for {symbol}: {insights_reset} insights reset, {tasks_cancelled} tasks cancelled")
+            
+            return {
+                "success": True,
+                "tasks_cleared": tasks_cancelled,
+                "insights_reset": insights_reset,
+                "symbol": symbol,
+                "type": type_filter,
+                "message": f"Reset completed for {symbol}: {insights_reset} insights reset, {tasks_cancelled} tasks cancelled"
+            }
+        else:
+            # Reset all tasks
+            tasks_cleared = task_queue.cancel_all_tasks()
+            
+            # Reset all insight statuses that are stuck in PENDING or PROCESSING
+            insights_reset = insights_repo.reset_stuck_insights()
+            
+            debug_info(f"Reset completed: {tasks_cleared} tasks cancelled, {insights_reset} insights reset")
+            
+            return {
+                "success": True,
+                "tasks_cleared": tasks_cleared,
+                "insights_reset": insights_reset,
+                "message": f"Reset completed: {tasks_cleared} tasks cancelled, {insights_reset} insights reset"
+            }
+        
+    except Exception as e:
+        debug_error(f"Reset tasks failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

@@ -1,2 +1,0 @@
-# Utilities package dependencies
-psutil>=5.9.0

@@ -67,16 +67,33 @@ AI_CIRCUIT_BREAKER_RESET_MINUTES = int(os.getenv("AI_CIRCUIT_BREAKER_RESET_MINUT
 # =============================================================================
 # TASK QUEUE CONFIGURATION
 # =============================================================================
-TASK_WORKER_COUNT = int(os.getenv("TASK_WORKER_COUNT", 3))
+TASK_WORKER_COUNT = int(os.getenv("TASK_WORKERS", os.getenv("TASK_WORKER_COUNT", 3)))
 TASK_MAX_RETRIES = int(os.getenv("TASK_MAX_RETRIES", 3))
-TASK_TIMEOUT = int(os.getenv("TASK_TIMEOUT", 300000))  # Default: 5 minutes in milliseconds
+TASK_PROCESSING_TIMEOUT = int(os.getenv("TASK_PROCESSING_TIMEOUT", 300000))  # Default: 5 minutes in milliseconds
+# Validate TASK_PROCESSING_TIMEOUT is reasonable
+if TASK_PROCESSING_TIMEOUT < 1000:  # Less than 1 second
+    TASK_PROCESSING_TIMEOUT = 1000
+    print(f"Warning: TASK_PROCESSING_TIMEOUT too low, setting to minimum 1000ms")
+elif TASK_PROCESSING_TIMEOUT > 3600000:  # More than 1 hour
+    TASK_PROCESSING_TIMEOUT = 3600000
+    print(f"Warning: TASK_PROCESSING_TIMEOUT too high, setting to maximum 3600000ms (1 hour)")
 TASK_CLEANUP_DAYS = int(os.getenv("TASK_CLEANUP_DAYS", 7))
+TASK_PENDING_TIMEOUT = int(os.getenv("TASK_PENDING_TIMEOUT", 3600000))  # Default: 1 hour in milliseconds
+# Validate TASK_PENDING_TIMEOUT is reasonable
+if TASK_PENDING_TIMEOUT < 60000:  # Less than 1 minute
+    TASK_PENDING_TIMEOUT = 60000
+    print(f"Warning: TASK_PENDING_TIMEOUT too low, setting to minimum 60000ms (1 minute)")
+elif TASK_PENDING_TIMEOUT > 86400000:  # More than 24 hours
+    TASK_PENDING_TIMEOUT = 86400000
+    print(f"Warning: TASK_PENDING_TIMEOUT too high, setting to maximum 86400000ms (24 hours)")
 
 # =============================================================================
 # FRONTEND REFRESH INTERVALS (in milliseconds)
 # =============================================================================
 # Core refresh intervals for different UI components
-FRONTEND_UNIFIED_REFRESH_INTERVAL = int(os.getenv("FRONTEND_UNIFIED_REFRESH_INTERVAL", 1000))
+# Support both UI_REFRESH and FRONTEND_UNIFIED_REFRESH_INTERVAL for compatibility
+UI_REFRESH = int(os.getenv("UI_REFRESH", os.getenv("FRONTEND_UNIFIED_REFRESH_INTERVAL", 1000)))
+FRONTEND_UNIFIED_REFRESH_INTERVAL = UI_REFRESH
 FRONTEND_TABLE_REFRESH_INTERVAL = int(os.getenv("FRONTEND_TABLE_REFRESH_INTERVAL", 10000))
 
 FRONTEND_REFRESH_INTERVALS = {

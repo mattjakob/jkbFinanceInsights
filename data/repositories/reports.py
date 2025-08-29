@@ -25,7 +25,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import sqlite3
 
-from core.models import ReportModel, AIAnalysisStatus, AIAction
+from core.models import ReportModel, TaskStatus, AIAction
 from core.database import get_db_session, get_db_connection
 from debugger import debug_info, debug_error, debug_success
 
