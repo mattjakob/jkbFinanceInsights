@@ -249,3 +249,6 @@ async def reset_insight_ai(insight_id: int):
         }
     else:
         raise HTTPException(status_code=500, detail="Failed to reset AI fields")
+
+
+

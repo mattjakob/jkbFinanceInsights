@@ -48,6 +48,7 @@
             
             // Get configuration from template
             const config = {
+                frontend_unified_refresh_interval: {{ config.frontend_unified_refresh_interval }},
                 frontend_age_refresh_interval: {{ config.frontend_age_refresh_interval }},
                 frontend_table_refresh_interval: {{ config.frontend_table_refresh_interval }},
                 frontend_status_refresh_interval: {{ config.frontend_status_refresh_interval }},
@@ -73,6 +74,8 @@
     </div>
     <!-- TradingView Widget END -->
 </div>
+
+
 
 <!-- Control Panel -->
 <div class="control-panel mb-4">
@@ -175,9 +178,9 @@
             </span>
         </div>
         <span class="status-icon" id="statusIcon">
-            <i class="bi bi-hourglass-split"></i>
+            <i class="bi bi-terminal"></i>
         </span>
-        <span class="status-message" id="statusMessage">Loading...</span>
+        <span class="status-message" id="statusMessage">READY</span>
     </div>
 </div>
 
@@ -194,6 +197,50 @@
                         <span class="visually-hidden">Generating...</span>
                     </div>
                     <p class="mt-1 mb-1">Generating AI analysis...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Report Block -->
+<div class="report-block mb-3 d-none" id="reportBlock">
+    <div class="terminal-section">
+        <div class="section-header">
+            <span class="section-label">REPORT</span>
+            <span class="report-symbol" id="reportSymbol"></span>
+        </div>
+        <div class="terminal-content">
+            <div id="reportContent">
+                <div class="report-fields">
+                    <div class="report-field">
+                        <span class="field-label">Time Fetched:</span>
+                        <span class="field-value" id="reportTimeFetched">-</span>
+                    </div>
+                    <div class="report-field">
+                        <span class="field-label">AI Summary:</span>
+                        <span class="field-value" id="reportAISummary">-</span>
+                    </div>
+                    <div class="report-field">
+                        <span class="field-label">AI Action:</span>
+                        <span class="field-value action-badge" id="reportAIAction">-</span>
+                    </div>
+                    <div class="report-field">
+                        <span class="field-label">AI Confidence:</span>
+                        <span class="field-value confidence-badge" id="reportAIConfidence">-</span>
+                    </div>
+                    <div class="report-field">
+                        <span class="field-label">AI Event Time:</span>
+                        <span class="field-value" id="reportAIEventTime">-</span>
+                    </div>
+                    <div class="report-field">
+                        <span class="field-label">AI Levels:</span>
+                        <span class="field-value levels-text" id="reportAILevels">-</span>
+                    </div>
+                    <div class="report-field">
+                        <span class="field-label">AI Analysis Status:</span>
+                        <span class="field-value status-badge" id="reportAIAnalysisStatus">-</span>
+                    </div>
                 </div>
             </div>
         </div>

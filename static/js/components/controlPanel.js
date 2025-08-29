@@ -25,6 +25,9 @@ import { insightsService } from '../services/insights.js';
 import { scrapingService } from '../services/scraping.js';
 import { analysisService } from '../services/analysis.js';
 
+// Import Debugger from global scope
+const Debugger = window.Debugger;
+
 export class ControlPanel {
     constructor() {
         this.elements = {
@@ -37,6 +40,13 @@ export class ControlPanel {
             typeFilter: document.getElementById('typeFilter'),
             itemsSelect: document.querySelector('select[title="Number of Items"]')
         };
+        
+        // Debug logging
+        console.log('ControlPanel elements found:', {
+            generateBtn: !!this.elements.generateBtn,
+            symbolInput: !!this.elements.symbolInput,
+            exchangeInput: !!this.elements.exchangeInput
+        });
         
         this.initializeEventListeners();
     }
@@ -102,16 +112,11 @@ export class ControlPanel {
             // Get current symbol from UI
             const symbol = this.elements.symbolInput?.value.trim().toUpperCase() || '';
             
-            if (!symbol) {
-                Debugger.error('Symbol is required for analysis. Please enter a symbol first.');
-                return;
-            }
-            
             // Show loading state
-            this.setButtonLoading(btn, 'UPDATING...');
+            this.setButtonLoading(btn, 'ANALYZING...');
             
-            // Trigger analysis for current symbol
-            const result = await analysisService.triggerAnalysis(symbol);
+            // Trigger analysis - with or without symbol filter
+            const result = await analysisService.triggerAnalysis(symbol || null);
             
             if (result.success) {
                 if (result.symbol) {
@@ -133,7 +138,7 @@ export class ControlPanel {
             Debugger.error('Network error during AI analysis');
             console.error('Update error:', error);
         } finally {
-            this.resetButton(btn, 'UPDATE');
+            this.resetButton(btn, 'ANALYZE');
         }
     }
 
@@ -268,8 +273,61 @@ export class ControlPanel {
         const btn = this.elements.generateBtn;
         if (!btn || btn.disabled) return;
         
-        Debugger.info('AI Megasummary generation not yet implemented');
-        // TODO: Implement megasummary generation when API is ready
+        try {
+            // Get current symbol and exchange
+            const symbolInput = document.getElementById('symbolInput');
+            const exchangeInput = document.getElementById('exchangeInput');
+            
+            let symbol = null;
+            let exchange = null;
+            
+            if (symbolInput && symbolInput.value.trim()) {
+                symbol = symbolInput.value.trim().toUpperCase();
+            }
+            
+            if (exchangeInput && exchangeInput.value.trim()) {
+                exchange = exchangeInput.value.trim().toUpperCase();
+            }
+            
+            // If we have both exchange and symbol, use the symbol only for the report
+            // If we only have symbol, use that
+            if (!symbol) {
+                Debugger.error('No symbol selected for report generation');
+                return;
+            }
+            
+            // Debug logging
+            console.log(`Generating report for symbol: ${symbol}${exchange ? ` (exchange: ${exchange})` : ''}`);
+            if (Debugger) {
+                Debugger.info(`Generating report for symbol: ${symbol}${exchange ? ` (exchange: ${exchange})` : ''}`);
+            }
+            
+            btn.disabled = true;
+            btn.textContent = 'GENERATING...';
+            
+            // Import services
+            const { analysisService } = await import('../services/analysis.js');
+            
+            // Call the AI report generation endpoint
+            const response = await analysisService.generateReport(symbol);
+            
+            if (response.success) {
+                Debugger.success(`AI report generated for ${symbol}`);
+                
+                // Refresh report block if it exists
+                if (window.reportBlock) {
+                    await window.reportBlock.refresh();
+                }
+            } else {
+                Debugger.error(response.error || `Failed to generate report for ${symbol}`);
+            }
+            
+        } catch (error) {
+            Debugger.error(`Failed to generate report: ${error.message}`);
+            console.error('Generate error:', error);
+        } finally {
+            this.resetButton(btn, 'GENERATE');
+        }
     }
 
     /**

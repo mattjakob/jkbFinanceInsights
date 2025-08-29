@@ -232,6 +232,24 @@ class DatabaseManager:
             ('TD IDEAS RECENT', 'TradingView recent ideas feed', datetime('now')),
             ('TD IDEAS POPULAR', 'TradingView popular ideas feed', datetime('now')),
             ('TD OPINIONS', 'TradingView opinions feed', datetime('now'));
+        
+        -- Reports table for AI analysis reports
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timeFetched TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            AISummary TEXT NOT NULL,
+            AIAction TEXT NOT NULL,
+            AIConfidence REAL NOT NULL,
+            AIEventTime TEXT,
+            AILevels TEXT,
+            AIAnalysisStatus TEXT NOT NULL DEFAULT 'completed'
+        );
+        
+        -- Create indexes for reports table
+        CREATE INDEX IF NOT EXISTS idx_reports_symbol ON reports(symbol);
+        CREATE INDEX IF NOT EXISTS idx_reports_timeFetched ON reports(timeFetched);
+        CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(AIAnalysisStatus);
         """
         
         self.execute_script(schema_script)

@@ -22,6 +22,8 @@
 import { apiClient } from '../core/api.js';
 import { config } from '../core/config.js';
 
+
+
 class TasksService {
     constructor() {
         this.stats = {
@@ -31,7 +33,6 @@ class TasksService {
             failed: 0,
             cancelled: 0
         };
-        this.updateInterval = null;
     }
 
     /**
@@ -58,48 +59,7 @@ class TasksService {
         }
     }
 
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │      START AUTO UPDATES             │
-     *  └─────────────────────────────────────┘
-     *  Starts automatic task stats updates
-     * 
-     *  Parameters:
-     *  - interval: Update interval in milliseconds
-     * 
-     *  Returns:
-     *  - None
-     */
-    startAutoUpdates(interval = 5000) {
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-        }
-        
-        this.updateInterval = setInterval(async () => {
-            await this.fetchTaskStats();
-        }, interval);
-    }
 
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │       STOP AUTO UPDATES             │
-     *  └─────────────────────────────────────┘
-     *  Stops automatic task stats updates
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - None
-     */
-    stopAutoUpdates() {
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
-    }
 
     /**
      * 

@@ -128,6 +128,7 @@ async def home(request: Request):
         "selected_exchange": "",
         "selected_type": "",
         "config": {
+            "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
             "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
             "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
             "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
@@ -195,6 +196,7 @@ async def insights_by_symbol(request: Request, exchange_symbol: str, type: Optio
         "selected_exchange": exchange,
         "selected_type": clean_type,
         "config": {
+            "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
             "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
             "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
             "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
@@ -257,6 +259,7 @@ async def insights_by_symbol_and_type(request: Request, exchange_symbol: str, ty
         "selected_exchange": exchange,
         "selected_type": clean_type,
         "config": {
+            "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
             "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
             "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
             "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],

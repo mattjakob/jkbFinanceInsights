@@ -20,18 +20,20 @@
  */
 
 import { config } from './core/config.js';
+import refreshManager from './core/refreshManager.js';
+import unifiedRefreshManager from './core/unifiedRefresh.js';
 
 import { ControlPanel } from './components/controlPanel.js';
 import { InsightsTable } from './components/insightsTable.js';
 import { StatusBar } from './components/statusBar.js';
 import { SymbolSearch } from './components/symbolSearch.js';
+import { ReportBlock } from './components/reportBlock.js';
 
 import { insightsService } from './services/insights.js';
 
 class App {
     constructor() {
         this.components = {};
-        this.refreshInterval = null;
     }
 
     /**
@@ -55,6 +57,7 @@ class App {
             this.components.controlPanel = new ControlPanel();
             this.components.insightsTable = new InsightsTable();
             this.components.statusBar = new StatusBar();
+            this.components.reportBlock = new ReportBlock();
 
             
             // Initialize symbol search if input exists
@@ -70,6 +73,9 @@ class App {
             
             // Load initial data
             await this.loadInitialData();
+            
+            // Make report block available globally
+            window.reportBlock = this.components.reportBlock;
             
         } catch (error) {
             console.error('Error during initialization:', error);
@@ -233,42 +239,15 @@ class App {
                                  localStorage.getItem('autoRefresh') !== 'false';
         
         if (autoRefreshEnabled) {
-            Debugger.info('Auto-refresh enabled, starting refresh interval');
-            this.startAutoRefresh();
+            Debugger.info('Auto-refresh enabled, registering with refresh manager');
+            
+            // Register table refresh with the refresh manager
+            refreshManager.register('table', async () => {
+                await this.refreshData();
+            });
         } else {
             Debugger.info('Auto-refresh disabled by user preference or configuration');
         }
-    }
-
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │       START AUTO REFRESH            │
-     *  └─────────────────────────────────────┘
-     *  Starts automatic refresh interval
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - None
-     */
-    startAutoRefresh() {
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-        }
-        
-        // Use the new simplified config
-        const refreshInterval = window.AppConfig?.frontend_table_refresh_interval || config.refreshIntervals.table;
-        
-        this.refreshInterval = setInterval(async () => {
-            try {
-                // Refresh data
-                await this.refreshData();
-            } catch (error) {
-                console.error('Auto-refresh error:', error);
-            }
-        }, refreshInterval);
     }
 
     /**
@@ -344,10 +323,7 @@ class App {
      *  - None
      */
     stopAutoRefresh() {
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-            this.refreshInterval = null;
-        }
+        refreshManager.stop('table');
     }
 
     /**
@@ -364,20 +340,17 @@ class App {
      *  - None
      */
     cleanup() {
-        this.stopAutoRefresh();
+        // Stop all refresh intervals
+        refreshManager.stopAll();
         
         // Clean up components
-        if (this.components.insightsTable) {
-            this.components.insightsTable.stopUpdates();
-        }
-        
         if (this.components.statusBar) {
             this.components.statusBar.destroy();
         }
-        
-
     }
 }
+
+
 
 // Create and export app instance
 const app = new App();

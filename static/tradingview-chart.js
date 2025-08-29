@@ -251,6 +251,8 @@ function updateTradingViewChart(symbol) {
             //Debugger.success('TradingView: Widget recreated with symbol:', cleanSymbol);
 }
 
+
+
 /**
 *
 * ┌─────────────────────────────────────┐

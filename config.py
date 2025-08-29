@@ -56,6 +56,10 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4-vision-preview")
 OPENAI_PROMPT_BRIEFSTRATEGY_ID = os.getenv("OPENAI_PROMPT_BRIEFSTRATEGY_ID")
 OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID = os.getenv("OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID")
 
+# Report prompt configuration
+OPENAI_PROMPT_REPORT_ID = os.getenv("OPENAI_PROMPT_REPORT_ID")
+OPENAI_PROMPT_REPORT_VERSION_ID = os.getenv("OPENAI_PROMPT_REPORT_VERSION_ID")
+
 # Circuit breaker settings
 AI_CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("AI_CIRCUIT_BREAKER_THRESHOLD", 3))
 AI_CIRCUIT_BREAKER_RESET_MINUTES = int(os.getenv("AI_CIRCUIT_BREAKER_RESET_MINUTES", 60))
@@ -65,16 +69,21 @@ AI_CIRCUIT_BREAKER_RESET_MINUTES = int(os.getenv("AI_CIRCUIT_BREAKER_RESET_MINUT
 # =============================================================================
 TASK_WORKER_COUNT = int(os.getenv("TASK_WORKER_COUNT", 3))
 TASK_MAX_RETRIES = int(os.getenv("TASK_MAX_RETRIES", 3))
+TASK_TIMEOUT = int(os.getenv("TASK_TIMEOUT", 300000))  # Default: 5 minutes in milliseconds
 TASK_CLEANUP_DAYS = int(os.getenv("TASK_CLEANUP_DAYS", 7))
 
 # =============================================================================
 # FRONTEND REFRESH INTERVALS (in milliseconds)
 # =============================================================================
 # Core refresh intervals for different UI components
+FRONTEND_UNIFIED_REFRESH_INTERVAL = int(os.getenv("FRONTEND_UNIFIED_REFRESH_INTERVAL", 1000))
+FRONTEND_TABLE_REFRESH_INTERVAL = int(os.getenv("FRONTEND_TABLE_REFRESH_INTERVAL", 10000))
+
 FRONTEND_REFRESH_INTERVALS = {
-    "age": int(os.getenv("FRONTEND_AGE_REFRESH_INTERVAL", 1000)),      # Age display updates
-    "table": int(os.getenv("FRONTEND_TABLE_REFRESH_INTERVAL", 10000)),  # Table data refresh
-    "status": int(os.getenv("FRONTEND_STATUS_REFRESH_INTERVAL", 2000))  # Status bar updates
+    "age": FRONTEND_UNIFIED_REFRESH_INTERVAL,      # Age display updates
+    "table": FRONTEND_TABLE_REFRESH_INTERVAL,      # Table data refresh  
+    "status": FRONTEND_UNIFIED_REFRESH_INTERVAL,   # Status bar updates
+    "unified": FRONTEND_UNIFIED_REFRESH_INTERVAL   # Unified interval for all UI elements
 }
 
 # =============================================================================

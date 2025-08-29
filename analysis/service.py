@@ -111,7 +111,8 @@ class AnalysisService:
         """Async version of analyze_text"""
         request = AnalysisRequest(text=text, context=context)
         
-        debug_info(f"Analyzing text async for {request.symbol}")
+        insight_id = context.get('insight_id', 'unknown')
+        debug_info(f"OpenAI Text Analysis on #{insight_id}")
         
         try:
             result = await self.provider.analyze_text_async(request)
@@ -128,7 +129,8 @@ class AnalysisService:
         """Async version of analyze_image"""
         request = ImageAnalysisRequest(image_url=image_url, context=context)
         
-        debug_info(f"Analyzing image async for {request.symbol}")
+        insight_id = context.get('insight_id', 'unknown')
+        debug_info(f"OpenAI Image Analysis on ID{insight_id}")
         
         try:
             result = await self.provider.analyze_image_async(request)
@@ -137,6 +139,62 @@ class AnalysisService:
             
         except Exception as e:
             debug_error(f"Image analysis failed: {e}")
+            raise
+    
+    def analyze_report(self,
+                      symbol: str,
+                      content: str) -> AnalysisResult:
+        """
+         ┌─────────────────────────────────────┐
+         │        ANALYZE_REPORT               │
+         └─────────────────────────────────────┘
+         Generate AI report analysis (synchronous)
+         
+         Parameters:
+         - symbol: Trading symbol to analyze
+         - content: Content to analyze
+         
+         Returns:
+         - AnalysisResult with structured output
+        """
+        request = AnalysisRequest(
+            text=content,
+            context={
+                'symbol': symbol
+            }
+        )
+        
+        debug_info(f"OpenAI Report Analysis for {symbol}")
+        
+        try:
+            result = self.provider.analyze_report(request)
+            debug_info(f"Report analysis completed for {symbol}")
+            return result
+            
+        except Exception as e:
+            debug_error(f"Report analysis failed: {e}")
+            raise
+
+    async def analyze_report_async(self,
+                                  symbol: str,
+                                  content: str) -> AnalysisResult:
+        """Generate AI report analysis"""
+        request = AnalysisRequest(
+            text=content,
+            context={
+                'symbol': symbol
+            }
+        )
+        
+        debug_info(f"OpenAI Report Analysis for {symbol}")
+        
+        try:
+            result = await self.provider.analyze_report_async(request)
+            debug_info(f"Report analysis completed for {symbol}")
+            return result
+            
+        except Exception as e:
+            debug_error(f"Report analysis failed: {e}")
             raise
     
     def set_provider(self, provider: AIProvider):

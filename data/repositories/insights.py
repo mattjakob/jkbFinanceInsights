@@ -363,6 +363,56 @@ class InsightsRepository:
             'ai_analysis_status': 'AIAnalysisStatus'
         }
         return mapping.get(field_name, field_name)
+    
+    def reset_failed_ai_analysis(self) -> int:
+        """
+         ┌─────────────────────────────────────┐
+         │    RESET_FAILED_AI_ANALYSIS        │
+         └─────────────────────────────────────┘
+         Reset all insights with failed AI analysis back to pending
+         
+         Returns:
+         - Number of insights reset
+        """
+        with get_db_session() as conn:
+            reset_count = conn.execute("""
+                UPDATE insights
+                SET AIAnalysisStatus = ?
+                WHERE AIAnalysisStatus = ?
+            """, (
+                AIAnalysisStatus.PENDING.value,
+                AIAnalysisStatus.FAILED.value
+            )).rowcount
+            
+            if reset_count > 0:
+                debug_info(f"Reset {reset_count} insights with failed AI analysis back to pending")
+            
+            return reset_count
+    
+    def reset_processing_ai_analysis(self) -> int:
+        """
+         ┌─────────────────────────────────────┐
+         │   RESET_PROCESSING_AI_ANALYSIS     │
+         └─────────────────────────────────────┘
+         Reset all insights with processing AI analysis back to pending
+         
+         Returns:
+         - Number of insights reset
+        """
+        with get_db_session() as conn:
+            reset_count = conn.execute("""
+                UPDATE insights
+                SET AIAnalysisStatus = ?
+                WHERE AIAnalysisStatus = ?
+            """, (
+                AIAnalysisStatus.PENDING.value,
+                'processing'
+            )).rowcount
+            
+            if reset_count > 0:
+                debug_info(f"Reset {reset_count} insights with processing AI analysis back to pending")
+            
+            return reset_count
 
 
 

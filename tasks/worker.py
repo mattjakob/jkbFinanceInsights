@@ -22,12 +22,14 @@
 """
 
 import asyncio
+from datetime import datetime, timedelta
 from typing import Dict, Callable, Any, Optional, List
 import signal
 import sys
 
 from .queue import TaskQueue, Task
 from debugger import debug_info, debug_error, debug_warning, debug_success
+from config import TASK_TIMEOUT
 
 
 class TaskWorker:
@@ -88,13 +90,43 @@ class TaskWorker:
             
             debug_info(f"Worker {self.worker_id} processing {task.task_type} task {task.id}")
             
-            # Call handler
-            if asyncio.iscoroutinefunction(handler):
-                result = await handler(**task.payload)
-            else:
-                # Run sync handler in thread pool
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(None, handler, **task.payload)
+            # Call handler with timeout
+            try:
+                if asyncio.iscoroutinefunction(handler):
+                    result = await asyncio.wait_for(handler(**task.payload), timeout=TASK_TIMEOUT / 1000.0)
+                else:
+                    # Run sync handler in thread pool with timeout
+                    loop = asyncio.get_event_loop()
+                    # Check if handler expects a payload parameter or individual parameters
+                    import inspect
+                    sig = inspect.signature(handler)
+                    if 'payload' in sig.parameters:
+                        # Handler expects a single payload parameter
+                        result = await asyncio.wait_for(
+                            loop.run_in_executor(None, handler, task.payload), 
+                            timeout=TASK_TIMEOUT / 1000.0
+                        )
+                    else:
+                        # Handler expects individual parameters
+                        result = await asyncio.wait_for(
+                            loop.run_in_executor(None, handler, **task.payload), 
+                            timeout=TASK_TIMEOUT / 1000.0
+                        )
+            except asyncio.TimeoutError:
+                error_msg = f"Task {task.id} timed out after {TASK_TIMEOUT}ms"
+                debug_error(error_msg)
+                self.queue.fail_task(task.id, error_msg)
+                # Note: fail_task will automatically call _update_entity_status_on_failure
+                return
+            
+            # Check if handler returned a failure that shouldn't be retried
+            if isinstance(result, dict) and not result.get('success', True):
+                if not result.get('should_retry', True):
+                    # Mark as failed without retry
+                    self.queue.fail_task(task.id, result.get('error', 'Handler indicated permanent failure'), permanent=True)
+                    debug_warning(f"Task {task.id} permanently failed: {result.get('error')}")
+                    # Note: fail_task will automatically call _update_entity_status_on_failure
+                    return
             
             # Mark complete
             self.queue.complete_task(task.id, result)
@@ -104,12 +136,14 @@ class TaskWorker:
             # Worker is shutting down
             debug_warning(f"Task {task.id} cancelled during shutdown")
             self.queue.fail_task(task.id, "Worker shutdown")
+            # Note: fail_task will automatically call _update_entity_status_on_failure
             raise
             
         except Exception as e:
             error_msg = str(e)
             debug_error(f"Task {task.id} failed: {error_msg}")
             self.queue.fail_task(task.id, error_msg)
+            # Note: fail_task will automatically call _update_entity_status_on_failure
             
         finally:
             self._current_task = None
@@ -126,8 +160,16 @@ class TaskWorker:
         self.running = True
         debug_info(f"Worker {self.worker_id} started")
         
+        last_cleanup = datetime.now()
+        cleanup_interval = timedelta(minutes=30)  # Cleanup every 30 minutes
+        
         while self.running:
             try:
+                # Periodic maintenance only on worker 1
+                if self.worker_id == 1 and datetime.now() - last_cleanup > cleanup_interval:
+                    await self._perform_maintenance()
+                    last_cleanup = datetime.now()
+                
                 # Get next task
                 task = self.queue.get_next_task()
                 
@@ -146,6 +188,43 @@ class TaskWorker:
                 await asyncio.sleep(5)  # Sleep on error
         
         debug_info(f"Worker {self.worker_id} stopped")
+    
+    async def _perform_maintenance(self):
+        """
+         ┌─────────────────────────────────────┐
+         │       _PERFORM_MAINTENANCE          │
+         └─────────────────────────────────────┘
+         Perform periodic maintenance tasks
+         
+         Cleans up orphaned tasks and resets stuck tasks.
+        """
+        try:
+            debug_info(f"Worker {self.worker_id} performing maintenance")
+            
+            # Purge orphaned tasks
+            orphaned_count = self.queue.purge_orphaned_tasks()
+            if orphaned_count > 0:
+                debug_info(f"Purged {orphaned_count} orphaned tasks")
+            
+            # Reset stuck tasks
+            stuck_count = self.queue.reset_stuck_tasks(timeout_hours=2)
+            if stuck_count > 0:
+                debug_info(f"Reset {stuck_count} stuck tasks")
+            
+            # Clean up old tasks
+            cleaned_count = self.queue.cleanup_old_tasks(days=7)
+            if cleaned_count > 0:
+                debug_info(f"Cleaned up {cleaned_count} old tasks")
+            
+            # Log health metrics
+            health = self.queue.get_health_metrics()
+            if health['health_status'] != 'healthy':
+                debug_warning(f"Queue health: {health['health_status']} (score: {health['health_score']})")
+                for issue in health['issues']:
+                    debug_warning(f"  - {issue}")
+            
+        except Exception as e:
+            debug_error(f"Maintenance error: {e}")
     
     def stop(self):
         """Stop the worker"""

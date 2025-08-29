@@ -636,9 +636,10 @@ option:checked {
     width: 40px;
     height: 3px;
     background-color: var(--border-color);
-    margin: 0;
+    margin: 0 auto;
     position: relative;
     overflow: hidden;
+    display: block;
 }
 
 .loading-spinner::before {
@@ -728,6 +729,8 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
 .text-muted {
     color: var(--hover-color) !important;
 }
+
+
 
 /* Force Bootstrap table transparency */
 .table,
@@ -1557,6 +1560,22 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     text-align: left;
 }
 
+.status-task-item.clickable {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.status-task-item.clickable:hover {
+    background: var(--secondary-bg);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.status-task-item.clickable:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
 .status-icon {
     width: 20px;
     text-align: left;
@@ -1570,4 +1589,101 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: left;
+}
+/* Report Block Styles */
+.report-block {
+    margin-bottom: 1rem;
+}
+
+.report-block .terminal-section {
+    background: var(--terminal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.report-symbol {
+    color: var(--primary-color);
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+.report-fields {
+    display: grid;
+    gap: 12px;
+}
+
+.report-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.field-label {
+    color: var(--text-muted);
+    min-width: 140px;
+    font-size: 0.875rem;
+}
+
+.field-value {
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.field-value.action-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: bold;
+    font-size: 0.75rem;
+}
+
+.field-value.action-badge.action-buy {
+    background: var(--success-bg);
+    color: var(--success-color);
+}
+
+.field-value.action-badge.action-sell {
+    background: var(--danger-bg);  
+    color: var(--danger-color);
+}
+
+.field-value.action-badge.action-hold {
+    background: var(--warning-bg);
+    color: var(--warning-color);
+}
+
+.field-value.action-badge.action-watch {
+    background: var(--info-bg);
+    color: var(--info-color);
+}
+
+.field-value.confidence-badge {
+    font-weight: bold;
+}
+
+.field-value.confidence-badge.confidence-high {
+    color: var(--success-color);
+}
+
+.field-value.confidence-badge.confidence-medium {
+    color: var(--warning-color);
+}
+
+.field-value.confidence-badge.confidence-low {
+    color: var(--danger-color);
+}
+
+.field-value.levels-text {
+    font-family: monospace;
+    font-size: 0.875rem;
+}
+
+.field-value.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    background: var(--success-bg);
+    color: var(--success-color);
 }

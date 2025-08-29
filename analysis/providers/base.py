@@ -80,6 +80,24 @@ class AIProvider(ABC):
         import asyncio
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.analyze_image, request)
+    
+    def analyze_report(self, request: AnalysisRequest) -> AnalysisResult:
+        """
+         ┌─────────────────────────────────────┐
+         │        ANALYZE_REPORT               │
+         └─────────────────────────────────────┘
+         Generate AI report
+         
+         Default implementation calls analyze_text.
+         Providers can override for custom report generation.
+        """
+        return self.analyze_text(request)
+    
+    async def analyze_report_async(self, request: AnalysisRequest) -> AnalysisResult:
+        """Async wrapper for report analysis"""
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.analyze_report, request)
 
 
 

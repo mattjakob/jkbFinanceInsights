@@ -20,6 +20,7 @@
  */
 
 import { tasksService } from '../services/tasks.js';
+import unifiedRefreshManager from '../core/unifiedRefresh.js';
 
 export class StatusBar {
     constructor() {
@@ -27,10 +28,9 @@ export class StatusBar {
         this.statusRunning = document.querySelector('#statusRunning .task-count');
         this.statusQueued = document.querySelector('#statusQueued .task-count');
         this.statusFailed = document.querySelector('#statusFailed .task-count');
+        this.statusFailedContainer = document.getElementById('statusFailed');
         this.statusIcon = document.querySelector('#statusIcon i');
         this.statusMessage = document.getElementById('statusMessage');
-        this.updateInterval = null;
-        this.debuggerFetchInterval = null;
         this.lastDebuggerMessage = null;
         
         if (this.statusTime && this.statusMessage) {
@@ -52,12 +52,16 @@ export class StatusBar {
      *  - None
      */
     initialize() {
-        this.startTimeUpdates();
-        this.startDebuggerUpdates();
+        // Register with unified refresh manager
+        unifiedRefreshManager.register(this);
         
-        // Start task service updates and fetch initial data
-        tasksService.startAutoUpdates(5000);
-        tasksService.fetchTaskStats(); // Fetch immediately
+        // Initialize click handlers
+        this.initializeClickHandlers();
+        
+        // Fetch initial task stats
+        tasksService.fetchTaskStats().then(() => {
+            this.updateTime(); // Force immediate update
+        });
         
         // Make this instance globally available for debugger integration
         window.statusBar = this;
@@ -66,9 +70,9 @@ export class StatusBar {
     /**
      * 
      *  ┌─────────────────────────────────────┐
-     *  │      START TIME UPDATES             │
+     *  │    INITIALIZE CLICK HANDLERS        │
      *  └─────────────────────────────────────┘
-     *  Starts automatic time updates
+     *  Sets up click event handlers for interactive elements
      * 
      *  Parameters:
      *  - None
@@ -76,16 +80,72 @@ export class StatusBar {
      *  Returns:
      *  - None
      */
-    startTimeUpdates() {
-        // Initial update
-        this.updateTime();
-        
-        // Update every second
-        const updateInterval = window.AppConfig?.frontend_status_update_interval || 1000;
-        this.updateInterval = setInterval(() => {
-            this.updateTime();
-        }, updateInterval);
+    initializeClickHandlers() {
+        // Add click handler for failed tasks block
+        if (this.statusFailedContainer) {
+            this.statusFailedContainer.classList.add('clickable');
+            this.statusFailedContainer.title = 'Click to reset queue and clear failed tasks';
+            this.statusFailedContainer.addEventListener('click', () => this.handleFailedTasksClick());
+        }
     }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      HANDLE FAILED TASKS CLICK      │
+     *  └─────────────────────────────────────┘
+     *  Handles click on failed tasks block
+     * 
+     *  Parameters:
+     *  - None
+     * 
+     *  Returns:
+     *  - None
+     */
+    async handleFailedTasksClick() {
+        try {
+            // Show loading state
+            this.statusFailedContainer.style.opacity = '0.6';
+            this.statusMessage.textContent = 'Resetting queue...';
+            
+            // Call the queue reset endpoint
+            const response = await fetch('/api/queue/reset-queue', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.statusMessage.textContent = `Queue reset: ${result.data.tasks_cancelled} tasks cancelled, ${result.data.insights_reset} insights reset`;
+                    
+                    // Refresh task stats
+                    await tasksService.fetchTaskStats();
+                    this.updateTime();
+                    
+                    // Show success message briefly
+                    setTimeout(() => {
+                        this.statusMessage.textContent = 'Queue reset completed';
+                    }, 3000);
+                } else {
+                    this.statusMessage.textContent = 'Queue reset failed';
+                }
+            } else {
+                this.statusMessage.textContent = 'Queue reset failed';
+            }
+        } catch (error) {
+            console.error('Queue reset error:', error);
+            this.statusMessage.textContent = 'Queue reset error';
+        } finally {
+            // Restore normal state
+            this.statusFailedContainer.style.opacity = '1';
+        }
+    }
+
+
 
     /**
      * 
@@ -113,9 +173,18 @@ export class StatusBar {
         
         // Update task counts
         const taskStats = tasksService.getCurrentStats();
-        this.statusRunning.textContent = taskStats.processing || 0;
-        this.statusQueued.textContent = taskStats.pending || 0;
-        this.statusFailed.textContent = taskStats.failed || 0;
+        
+        if (this.statusRunning) {
+            this.statusRunning.textContent = taskStats.processing || 0;
+        }
+        
+        if (this.statusQueued) {
+            this.statusQueued.textContent = taskStats.pending || 0;
+        }
+        
+        if (this.statusFailed) {
+            this.statusFailed.textContent = taskStats.failed || 0;
+        }
         
         // Update message/icon based on debugger status
         if (this.lastDebuggerMessage) {
@@ -128,33 +197,11 @@ export class StatusBar {
                 month: 'short',
                 day: 'numeric'
             });
-            this.statusMessage.textContent = `Last Update: ${dateString}`;
+            //this.statusMessage.textContent = `Last Update: ${dateString}`;
         }
     }
 
-    /**
-     * 
-     *  ┌─────────────────────────────────────┐
-     *  │      START DEBUGGER UPDATES         │
-     *  └─────────────────────────────────────┘
-     *  Starts automatic debugger status updates
-     * 
-     *  Parameters:
-     *  - None
-     * 
-     *  Returns:
-     *  - None
-     */
-    startDebuggerUpdates() {
-        // Initial fetch
-        this.fetchDebuggerStatus();
-        
-        // Update every 2 seconds
-        const debuggerInterval = window.AppConfig?.frontend_debugger_fetch_interval || 5000;
-        this.debuggerFetchInterval = setInterval(() => {
-            this.fetchDebuggerStatus();
-        }, debuggerInterval);
-    }
+
 
     /**
      * 
@@ -405,15 +452,8 @@ export class StatusBar {
      *  - None
      */
     stopUpdates() {
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
-        
-        if (this.debuggerFetchInterval) {
-            clearInterval(this.debuggerFetchInterval);
-            this.debuggerFetchInterval = null;
-        }
+        // Unregister from unified refresh manager
+        unifiedRefreshManager.unregister(this);
     }
 
     /**
@@ -431,6 +471,5 @@ export class StatusBar {
      */
     destroy() {
         this.stopUpdates();
-        tasksService.stopAutoUpdates();
     }
 }

@@ -20,13 +20,13 @@
  */
 
 import { config } from '../core/config.js';
+import unifiedRefreshManager from '../core/unifiedRefresh.js';
 import { calculateAge, formatEventTime, formatLevels, getConfidenceClass, formatTimestamp } from '../core/utils.js';
 import { insightsService } from '../services/insights.js';
 
 export class InsightsTable {
     constructor() {
         this.table = document.querySelector('table');
-        this.updateIntervals = new Map();
         this.initializeTableFeatures();
     }
 
@@ -46,9 +46,11 @@ export class InsightsTable {
     initializeTableFeatures() {
         this.initializeExpandableRows();
         this.initializeRowClickHandlers();
-        this.startAgeUpdates();
         this.updateConfidenceStyling();
         this.formatSpecialCells();
+        
+        // Register with unified refresh manager
+        unifiedRefreshManager.register(this);
     }
 
     /**
@@ -148,17 +150,8 @@ export class InsightsTable {
      *  Returns:
      *  - None
      */
-    startAgeUpdates() {
-        this.updateAllAges();
-        
-        // Set up periodic updates
-        const ageInterval = window.AppConfig?.frontend_age_refresh_interval || config.refreshIntervals.age;
-        const intervalId = setInterval(() => {
-            this.updateAllAges();
-        }, ageInterval);
-        
-        this.updateIntervals.set('age', intervalId);
-    }
+
+
 
     /**
      * 
@@ -544,9 +537,7 @@ export class InsightsTable {
      *  - None
      */
     stopUpdates() {
-        this.updateIntervals.forEach((intervalId, key) => {
-            clearInterval(intervalId);
-        });
-        this.updateIntervals.clear();
+        // Unregister from unified refresh manager
+        unifiedRefreshManager.unregister(this);
     }
 }

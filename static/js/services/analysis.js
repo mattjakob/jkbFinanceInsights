@@ -117,6 +117,29 @@ class AnalysisService {
     getLastAnalysisStatus() {
         return this.lastAnalysisStatus;
     }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │       GENERATE REPORT               │
+     *  └─────────────────────────────────────┘
+     *  Generates AI analysis report for a symbol
+     * 
+     *  Parameters:
+     *  - symbol: Trading symbol
+     * 
+     *  Returns:
+     *  - Report generation result
+     */
+    async generateReport(symbol) {
+        try {
+            const result = await apiClient.post(`${config.api.analysis}/generate-report`, { symbol });
+            return result;
+        } catch (error) {
+            console.error('Error generating report:', error);
+            throw error;
+        }
+    }
 }
 
 // Export singleton instance

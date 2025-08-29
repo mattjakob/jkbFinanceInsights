@@ -257,4 +257,71 @@ class AIAnalysisResult:
         return " | ".join(parts) if parts else None
 
 
+@dataclass
+class ReportModel:
+    """
+     ┌─────────────────────────────────────┐
+     │         REPORTMODEL                 │
+     └─────────────────────────────────────┘
+     AI analysis report data model
+     
+     Represents a standalone AI analysis report for a symbol,
+     independent of specific insights.
+     
+     Parameters:
+     - Core fields for report tracking
+     - AI analysis results
+     
+     Returns:
+     - ReportModel instance
+     
+     Notes:
+     - Used for storing consolidated AI analysis
+     - Can aggregate multiple insights for a symbol
+    """
+    # Core fields
+    time_fetched: datetime
+    symbol: str
+    
+    # AI Analysis fields
+    ai_summary: str
+    ai_action: AIAction
+    ai_confidence: float
+    ai_event_time: Optional[str] = None
+    ai_levels: Optional[str] = None
+    ai_analysis_status: AIAnalysisStatus = AIAnalysisStatus.COMPLETED
+    
+    # Optional fields
+    id: Optional[int] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for database operations"""
+        return {
+            'id': self.id,
+            'timeFetched': self.time_fetched.isoformat(),
+            'symbol': self.symbol,
+            'AISummary': self.ai_summary,
+            'AIAction': self.ai_action.value,
+            'AIConfidence': self.ai_confidence,
+            'AIEventTime': self.ai_event_time,
+            'AILevels': self.ai_levels,
+            'AIAnalysisStatus': self.ai_analysis_status.value
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ReportModel':
+        """Create from dictionary (e.g., database row)"""
+        return cls(
+            id=data.get('id'),
+            time_fetched=datetime.fromisoformat(data['timeFetched']),
+            symbol=data['symbol'],
+            ai_summary=data['AISummary'],
+            ai_action=AIAction(data['AIAction']),
+            ai_confidence=data['AIConfidence'],
+            ai_event_time=data.get('AIEventTime'),
+            ai_levels=data.get('AILevels'),
+            ai_analysis_status=AIAnalysisStatus(data.get('AIAnalysisStatus', 'completed'))
+        )
+
+
 

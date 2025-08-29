@@ -52,7 +52,14 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         # Get insight from database
         insight = insights_repo.get_by_id(insight_id)
         if not insight:
-            raise ValueError(f"Insight {insight_id} not found")
+            # Insight has been deleted - gracefully handle this
+            debug_warning(f"Insight {insight_id} not found - likely deleted")
+            return {
+                'success': False,
+                'insight_id': insight_id,
+                'error': 'Insight not found - may have been deleted',
+                'should_retry': False
+            }
         
         # Update status to processing
         insights_repo.update_ai_status(insight_id, AIAnalysisStatus.PROCESSING)
@@ -74,7 +81,10 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             try:
                 image_result = await service.analyze_image_async(
                     insight.image_url,
-                    context={'symbol': insight.symbol}
+                    context={
+                        'symbol': insight.symbol,
+                        'insight_id': insight_id  # Pass insight_id in context
+                    }
                 )
                 results['image_analysis'] = image_result
                 
@@ -93,7 +103,8 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
                 'symbol': insight.symbol,
                 'type': insight.type.value,
                 'title': insight.title,
-                'technical': results.get('image_analysis', '')
+                'technical': results.get('image_analysis', ''),
+                'insight_id': insight_id  # Pass insight_id in context
             }
         )
         
@@ -109,7 +120,7 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         insights_repo.update(insight_id, updates)
         insights_repo.update_ai_status(insight_id, AIAnalysisStatus.COMPLETED)
         
-        debug_success(f"AI analysis completed for insight {insight_id}")
+        debug_success(f"AI analysis completed for #{insight_id}")
         
         return {
             'success': True,
@@ -119,7 +130,33 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         
     except Exception as e:
         debug_error(f"AI analysis failed for insight {insight_id}: {e}")
-        insights_repo.update_ai_status(insight_id, AIAnalysisStatus.FAILED)
+        
+        # Only update status if insight still exists
+        try:
+            if insights_repo.get_by_id(insight_id):
+                insights_repo.update_ai_status(insight_id, AIAnalysisStatus.FAILED)
+        except Exception:
+            debug_warning(f"Could not update status for insight {insight_id} - may have been deleted")
+        
+        # Check if this is a recoverable error
+        error_msg = str(e).lower()
+        should_retry = not any(phrase in error_msg for phrase in [
+            'not found',
+            'deleted',
+            'does not exist',
+            'invalid insight'
+        ])
+        
+        if not should_retry:
+            # Don't retry for permanent failures
+            return {
+                'success': False,
+                'insight_id': insight_id,
+                'error': str(e),
+                'should_retry': False
+            }
+        
+        # Re-raise for retry-able errors
         raise
 
 
@@ -153,11 +190,15 @@ async def handle_bulk_analysis(symbol: str = None, **kwargs) -> Dict[str, Any]:
                 'symbol': symbol
             }
         
+        # Debug: Show what we found
+        debug_info(f"Found {len(insights)} total insights needing analysis")
+        
         # Filter by symbol if provided
         if symbol:
             symbol = symbol.upper()
+            original_count = len(insights)
             insights = [insight for insight in insights if insight.symbol and insight.symbol.upper() == symbol]
-            debug_info(f"Filtered to {len(insights)} insights for symbol {symbol}")
+            debug_info(f"Filtered from {original_count} to {len(insights)} insights for symbol {symbol}")
         
         if not insights:
             debug_info(f"No insights need AI analysis for symbol {symbol}" if symbol else "No insights need AI analysis")
@@ -222,9 +263,107 @@ def handle_cleanup(days: int = 7, **kwargs) -> Dict[str, Any]:
     }
 
 
+def handle_test_timeout(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │        HANDLE_TEST_TIMEOUT           │
+     └─────────────────────────────────────┘
+     Test handler for timeout functionality
+     
+     Simulates a long-running operation to test task timeout.
+    """
+    import time
+    import random
+    
+    # Simulate work time (random between 1-10 seconds)
+    work_time = random.randint(1, 10)
+    time.sleep(work_time)
+    
+    return {
+        'success': True,
+        'work_time': work_time,
+        'message': f'Test task completed in {work_time} seconds'
+    }
+
+
+def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │    HANDLE_AI_REPORT_GENERATION      │
+     └─────────────────────────────────────┘
+     Handle AI report generation task
+     
+     Generates a comprehensive AI report for a symbol
+     using all available insights.
+    """
+    try:
+        symbol = payload.get('symbol')
+        content = payload.get('content')
+        insights_count = payload.get('insights_count', 0)
+        
+        if not symbol:
+            debug_error("No symbol provided for report generation")
+            return {'success': False, 'should_retry': False, 'error': 'No symbol provided'}
+        
+        debug_info(f"Generating AI report for {symbol} with {insights_count} insights")
+        
+        # Import analysis service
+        from analysis.service import AnalysisService
+        service = AnalysisService()
+        
+        # Generate the report using AI
+        result = service.analyze_report(symbol=symbol, content=content)
+        
+        # Create a report entry in the database
+        from data.repositories.reports import get_reports_repository
+        from core.models import ReportModel, AIAnalysisStatus, AIAction
+        from datetime import datetime
+        
+        reports_repo = get_reports_repository()
+        
+        # Parse the OpenAI response and convert to the expected format
+        # OpenAI returns confidence as 0-100, convert to 0-1
+        confidence_normalized = result.confidence / 100.0 if result.confidence is not None else 0.0
+        
+        # Convert action to uppercase and map to AIAction enum
+        action_str = result.action.upper() if result.action else "HOLD"
+        
+        # Format levels as string
+        levels_str = result.format_levels() if result.levels else None
+        
+        report = ReportModel(
+            time_fetched=datetime.now(),
+            symbol=symbol,
+            ai_summary=result.summary,
+            ai_action=AIAction(action_str),
+            ai_confidence=confidence_normalized,
+            ai_event_time=result.event_time,
+            ai_levels=levels_str,
+            ai_analysis_status=AIAnalysisStatus.COMPLETED
+        )
+        
+        report_id = reports_repo.create(report)
+        
+        debug_success(f"AI report generated for {symbol} (Report ID: {report_id})")
+        
+        return {
+            'success': True,
+            'should_retry': False,
+            'report_id': report_id,
+            'symbol': symbol,
+            'message': f'AI report generated successfully for {symbol}'
+        }
+        
+    except Exception as e:
+        debug_error(f"AI report generation failed: {e}")
+        return {'success': False, 'should_retry': True, 'error': str(e)}
+
+
 # Handler registry for easy registration
 HANDLERS = {
     'ai_analysis': handle_ai_analysis,
     'bulk_analysis': handle_bulk_analysis,
-    'cleanup': handle_cleanup
+    'cleanup': handle_cleanup,
+    'ai_report_generation': handle_ai_report_generation,
+    'test_timeout': handle_test_timeout
 }
