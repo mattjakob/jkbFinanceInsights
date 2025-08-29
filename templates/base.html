@@ -184,6 +184,10 @@
                                 break;
                                 
                             case 'fetch_all':
+                                // Get the selected items amount from UI if available
+                                const itemsSelect = document.querySelector('[title="Number of Items"]');
+                                const maxItems = parseInt(itemsSelect?.value) || 50;
+                                
                                 result = await fetch('/api/scraping/fetch', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -191,7 +195,7 @@
                                         symbol: symbol || 'BTCUSD',
                                         exchange: exchange || 'BITSTAMP',
                                         feed_type: 'ALL',
-                                        max_items: 50
+                                        max_items: maxItems
                                     })
                                 });
                                 break;

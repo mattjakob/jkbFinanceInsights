@@ -50,7 +50,7 @@
     {% elif status == 'failed' %}
         <div class="ai-status-failed">
             <span class="status-icon-wrapper">
-                <i class="bi bi-activity"></i>
+                <i class="bi bi-x-circle"></i>
             </span>
         </div>
     {% elif status == 'empty' %}
@@ -166,10 +166,11 @@
             <div class="input-group input-group-sm">
                 <span class="input-group-text">INTERVAL</span>
                 <select class="form-select form-select-sm" title="Update Interval">
-                    <option value="60" selected>60s</option>
-                    <option value="300">5m</option>
+                    <option value="5" selected>5s</option>
+                    <option value="30">30s</option>
+                    <option value="60">1m</option>
                     <option value="900">15m</option>
-                    <option value="3600">1h</option>
+                    <option value="1800">30m</option>
                 </select>
             </div>
         </div>
@@ -177,10 +178,10 @@
             <div class="input-group input-group-sm">
                 <span class="input-group-text">ITEMS</span>
                 <select class="form-select form-select-sm" title="Number of Items">
-                    <option value="{{ config.app_max_items }}" selected>{{ config.app_max_items }}</option>
+                    <option value="5">5</option>
+                    <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>
-                    <option value="100">100</option>
                 </select>
             </div>
         </div>
@@ -245,42 +246,56 @@
 </div>
 
 <!-- Report Block -->
-<div class="report-block mb-3 d-none" id="reportBlock">
+<div class="report-block mb-3 {% if not latest_report %}d-none{% endif %}" id="reportBlock">
     <div class="terminal-section">
         <div class="section-header">
             <span class="section-label">REPORT</span>
-            <span class="report-symbol" id="reportSymbol"></span>
+            <span class="report-symbol" id="reportSymbol">{% if latest_report %}{{ latest_report.symbol }}{% endif %}</span>
         </div>
         <div class="terminal-content">
             <div id="reportContent">
                 <div class="report-fields">
                     <div class="report-field">
                         <span class="field-label">Time Fetched:</span>
-                        <span class="field-value" id="reportTimeFetched">-</span>
+                        <span class="field-value" id="reportTimeFetched">
+                            {% if latest_report %}{{ latest_report.timeFetched }}{% else %}-{% endif %}
+                        </span>
                     </div>
                     <div class="report-field">
                         <span class="field-label">AI Summary:</span>
-                        <span class="field-value" id="reportAISummary">-</span>
+                        <span class="field-value" id="reportAISummary">
+                            {% if latest_report and latest_report.AISummary %}{{ latest_report.AISummary }}{% else %}-{% endif %}
+                        </span>
                     </div>
                     <div class="report-field">
                         <span class="field-label">AI Action:</span>
-                        <span class="field-value action-badge" id="reportAIAction">-</span>
+                        <span class="field-value action-badge" id="reportAIAction">
+                            {% if latest_report and latest_report.AIAction %}{{ action_badge(latest_report.AIAction) }}{% else %}-{% endif %}
+                        </span>
                     </div>
                     <div class="report-field">
                         <span class="field-label">AI Confidence:</span>
-                        <span class="field-value confidence-badge" id="reportAIConfidence">-</span>
+                        <span class="field-value confidence-badge" id="reportAIConfidence">
+                            {% if latest_report and latest_report.AIConfidence is not none %}{{ "%.0f%%"|format(latest_report.AIConfidence * 100) }}{% else %}-{% endif %}
+                        </span>
                     </div>
                     <div class="report-field">
                         <span class="field-label">AI Event Time:</span>
-                        <span class="field-value" id="reportAIEventTime">-</span>
+                        <span class="field-value" id="reportAIEventTime">
+                            {% if latest_report and latest_report.AIEventTime %}{{ latest_report.AIEventTime }}{% else %}-{% endif %}
+                        </span>
                     </div>
                     <div class="report-field">
                         <span class="field-label">AI Levels:</span>
-                        <span class="field-value levels-text" id="reportAILevels">-</span>
+                        <span class="field-value levels-text" id="reportAILevels">
+                            {% if latest_report and latest_report.AILevels %}{{ latest_report.AILevels }}{% else %}-{% endif %}
+                        </span>
                     </div>
                     <div class="report-field">
                         <span class="field-label">AI Analysis Status:</span>
-                        <span class="field-value status-badge" id="reportAIAnalysisStatus">-</span>
+                        <span class="field-value status-badge" id="reportAIAnalysisStatus">
+                            {% if latest_report and latest_report.TaskStatus %}{{ latest_report.TaskStatus }}{% else %}-{% endif %}
+                        </span>
                     </div>
                 </div>
             </div>

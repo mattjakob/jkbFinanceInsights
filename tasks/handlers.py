@@ -694,8 +694,7 @@ def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
             ai_action=AIAction(action_str),
             ai_confidence=confidence_normalized,
             ai_event_time=result.event_time,
-            ai_levels=levels_str,
-            ai_analysis_status=TaskStatus.COMPLETED
+            ai_levels=levels_str
         )
         
         report_id = reports_repo.create(report)

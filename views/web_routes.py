@@ -28,6 +28,7 @@ from typing import Optional
 
 from services import InsightsService
 from core import FeedType
+from data.repositories.reports import get_reports_repository
 from config import (
     FRONTEND_REFRESH_INTERVALS, APP_BEHAVIOR,
     TRADINGVIEW_CHART_HEIGHT, TRADINGVIEW_CHART_INTERVAL, 
@@ -42,6 +43,7 @@ templates = Jinja2Templates(directory="templates")
 
 # Service instances
 insights_service = InsightsService()
+reports_repo = get_reports_repository()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -75,6 +77,7 @@ async def home(request: Request, type: Optional[str] = Query(None, description="
         "selected_symbol": "",
         "selected_exchange": "",
         "selected_type": clean_type or "",
+        "latest_report": None,
         "config": {
             "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
             "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
@@ -123,6 +126,11 @@ async def insights_by_symbol(request: Request, exchange_symbol: str, type: Optio
         type_filter=clean_type if clean_type else None
     )
     
+    # Get latest report for the symbol
+    latest_report = None
+    if symbol:
+        latest_report = reports_repo.get_latest_by_symbol(symbol)
+    
     # Get feed types for filter dropdown
     feed_names = [
         {"name": feed_type.value, "description": f"{feed_type.value} feed"}
@@ -136,6 +144,7 @@ async def insights_by_symbol(request: Request, exchange_symbol: str, type: Optio
         "selected_symbol": symbol,
         "selected_exchange": exchange,
         "selected_type": clean_type,
+        "latest_report": latest_report.to_dict() if latest_report else None,
         "config": {
             "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
             "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
@@ -181,6 +190,11 @@ async def insights_by_symbol_and_type(request: Request, exchange_symbol: str, ty
         type_filter=clean_type
     )
     
+    # Get latest report for the symbol
+    latest_report = None
+    if symbol:
+        latest_report = reports_repo.get_latest_by_symbol(symbol)
+    
     # Get feed types for filter dropdown
     feed_names = [
         {"name": feed_type.value, "description": f"{feed_type.value} feed"}
@@ -194,6 +208,7 @@ async def insights_by_symbol_and_type(request: Request, exchange_symbol: str, ty
         "selected_symbol": symbol,
         "selected_exchange": exchange,
         "selected_type": clean_type,
+        "latest_report": latest_report.to_dict() if latest_report else None,
         "config": {
             "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
             "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],

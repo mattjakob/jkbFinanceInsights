@@ -1,24 +1,5 @@
 """
-/**
- * 
- *  ┌─────────────────────────────────────┐
- *  │            DATABASE                 │
- *  └─────────────────────────────────────┘
- *  Database connection and session management
- * 
- *  Provides centralized database connection handling with
- *  context managers for safe resource management.
- * 
- *  Parameters:
- *  - None
- * 
- *  Returns:
- *  - Database connection utilities
- * 
- *  Notes:
- *  - Uses context managers for automatic cleanup
- *  - Supports both sync and async operations
- */
+Database connection and session management with WAL mode and retry logic.
 """
 
 import sqlite3
@@ -26,54 +7,34 @@ from contextlib import contextmanager
 from typing import Generator, Optional
 import os
 from pathlib import Path
+import time
 
-from config import DATABASE_URL
-from debugger import debug_info, debug_error
+from config import DATABASE_URL, DATABASE_TIMEOUT, DATABASE_MAX_RETRIES, DATABASE_RETRY_DELAY, DATABASE_WAL_MODE
+from debugger import debug_info, debug_error, debug_warning
 
 
 class DatabaseConfig:
-    """
-     ┌─────────────────────────────────────┐
-     │        DATABASECONFIG               │
-     └─────────────────────────────────────┘
-     Database configuration settings
-     
-     Centralizes database-related configuration.
-    """
+    """Database configuration settings"""
+    
     def __init__(self, database_url: str = DATABASE_URL):
         self.database_url = database_url
-        self.timeout = 30.0
+        self.timeout = DATABASE_TIMEOUT
         self.check_same_thread = False
+        self.max_retries = DATABASE_MAX_RETRIES
+        self.retry_delay = DATABASE_RETRY_DELAY
         
     @property
     def connection_kwargs(self) -> dict:
         """Get kwargs for sqlite3.connect()"""
         return {
             'timeout': self.timeout,
-            'check_same_thread': self.check_same_thread
+            'check_same_thread': self.check_same_thread,
+            'isolation_level': None,  # Enable autocommit mode
         }
 
 
 class DatabaseManager:
-    """
-     ┌─────────────────────────────────────┐
-     │        DATABASEMANAGER              │
-     └─────────────────────────────────────┘
-     Manages database connections and sessions
-     
-     Provides context managers for safe database access
-     with automatic resource cleanup.
-     
-     Parameters:
-     - config: DatabaseConfig instance
-     
-     Returns:
-     - DatabaseManager instance
-     
-     Notes:
-     - Use get_connection() for raw connections
-     - Use get_session() for row factory connections
-    """
+    """Manages database connections and sessions with retry logic"""
     
     def __init__(self, config: Optional[DatabaseConfig] = None):
         self.config = config or DatabaseConfig()
@@ -85,111 +46,119 @@ class DatabaseManager:
         if not db_path.exists():
             debug_info(f"Creating database at {db_path}")
             db_path.parent.mkdir(parents=True, exist_ok=True)
-            # Touch the file to create it
             db_path.touch()
+    
+    def _configure_connection(self, conn: sqlite3.Connection):
+        """Configure SQLite connection with WAL mode and optimizations"""
+        if DATABASE_WAL_MODE:
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+                conn.execute("PRAGMA cache_size=10000")
+                conn.execute("PRAGMA temp_store=MEMORY")
+                debug_info("WAL mode enabled for database connection")
+            except Exception as e:
+                debug_warning(f"Failed to enable WAL mode: {e}")
     
     @contextmanager
     def get_connection(self) -> Generator[sqlite3.Connection, None, None]:
-        """
-         ┌─────────────────────────────────────┐
-         │        GET_CONNECTION               │
-         └─────────────────────────────────────┘
-         Get raw database connection
-         
-         Context manager that provides a raw SQLite connection
-         and ensures proper cleanup.
-         
-         Returns:
-         - sqlite3.Connection within context
-         
-         Notes:
-         - Automatically commits on success
-         - Rolls back on exception
-        """
+        """Get raw database connection with retry logic"""
         conn = None
-        try:
-            conn = sqlite3.connect(
-                self.config.database_url,
-                **self.config.connection_kwargs
-            )
-            yield conn
-            conn.commit()
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            debug_error(f"Database error: {e}")
-            raise
-        finally:
-            if conn:
-                conn.close()
+        last_error = None
+        
+        for attempt in range(self.config.max_retries):
+            try:
+                conn = sqlite3.connect(
+                    self.config.database_url,
+                    **self.config.connection_kwargs
+                )
+                
+                # Configure connection with WAL mode and optimizations
+                self._configure_connection(conn)
+                
+                yield conn
+                conn.commit()
+                return  # Success, exit retry loop
+                
+            except sqlite3.OperationalError as e:
+                last_error = e
+                if "database is locked" in str(e).lower():
+                    if attempt < self.config.max_retries - 1:
+                        debug_warning(f"Database locked, retrying in {self.config.retry_delay}s (attempt {attempt + 1}/{self.config.max_retries})")
+                        time.sleep(self.config.retry_delay * (2 ** attempt))  # Exponential backoff
+                        continue
+                # Re-raise non-locking errors immediately
+                raise
+            except Exception as e:
+                last_error = e
+                raise
+            finally:
+                if conn:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
+                conn = None  # Reset connection for next attempt
+        
+        # If we get here, all retries failed
+        if last_error:
+            debug_error(f"Failed to establish database connection after {self.config.max_retries} retries: {last_error}")
+            raise last_error
     
     @contextmanager
     def get_session(self) -> Generator[sqlite3.Connection, None, None]:
-        """
-         ┌─────────────────────────────────────┐
-         │         GET_SESSION                 │
-         └─────────────────────────────────────┘
-         Get database connection with row factory
-         
-         Context manager that provides a connection configured
-         with sqlite3.Row factory for dict-like row access.
-         
-         Returns:
-         - sqlite3.Connection with row factory
-         
-         Notes:
-         - Rows can be accessed like dictionaries
-         - Automatically handles transactions
-        """
+        """Get database connection with row factory and retry logic"""
         conn = None
-        try:
-            conn = sqlite3.connect(
-                self.config.database_url,
-                **self.config.connection_kwargs
-            )
-            conn.row_factory = sqlite3.Row
-            yield conn
-            conn.commit()
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            debug_error(f"Database session error: {e}")
-            raise
-        finally:
-            if conn:
-                conn.close()
+        last_error = None
+        
+        for attempt in range(self.config.max_retries):
+            try:
+                conn = sqlite3.connect(
+                    self.config.database_url,
+                    **self.config.connection_kwargs
+                )
+                conn.row_factory = sqlite3.Row
+                
+                # Configure connection with WAL mode and optimizations
+                self._configure_connection(conn)
+                
+                yield conn
+                conn.commit()
+                return  # Success, exit retry loop
+                
+            except sqlite3.OperationalError as e:
+                last_error = e
+                if "database is locked" in str(e).lower():
+                    if attempt < self.config.max_retries - 1:
+                        debug_warning(f"Database session locked, retrying in {self.config.retry_delay}s (attempt {attempt + 1}/{self.config.max_retries})")
+                        time.sleep(self.config.retry_delay * (2 ** attempt))  # Exponential backoff
+                        continue
+                # Re-raise non-locking errors immediately
+                raise
+            except Exception as e:
+                last_error = e
+                raise
+            finally:
+                if conn:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
+                conn = None  # Reset connection for next attempt
+        
+        # If we get here, all retries failed
+        if last_error:
+            debug_error(f"Failed to establish database session after {self.config.max_retries} retries: {last_error}")
+            raise last_error
     
     def execute_script(self, script: str):
-        """
-         ┌─────────────────────────────────────┐
-         │        EXECUTE_SCRIPT               │
-         └─────────────────────────────────────┘
-         Execute SQL script
-         
-         Executes a multi-statement SQL script, useful for
-         migrations and schema creation.
-         
-         Parameters:
-         - script: SQL script to execute
-         
-         Notes:
-         - Use for CREATE TABLE statements
-         - Automatically commits changes
-        """
+        """Execute SQL script"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.executescript(script)
     
     def initialize_schema(self):
-        """
-         ┌─────────────────────────────────────┐
-         │       INITIALIZE_SCHEMA             │
-         └─────────────────────────────────────┘
-         Initialize database schema
-         
-         Creates all required tables if they don't exist.
-         This replaces the functionality in database_schema.py.
-        """
+        """Initialize database schema"""
         schema_script = """
         -- Feed names table
         CREATE TABLE IF NOT EXISTS feed_names (
@@ -263,18 +232,7 @@ _db_manager: Optional[DatabaseManager] = None
 
 
 def get_db_manager() -> DatabaseManager:
-    """
-     ┌─────────────────────────────────────┐
-     │         GET_DB_MANAGER              │
-     └─────────────────────────────────────┘
-     Get global database manager instance
-     
-     Returns singleton DatabaseManager instance,
-     creating it if necessary.
-     
-     Returns:
-     - DatabaseManager instance
-    """
+    """Get global database manager instance"""
     global _db_manager
     if _db_manager is None:
         _db_manager = DatabaseManager()
@@ -294,7 +252,4 @@ def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
 def get_db_session() -> Generator[sqlite3.Connection, None, None]:
     """Convenience function for getting database session with row factory"""
     with get_db_manager().get_session() as conn:
-        yield conn
-
-
-
+        yield conn 

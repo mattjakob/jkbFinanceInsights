@@ -39,6 +39,12 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", 8000))
 # =============================================================================
 DATABASE_URL = os.getenv("DATABASE_URL", "finance_insights.db")
 
+# Database connection settings for better concurrency
+DATABASE_TIMEOUT = int(os.getenv("DATABASE_TIMEOUT", 60))  # Increased from 30
+DATABASE_MAX_RETRIES = int(os.getenv("DATABASE_MAX_RETRIES", 3))
+DATABASE_RETRY_DELAY = float(os.getenv("DATABASE_RETRY_DELAY", 0.1))
+DATABASE_WAL_MODE = os.getenv("DATABASE_WAL_MODE", "true").lower() == "true"
+
 # =============================================================================
 # SCRAPER CONFIGURATION
 # =============================================================================
@@ -60,9 +66,25 @@ OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID = os.getenv("OPENAI_PROMPT_BRIEFSTRATEGY_
 OPENAI_PROMPT_REPORT_ID = os.getenv("OPENAI_PROMPT_REPORT_ID")
 OPENAI_PROMPT_REPORT_VERSION_ID = os.getenv("OPENAI_PROMPT_REPORT_VERSION_ID")
 
-# Circuit breaker settings
-AI_CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("AI_CIRCUIT_BREAKER_THRESHOLD", 3))
-AI_CIRCUIT_BREAKER_RESET_MINUTES = int(os.getenv("AI_CIRCUIT_BREAKER_RESET_MINUTES", 60))
+# OpenAI API Configuration (all times in milliseconds for consistency)
+OPENAI_TIMEOUT = int(os.getenv("OPENAI_TIMEOUT", 30000))  # API call timeout in milliseconds (default: 30 seconds)
+OPENAI_RATE_LIMIT = int(os.getenv("OPENAI_RATE_LIMIT", 10))  # Maximum calls per minute
+
+# Validate OPENAI_TIMEOUT
+if OPENAI_TIMEOUT < 5000:  # Less than 5 seconds
+    OPENAI_TIMEOUT = 5000
+    print(f"Warning: OPENAI_TIMEOUT too low, setting to minimum 5000ms (5 seconds)")
+elif OPENAI_TIMEOUT > 300000:  # More than 5 minutes
+    OPENAI_TIMEOUT = 300000
+    print(f"Warning: OPENAI_TIMEOUT too high, setting to maximum 300000ms (5 minutes)")
+
+# Validate OPENAI_RATE_LIMIT
+if OPENAI_RATE_LIMIT < 1:
+    OPENAI_RATE_LIMIT = 1
+    print(f"Warning: OPENAI_RATE_LIMIT too low, setting to minimum 1 call/minute")
+elif OPENAI_RATE_LIMIT > 60:
+    OPENAI_RATE_LIMIT = 60
+    print(f"Warning: OPENAI_RATE_LIMIT too high, setting to maximum 60 calls/minute")
 
 # =============================================================================
 # TASK QUEUE CONFIGURATION

@@ -24,16 +24,18 @@
 import json
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
+import asyncio
 
 import time
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from .base import AIProvider
 from ..models import AnalysisRequest, ImageAnalysisRequest, AnalysisResult, AnalysisAction
 from config import (
     OPENAI_API_KEY, OPENAI_MODEL,
     OPENAI_PROMPT_BRIEFSTRATEGY_ID, OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID,
-    AI_CIRCUIT_BREAKER_THRESHOLD, AI_CIRCUIT_BREAKER_RESET_MINUTES
+    OPENAI_PROMPT_REPORT_ID, OPENAI_PROMPT_REPORT_VERSION_ID,
+    OPENAI_TIMEOUT, OPENAI_RATE_LIMIT
 )
 from debugger import debug_info, debug_error, debug_warning, debug_success
 
@@ -47,7 +49,7 @@ class RateLimiter:
         self.min_delay_between_calls = 1.0  # Minimum 1 second between calls
         self.last_call_time = 0
     
-    def wait_if_needed(self):
+    async def wait_if_needed(self):
         """Wait if we're hitting rate limits"""
         now = time.time()
         
@@ -56,7 +58,7 @@ class RateLimiter:
         if time_since_last_call < self.min_delay_between_calls:
             delay = self.min_delay_between_calls - time_since_last_call
             debug_info(f"Rate limiter: waiting {delay:.2f}s before next call")
-            time.sleep(delay)
+            await asyncio.sleep(delay)
             now = time.time()
         
         # Remove calls older than 1 minute
@@ -66,7 +68,7 @@ class RateLimiter:
         if len(self.calls) >= self.max_calls_per_minute:
             wait_time = 60 - (now - self.calls[0]) + 1
             debug_warning(f"Rate limit reached ({self.max_calls_per_minute} calls/min), waiting {wait_time:.2f}s")
-            time.sleep(wait_time)
+            await asyncio.sleep(wait_time)
             # Clean up old calls after waiting
             now = time.time()
             self.calls = [call_time for call_time in self.calls if now - call_time < 60]
@@ -74,54 +76,25 @@ class RateLimiter:
         # Record this call
         self.calls.append(now)
         self.last_call_time = now
+    
+    def get_wait_time(self) -> float:
+        """Get wait time needed for rate limiting (sync version)"""
+        now = time.time()
+        if self.last_call_time is None:
+            self.last_call_time = now
+            return 0.0
+        
+        time_since_last = now - self.last_call_time
+        min_interval = 60.0 / self.max_calls_per_minute
+        
+        if time_since_last < min_interval:
+            wait_time = min_interval - time_since_last
+            self.last_call_time = now + wait_time
+            return wait_time
+        
+        self.last_call_time = now
+        return 0.0
 
-
-class CircuitBreaker:
-    """Simple circuit breaker for API quota management"""
-    
-    def __init__(self, threshold: int = 3, reset_minutes: int = 60):
-        self.threshold = threshold
-        self.reset_minutes = reset_minutes
-        self.is_open = False
-        self.consecutive_errors = 0
-        self.last_error_time: Optional[datetime] = None
-    
-    def is_available(self) -> bool:
-        """Check if circuit is closed (API available)"""
-        if not self.is_open:
-            return True
-        
-        # Check if reset time has passed
-        if self.last_error_time:
-            reset_time = self.last_error_time + timedelta(minutes=self.reset_minutes)
-            if datetime.now() > reset_time:
-                self.reset()
-                return True
-        
-        return False
-    
-    def record_success(self):
-        """Record successful API call"""
-        if self.consecutive_errors > 0:
-            debug_info("OpenAI API call successful - resetting error counter")
-            self.consecutive_errors = 0
-    
-    def record_error(self):
-        """Record API error"""
-        self.consecutive_errors += 1
-        self.last_error_time = datetime.now()
-        
-        if self.consecutive_errors >= self.threshold:
-            self.is_open = True
-            debug_error(f"OpenAI circuit breaker OPENED after {self.consecutive_errors} errors")
-            debug_info(f"Will retry after {self.reset_minutes} minutes")
-    
-    def reset(self):
-        """Reset circuit breaker"""
-        self.is_open = False
-        self.consecutive_errors = 0
-        self.last_error_time = None
-        debug_info("OpenAI circuit breaker reset")
 
 
 class OpenAIProvider(AIProvider):
@@ -138,13 +111,12 @@ class OpenAIProvider(AIProvider):
         if not OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY not configured")
         
+        # Keep sync client for backward compatibility
         self.client = OpenAI(api_key=OPENAI_API_KEY)
-        self.circuit_breaker = CircuitBreaker(
-            threshold=AI_CIRCUIT_BREAKER_THRESHOLD,
-            reset_minutes=AI_CIRCUIT_BREAKER_RESET_MINUTES
-        )
-        # Add rate limiter - 10 calls per minute to stay well under OpenAI limits
-        self.rate_limiter = RateLimiter(max_calls_per_minute=10)
+        # Add async client for proper async operations
+        self.async_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        # Add rate limiter using config value
+        self.rate_limiter = RateLimiter(max_calls_per_minute=OPENAI_RATE_LIMIT)
     
     def analyze_text(self, request: AnalysisRequest) -> AnalysisResult:
         """
@@ -156,12 +128,9 @@ class OpenAIProvider(AIProvider):
          Uses the configured prompt template for structured
          financial analysis.
         """
-        # Check circuit breaker
-        if not self.circuit_breaker.is_available():
-            raise Exception("OpenAI API temporarily unavailable (circuit breaker open)")
-        
-        # Apply rate limiting
-        self.rate_limiter.wait_if_needed()
+        # Note: Sync version kept for backward compatibility but should use async version
+        # This method uses blocking sleep which can cause server stuttering
+        debug_warning("Using synchronous OpenAI call - consider using async version")
         
         try:
             # Use prompt template if configured
@@ -172,14 +141,9 @@ class OpenAIProvider(AIProvider):
             
             # Parse response
             result = self._parse_response(response)
-            
-            self.circuit_breaker.record_success()
             return result
             
         except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg or "quota" in error_msg.lower():
-                self.circuit_breaker.record_error()
             raise
     
     def analyze_image(self, request: ImageAnalysisRequest) -> str:
@@ -191,12 +155,9 @@ class OpenAIProvider(AIProvider):
          
          Extracts trading strategy from chart images.
         """
-        # Check circuit breaker
-        if not self.circuit_breaker.is_available():
-            raise Exception("OpenAI API temporarily unavailable (circuit breaker open)")
-        
-        # Apply rate limiting
-        self.rate_limiter.wait_if_needed()
+        # Note: Sync version kept for backward compatibility but should use async version
+        # This method uses blocking sleep which can cause server stuttering
+        debug_warning("Using synchronous OpenAI call - consider using async version")
         
         try:
             prompt = self._build_image_prompt(request.symbol)
@@ -219,16 +180,11 @@ class OpenAIProvider(AIProvider):
             )
             
             analysis = response.output_text
-            
-            self.circuit_breaker.record_success()
             debug_info(f"Image analysis completed ({len(analysis)} chars)")
             
             return analysis
             
         except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg or "quota" in error_msg.lower():
-                self.circuit_breaker.record_error()
             raise
     
     def _call_with_template(self, request: AnalysisRequest) -> str:
@@ -289,20 +245,27 @@ class OpenAIProvider(AIProvider):
         
         prompt += """
         
-        Provide a JSON response with:
+        Provide a JSON response with the exact structure:
         {
             "summary": "Brief trading strategy summary",
-            "action": "buy|sell|hold",
-            "confidence": 0-100,
-            "event_time": "When to act",
+            "action": "buy",
+            "confidence": 75,
+            "event_time": null,
             "levels": {
-                "entry": number,
-                "take_profit": number,
-                "stop_loss": number,
-                "support": [numbers],
-                "resistance": number
+                "entry": null,
+                "take_profit": null,
+                "stop_loss": null,
+                "support": null,
+                "resistance": null
             }
         }
+        
+        Important:
+        - action must be exactly "buy", "sell", or "hold"
+        - confidence must be a number between 0-100
+        - event_time can be null or ISO-8601 date-time string
+        - levels values can be null or numbers
+        - Return ONLY the JSON, no markdown formatting or additional text
         """
         
         return prompt
@@ -327,34 +290,302 @@ Return a {symbol} trading brief with:
     def _parse_response(self, response: str) -> AnalysisResult:
         """Parse JSON response to AnalysisResult"""
         try:
-            data = json.loads(response)
+            # Clean the response - remove markdown formatting and extract JSON
+            cleaned_response = self._extract_json_from_response(response)
+            data = json.loads(cleaned_response)
             
             # Parse action
-            action_str = data.get('action', 'hold').upper()
+            action_str = data.get('action', 'hold').lower()
             try:
-                action = AnalysisAction(action_str)
+                action = AnalysisAction(action_str.upper())
             except ValueError:
                 action = AnalysisAction.HOLD
             
             # Parse confidence (0-100 to 0-1)
             confidence = data.get('confidence', 50) / 100.0
             
+            # Parse levels
+            levels = data.get('levels', {})
+            if levels and isinstance(levels, dict):
+                # Ensure all required level fields exist
+                for key in ['entry', 'take_profit', 'stop_loss', 'support', 'resistance']:
+                    if key not in levels:
+                        levels[key] = None
+            
             return AnalysisResult(
                 summary=data.get('summary', ''),
                 action=action,
                 confidence=confidence,
                 event_time=data.get('event_time'),
-                levels=data.get('levels')
+                levels=levels
             )
             
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             # Fallback for non-JSON response
-            debug_warning("Failed to parse JSON response, using fallback")
+            debug_warning(f"Failed to parse JSON response: {e}, using fallback")
             return AnalysisResult(
                 summary=response[:500] if len(response) > 500 else response,
                 action=AnalysisAction.HOLD,
                 confidence=0.5
             )
+    
+    def _extract_json_from_response(self, response: str) -> str:
+        """Extract JSON from response that may contain markdown or other formatting"""
+        # Remove markdown code blocks
+        if '```json' in response:
+            start = response.find('```json') + 7
+            end = response.find('```', start)
+            if end != -1:
+                return response[start:end].strip()
+        
+        # Remove markdown code blocks without language
+        if '```' in response:
+            start = response.find('```') + 3
+            end = response.find('```', start)
+            if end != -1:
+                return response[start:end].strip()
+        
+        # Look for JSON object boundaries
+        start = response.find('{')
+        if start != -1:
+            # Find matching closing brace
+            brace_count = 0
+            for i, char in enumerate(response[start:], start):
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        return response[start:i+1]
+        
+        # If no JSON found, return original response
+        return response
+    
+    async def analyze_text_async(self, request: AnalysisRequest) -> AnalysisResult:
+        """
+         ┌─────────────────────────────────────┐
+         │      ANALYZE_TEXT_ASYNC             │
+         └─────────────────────────────────────┘
+         Async analyze text using OpenAI
+         
+         Non-blocking version for use in async contexts.
+        """
+        # Apply rate limiting (async)
+        await self.rate_limiter.wait_if_needed()
+        
+        try:
+            # Add timeout to prevent hanging
+            try:
+                timeout_seconds = OPENAI_TIMEOUT / 1000.0  # Convert milliseconds to seconds
+                if OPENAI_PROMPT_BRIEFSTRATEGY_ID and OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID:
+                    response = await asyncio.wait_for(self._call_with_template_async(request), timeout=timeout_seconds)
+                else:
+                    response = await asyncio.wait_for(self._call_direct_async(request), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                debug_error(f"OpenAI text analysis timed out after {OPENAI_TIMEOUT}ms")
+                raise Exception("OpenAI API request timed out")
+            
+            # Parse response
+            result = self._parse_response(response)
+            return result
+            
+        except Exception as e:
+            raise
+    
+    async def analyze_image_async(self, request: ImageAnalysisRequest) -> str:
+        """
+         ┌─────────────────────────────────────┐
+         │     ANALYZE_IMAGE_ASYNC             │
+         └─────────────────────────────────────┘
+         Async analyze image using OpenAI Vision
+         
+         Non-blocking version for use in async contexts.
+        """
+        # Apply rate limiting (async)
+        await self.rate_limiter.wait_if_needed()
+        
+        try:
+            prompt = self._build_image_prompt(request.symbol)
+            
+            # Add timeout to prevent hanging
+            try:
+                timeout_seconds = OPENAI_TIMEOUT / 1000.0  # Convert milliseconds to seconds
+                response = await asyncio.wait_for(
+                    self.async_client.chat.completions.create(
+                    model=OPENAI_MODEL,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert day trader and technical analyst."
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {"type": "image_url", "image_url": {"url": request.image_url}}
+                            ]
+                        }
+                    ]
+                ), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                debug_error(f"OpenAI image analysis timed out after {OPENAI_TIMEOUT}ms")
+                raise Exception("OpenAI API request timed out")
+            
+            analysis = response.choices[0].message.content
+            debug_info(f"Image analysis completed ({len(analysis)} chars)")
+            
+            return analysis
+            
+        except Exception as e:
+            raise
+    
+    async def _call_with_template_async(self, request: AnalysisRequest) -> str:
+        """Async call OpenAI using prompt template"""
+        prompt = {
+            "id": OPENAI_PROMPT_BRIEFSTRATEGY_ID,
+            "version": OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID,
+            "variables": {
+                "symbol": request.symbol,
+                "item_type": request.item_type,
+                "title": request.title,
+                "content": request.text,
+                "technical_analysis": request.technical
+            }
+        }
+        
+        # Note: If using prompt templates, adjust this to use the appropriate async method
+        # For now, falling back to direct call
+        return await self._call_direct_async(request)
+    
+    async def _call_direct_async(self, request: AnalysisRequest) -> str:
+        """Async direct OpenAI call without template"""
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert financial analyst specializing in day trading."
+            },
+            {
+                "role": "user",
+                "content": self._build_text_prompt(request)
+            }
+        ]
+        
+        response = await self.async_client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            temperature=0.3
+        )
+        
+        return response.choices[0].message.content
+    
+    def analyze_report(self, request: AnalysisRequest) -> AnalysisResult:
+        """
+         ┌─────────────────────────────────────┐
+         │        ANALYZE_REPORT               │
+         └─────────────────────────────────────┘
+         Generate AI report using OpenAI
+         
+         Uses the report-specific prompt template for comprehensive
+         analysis of multiple insights.
+        """
+        debug_info(f"OpenAI Report Analysis for {request.symbol}")
+        
+        try:
+            # Use report prompt template if configured
+            if OPENAI_PROMPT_REPORT_ID and OPENAI_PROMPT_REPORT_VERSION_ID:
+                response = self._call_with_report_template(request)
+            else:
+                # Fallback to direct call with report-specific prompt
+                response = self._call_direct_report(request)
+            
+            # Parse response
+            result = self._parse_response(response)
+            return result
+            
+        except Exception as e:
+            debug_error(f"Report analysis failed: {e}")
+            raise
+    
+    def _call_with_report_template(self, request: AnalysisRequest) -> str:
+        """Call OpenAI with report template"""
+        # Apply rate limiting (sync version)
+        time.sleep(self.rate_limiter.get_wait_time())
+        
+        # Prepare the API call with report template
+        messages = [
+            {
+                "role": "system",
+                "content": f"You are an expert financial analyst. Generate a comprehensive trading report."
+            },
+            {
+                "role": "user", 
+                "content": self._build_report_prompt(request)
+            }
+        ]
+        
+        response = self.client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            temperature=0.3
+        )
+        
+        return response.choices[0].message.content
+    
+    def _call_direct_report(self, request: AnalysisRequest) -> str:
+        """Direct call without template for report generation"""
+        # Apply rate limiting (sync version)
+        time.sleep(self.rate_limiter.get_wait_time())
+        
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert financial analyst. Generate a comprehensive trading report."
+            },
+            {
+                "role": "user",
+                "content": self._build_report_prompt(request)
+            }
+        ]
+        
+        response = self.client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            temperature=0.3
+        )
+        
+        return response.choices[0].message.content
+    
+    def _build_report_prompt(self, request: AnalysisRequest) -> str:
+        """Build report analysis prompt"""
+        prompt = f"""
+        Generate a comprehensive trading report for {request.symbol} based on the following insights:
+        
+        {request.text}
+        
+        Provide a JSON response with the exact structure:
+        {{
+            "summary": "Comprehensive trading analysis and recommendation",
+            "action": "buy",
+            "confidence": 75,
+            "event_time": null,
+            "levels": {{
+                "entry": null,
+                "take_profit": null,
+                "stop_loss": null,
+                "support": null,
+                "resistance": null
+            }}
+        }}
+        
+        Important:
+        - action must be exactly "buy", "sell", or "hold"
+        - confidence must be a number between 0-100
+        - event_time can be null or ISO-8601 date-time string
+        - levels values can be null or numbers
+        - Return ONLY the JSON, no markdown formatting or additional text
+        """
+        
+        return prompt
 
 
 

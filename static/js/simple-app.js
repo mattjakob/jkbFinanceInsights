@@ -553,6 +553,10 @@ class SimpleApp {
         const exchange = document.getElementById('exchangeInput')?.value.trim();
         const feedType = document.getElementById('typeFilter')?.value || 'ALL';
         
+        // Get the selected items amount from UI
+        const itemsSelect = document.querySelector('[title="Number of Items"]');
+        const maxItems = parseInt(itemsSelect?.value) || this.config.appMaxItems || 50;
+        
         if (!symbol) {
             this.showMessage('Please enter a symbol', 'warning');
             return;
@@ -568,7 +572,7 @@ class SimpleApp {
                     symbol: symbol,
                     exchange: exchange || 'NASDAQ',
                     feed_type: feedType === '' ? 'ALL' : feedType,
-                    max_items: 50
+                    max_items: maxItems
                 })
             });
 
@@ -652,7 +656,7 @@ class SimpleApp {
         }
 
         try {
-            const response = await fetch('/api/text-reports/generate', {
+            const response = await fetch('/api/analysis/generate-report', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -665,14 +669,52 @@ class SimpleApp {
 
             const result = await response.json();
             
-            if (result.success && generateContent) {
-                generateContent.innerHTML = `
-                    <div class="report-content">
-                        <pre>${result.report}</pre>
-                    </div>
-                `;
+            if (result.success) {
+                // Show success message and task info
+                this.showMessage(`AI report generation task created for ${result.symbol} (${result.insights_count} insights)`, 'success');
+                
+                // Try to get the latest report after a short delay
+                setTimeout(async () => {
+                    try {
+                        const reportResponse = await fetch(`/api/reports/symbol/${result.symbol}/latest`);
+                        const reportData = await reportResponse.json();
+                        
+                        if (reportData && generateContent) {
+                            generateContent.innerHTML = `
+                                <div class="report-content">
+                                    <h6>AI Analysis Report for ${result.symbol}</h6>
+                                    <div class="mb-2">
+                                        <strong>Action:</strong> <span class="badge bg-secondary">${reportData.AIAction}</span>
+                                        <strong class="ms-3">Confidence:</strong> ${(reportData.AIConfidence * 100).toFixed(1)}%
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>Summary:</strong>
+                                    </div>
+                                    <pre class="bg-dark p-3 rounded">${reportData.AISummary}</pre>
+                                    ${reportData.AILevels ? `<div class="mt-2"><strong>Levels:</strong> ${reportData.AILevels}</div>` : ''}
+                                    ${reportData.AIEventTime ? `<div class="mt-2"><strong>Event Time:</strong> ${reportData.AIEventTime}</div>` : ''}
+                                </div>
+                            `;
+                        }
+                    } catch (error) {
+                        console.log('Could not fetch latest report yet, it may still be generating');
+                    }
+                }, 5000); // Wait 5 seconds for the task to complete
+                
+                if (generateBlock) {
+                    generateBlock.classList.remove('d-none');
+                    generateContent.innerHTML = `
+                        <div class="text-center">
+                            <div class="spinner-border terminal-spinner" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <p class="mt-1 mb-1">Report generation in progress...</p>
+                            <small class="text-muted">Report will appear here when ready</small>
+                        </div>
+                    `;
+                }
             } else {
-                this.showMessage(`Report generation failed: ${result.message || 'Unknown error'}`, 'error');
+                this.showMessage(`Report generation failed: ${result.message || result.error || 'Unknown error'}`, 'error');
                 if (generateBlock) {
                     generateBlock.classList.add('d-none');
                 }
