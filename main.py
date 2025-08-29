@@ -32,6 +32,7 @@ import asyncio
 
 from api import api_router
 from core import get_db_manager
+from data import InsightsRepository
 from tasks import WorkerPool, HANDLERS
 from debugger import debug_success, debug_info
 from config import (
@@ -93,6 +94,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # Web routes
+
+# Repository instances
+insights_repo = InsightsRepository()
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """
@@ -141,6 +146,62 @@ async def home(request: Request):
             "tradingview_chart_timezone": TRADINGVIEW_CHART_TIMEZONE
         }
     })
+
+
+@app.get("/api/symbols")
+async def get_normalized_symbols():
+    """
+     ┌─────────────────────────────────────┐
+     │      GET_NORMALIZED_SYMBOLS         │
+     └─────────────────────────────────────┘
+     Get a normalized list of unique symbols from insights
+     
+     Returns a list of unique symbols with their exchanges,
+     normalized to show only one entry per symbol.
+     
+     Returns:
+     - List of unique symbols with exchange information
+    """
+    try:
+        # Get all insights to extract unique symbols
+        insights = insights_repo.find_all()
+        
+        # Create a dictionary to normalize symbols (symbol -> exchange)
+        symbol_map = {}
+        
+        for insight in insights:
+            if insight.symbol:
+                symbol = insight.symbol.upper()
+                exchange = insight.exchange or 'NASDAQ'  # Default to NASDAQ if no exchange
+                
+                # If symbol already exists, prefer the first exchange found
+                if symbol not in symbol_map:
+                    symbol_map[symbol] = exchange
+        
+        # Convert to list format
+        normalized_symbols = [
+            {
+                "symbol": symbol,
+                "exchange": exchange,
+                "url": f"/api/insights/{exchange}:{symbol}"
+            }
+            for symbol, exchange in symbol_map.items()
+        ]
+        
+        # Sort by symbol for consistent ordering
+        normalized_symbols.sort(key=lambda x: x["symbol"])
+        
+        debug_info(f"Returned {len(normalized_symbols)} normalized symbols")
+        
+        return {
+            "success": True,
+            "count": len(normalized_symbols),
+            "symbols": normalized_symbols
+        }
+        
+    except Exception as e:
+        debug_error(f"Failed to get normalized symbols: {e}")
+        return {"success": False, "error": str(e)}
 
 
 @app.get("/api/insights/{exchange_symbol}", response_class=HTMLResponse)

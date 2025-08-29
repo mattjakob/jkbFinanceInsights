@@ -21,13 +21,25 @@
 
 import { config } from '../core/config.js';
 import unifiedRefreshManager from '../core/unifiedRefresh.js';
-import { calculateAge, formatEventTime, formatLevels, getConfidenceClass, formatTimestamp } from '../core/utils.js';
+import { calculateAge, calculateHorizon, formatEventTime, formatLevels, getConfidenceClass, formatTimestamp } from '../core/utils.js';
 import { insightsService } from '../services/insights.js';
 
 export class InsightsTable {
     constructor() {
+        console.log('InsightsTable constructor called');
         this.table = document.querySelector('table');
+        console.log('Table found:', this.table);
         this.initializeTableFeatures();
+        
+        // Format existing cells immediately for server-rendered content
+        setTimeout(() => {
+            try {
+                console.log('Calling formatSpecialCells...');
+                this.formatSpecialCells();
+            } catch (error) {
+                console.error('Error formatting special cells:', error);
+            }
+        }, 100);
     }
 
     /**
@@ -176,6 +188,29 @@ export class InsightsTable {
                 cell.textContent = age;
             }
         });
+        
+        // Update horizon displays
+        const horizonCells = document.querySelectorAll('.horizon-text');
+        horizonCells.forEach(cell => {
+            const data = cell.getAttribute('data-horizon');
+            if (data && data !== '') {
+                const horizonDisplay = cell.querySelector('.horizon-display');
+                if (horizonDisplay) {
+                    horizonDisplay.textContent = calculateHorizon(data);
+                    
+                    // Add styling based on future/past
+                    const eventTime = new Date(data);
+                    const now = new Date();
+                    if (eventTime > now) {
+                        horizonDisplay.className = 'horizon-display horizon-future';
+                    } else if (eventTime < now) {
+                        horizonDisplay.className = 'horizon-display horizon-past';
+                    } else {
+                        horizonDisplay.className = 'horizon-display';
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -221,16 +256,32 @@ export class InsightsTable {
      *  - None
      */
     formatSpecialCells() {
+        console.log('formatSpecialCells called');
+        
         // Format horizon cells
-        const horizonCells = document.querySelectorAll('.horizon-cell');
+        const horizonCells = document.querySelectorAll('.horizon-text');
+        console.log('Found horizon cells:', horizonCells.length);
+        
         horizonCells.forEach(cell => {
             const data = cell.getAttribute('data-horizon');
-            if (data) {
-                try {
-                    const horizonData = JSON.parse(data);
-                    cell.innerHTML = formatEventTime(horizonData);
-                } catch (e) {
-                    console.error('Error parsing horizon data:', e);
+            console.log('Horizon data:', data);
+            if (data && data !== '') {
+                const horizonDisplay = cell.querySelector('.horizon-display');
+                if (horizonDisplay) {
+                    const horizonValue = calculateHorizon(data);
+                    console.log('Calculated horizon:', horizonValue);
+                    horizonDisplay.textContent = horizonValue;
+                    
+                    // Add styling based on future/past
+                    const eventTime = new Date(data);
+                    const now = new Date();
+                    if (eventTime > now) {
+                        horizonDisplay.className = 'horizon-display horizon-future';
+                    } else if (eventTime < now) {
+                        horizonDisplay.className = 'horizon-display horizon-past';
+                    } else {
+                        horizonDisplay.className = 'horizon-display';
+                    }
                 }
             }
         });
@@ -357,10 +408,24 @@ export class InsightsTable {
         }
         
         // Update horizon
-        const horizonCell = row.querySelector('.horizon-cell');
+        const horizonCell = row.querySelector('.horizon-text');
         if (horizonCell) {
-            horizonCell.setAttribute('data-horizon', JSON.stringify(insight.event_time || {}));
-            horizonCell.innerHTML = formatEventTime(insight.event_time);
+            horizonCell.setAttribute('data-horizon', insight.AIEventTime || '');
+            const horizonDisplay = horizonCell.querySelector('.horizon-display');
+            if (horizonDisplay && insight.AIEventTime) {
+                horizonDisplay.textContent = calculateHorizon(insight.AIEventTime);
+                
+                // Add styling based on future/past
+                const eventTime = new Date(insight.AIEventTime);
+                const now = new Date();
+                if (eventTime > now) {
+                    horizonDisplay.className = 'horizon-display horizon-future';
+                } else if (eventTime < now) {
+                    horizonDisplay.className = 'horizon-display horizon-past';
+                } else {
+                    horizonDisplay.className = 'horizon-display';
+                }
+            }
         }
         
         // Update levels
@@ -408,8 +473,10 @@ export class InsightsTable {
             <td>${this.getTypeIcon(insight.type)} ${insight.type || '-'}</td>
             <td class="age-cell" data-timestamp="${insight.timePosted}">${calculateAge(insight.timePosted)}</td>
             <td>${insight.confidence || '-'}</td>
-            <td class="horizon-cell" data-horizon='${JSON.stringify(insight.event_time || {})}'>
-                ${formatEventTime(insight.event_time)}
+            <td class="horizon-col">
+                <span class="horizon-text" data-horizon="${insight.AIEventTime || ''}">
+                    ${insight.AIEventTime ? `<span class="horizon-display">${calculateHorizon(insight.AIEventTime)}</span>` : '<span class="text-muted">-</span>'}
+                </span>
             </td>
             <td class="level-cell" data-levels='${JSON.stringify(insight.levels || {})}'>
                 ${formatLevels(insight.levels)}

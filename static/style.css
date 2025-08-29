@@ -489,6 +489,37 @@ option:checked {
     font-size: 11px;
 }
 
+.horizon-col {
+    width: 90px;
+    text-align: center !important;
+    font-size: 11px;
+    border-right: 2px solid var(--border-color);
+}
+
+.horizon-text {
+    color: var(--text-color);
+    font-weight: bold;
+    font-family: var(--mono-font);
+}
+
+.horizon-display {
+    color: var(--text-color);
+    font-weight: bold;
+    font-family: var(--mono-font);
+}
+
+/* Style for future timestamps */
+.horizon-future {
+    color: var(--success-color);
+    font-style: italic;
+}
+
+/* Style for past timestamps */
+.horizon-past {
+    color: var(--error-color);
+    font-style: italic;
+}
+
 .time-col {
     width: 90px;
     text-align: center !important;
@@ -1686,4 +1717,85 @@ input[type="datetime-local"]::-webkit-datetime-edit-minute-field {
     text-transform: uppercase;
     background: var(--success-bg);
     color: var(--success-color);
+}
+
+/* Symbols Dropdown Styling */
+.dropdown-menu-dark {
+    background-color: var(--hover-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.dropdown-menu-dark .dropdown-item {
+    color: var(--text-color);
+    font-family: var(--mono-font);
+    font-size: 12px;
+    padding: 0.5rem 1rem;
+    transition: all 0.2s ease;
+}
+
+.dropdown-menu-dark .dropdown-item:hover {
+    background-color: var(--border-color);
+    color: var(--text-color);
+}
+
+.dropdown-menu-dark .dropdown-item:active {
+    background-color: var(--text-color);
+    color: var(--hover-color);
+}
+
+.dropdown-menu-dark .dropdown-header {
+    color: var(--text-color);
+    font-weight: bold;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.5rem 1rem;
+}
+
+.dropdown-menu-dark .dropdown-divider {
+    border-color: var(--border-color);
+    margin: 0.25rem 0;
+}
+
+.symbol-text {
+    font-weight: bold;
+    color: var(--text-color);
+    display: block;
+}
+
+.exchange-text {
+    color: var(--hover-color);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-top: 0.25rem;
+}
+
+/* Navbar dropdown positioning */
+.navbar-nav .dropdown-menu {
+    margin-top: 0.5rem;
+    min-width: 200px;
+}
+
+/* Utilities dropdown specific styling */
+.utility-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.utility-item .bi {
+    font-size: 14px;
+    width: 16px;
+    text-align: center;
+}
+
+.utility-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.utility-item:active {
+    background-color: rgba(255, 255, 255, 0.15);
 }

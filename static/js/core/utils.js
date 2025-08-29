@@ -61,6 +61,53 @@ export function calculateAge(timePosted) {
 /**
  * 
  *  ┌─────────────────────────────────────┐
+ *  │      CALCULATE HORIZON              │
+ *  └─────────────────────────────────────┘
+ *  Calculates and formats time horizon from timestamp
+ * 
+ *  Shows time length from now with + for future and - for past
+ * 
+ *  Parameters:
+ *  - eventTime: ISO timestamp string
+ * 
+ *  Returns:
+ *  - Formatted horizon string
+ */
+export function calculateHorizon(eventTime) {
+    if (!eventTime) return '-';
+    
+    const event = new Date(eventTime);
+    const now = new Date();
+    const diff = event - now; // Positive for future, negative for past
+    
+    // Use direct values instead of destructuring to avoid potential issues
+    const second = 1000;
+    const minute = 60000;
+    const hour = 3600000;
+    const day = 86400000;
+    
+    // Determine prefix and absolute difference
+    const prefix = diff >= 0 ? '+' : '-';
+    const absDiff = Math.abs(diff);
+    
+    if (absDiff < minute) {
+        const seconds = Math.floor(absDiff / second);
+        return `${prefix}${seconds}s`;
+    } else if (absDiff < hour) {
+        const minutes = Math.floor(absDiff / minute);
+        return `${prefix}${minutes}m`;
+    } else if (absDiff < day) {
+        const hours = Math.floor(absDiff / hour);
+        return `${prefix}${hours}h`;
+    } else {
+        const days = Math.floor(absDiff / day);
+        return `${prefix}${days}d`;
+    }
+}
+
+/**
+ * 
+ *  ┌─────────────────────────────────────┐
  *  │       FORMAT EVENT TIME             │
  *  └─────────────────────────────────────┘
  *  Formats event time for display

@@ -51,7 +51,7 @@
         </div>
         {% endif %}
         <div class="col-auto ms-auto">
-            <a href="/" class="btn btn-success btn-sm">
+            <a href="/api/insights/{{ insight.exchange or 'NASDAQ' }}:{{ insight.symbol or 'UNKNOWN' }}" class="btn btn-success btn-sm">
                 <i class="bi bi-arrow-left"></i> TERMINAL
             </a>
         </div>

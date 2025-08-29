@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Horizon Function Simple</title>
+</head>
+<body>
+    <h1>Test Horizon Function Simple</h1>
+    <div id="test-results"></div>
+    
+    <script>
+        // Simple test without ES modules
+        function calculateHorizon(eventTime) {
+            if (!eventTime) return '-';
+            
+            const event = new Date(eventTime);
+            const now = new Date();
+            const diff = event - now; // Positive for future, negative for past
+            
+            // Determine prefix and absolute difference
+            const prefix = diff >= 0 ? '+' : '-';
+            const absDiff = Math.abs(diff);
+            
+            const minute = 60 * 1000;
+            const hour = 60 * minute;
+            const day = 24 * hour;
+            
+            if (absDiff < minute) {
+                const seconds = Math.floor(absDiff / 1000);
+                return `${prefix}${seconds}s`;
+            } else if (absDiff < hour) {
+                const minutes = Math.floor(absDiff / minute);
+                return `${prefix}${minutes}m`;
+            } else if (absDiff < day) {
+                const hours = Math.floor(absDiff / hour);
+                return `${prefix}${hours}h`;
+            } else {
+                const days = Math.floor(absDiff / day);
+                return `${prefix}${days}d`;
+            }
+        }
+        
+        // Test cases
+        const now = new Date();
+        const futureTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
+        const pastTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);   // 3 hours ago
+        
+        // Test with actual data from the database
+        const testTimes = [
+            '2025-09-05T20:00:00Z',
+            '2025-09-01T00:00:00Z',
+            '2025-08-30T00:00:00Z',
+            '2025-08-27T00:00:00Z',
+            '2025-08-24T00:00:00Z',
+            '2025-08-23T00:00:00Z'
+        ];
+        
+        const results = document.getElementById('test-results');
+        
+        let html = `
+            <p>Current time: ${now.toISOString()}</p>
+            <p>Future time (+2h): ${futureTime.toISOString()} → ${calculateHorizon(futureTime.toISOString())}</p>
+            <p>Past time (-3h): ${pastTime.toISOString()} → ${calculateHorizon(pastTime.toISOString())}</p>
+            <h3>Database Test Times:</h3>
+        `;
+        
+        testTimes.forEach(time => {
+            html += `<p>${time} → ${calculateHorizon(time)}</p>`;
+        });
+        
+        results.innerHTML = html;
+    </script>
+</body>
+</html>

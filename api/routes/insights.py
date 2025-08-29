@@ -252,3 +252,6 @@ async def reset_insight_ai(insight_id: int):
 
 
 
+
+
+

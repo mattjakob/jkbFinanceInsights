@@ -305,10 +305,10 @@
                             {{ loading_spinner() }}
                         {% endif %}
                     </td>
-                    <td class="time-col">
-                        <span class="time-text" data-event-time="{{ insight.AIEventTime or '' }}">
+                    <td class="horizon-col">
+                        <span class="horizon-text" data-horizon="{{ insight.AIEventTime or '' }}">
                             {% if insight.AIEventTime %}
-                                {{ insight.AIEventTime[-5:] if ':' in insight.AIEventTime else insight.AIEventTime[:5] }}
+                                <span class="horizon-display">-</span>
                             {% else %}
                                 <span class="text-muted">-</span>
                             {% endif %}
