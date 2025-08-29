@@ -77,12 +77,13 @@ APP_BEHAVIOR = {
 
 # Task/Worker settings
 TASK_WORKER_COUNT = PERFORMANCE["worker_count"]
-TASK_MAX_RETRIES = 3  # Standard retry count
+TASK_MAX_RETRIES = int(os.getenv("TASK_MAX_RETRIES", 3))
+TASK_CLEANUP_DAYS = int(os.getenv("TASK_CLEANUP_DAYS", 7))
 
 # Scraper settings
-SCRAPER_TIMEOUT = PERFORMANCE["timeout"]
-SCRAPER_MAX_RETRIES = 3
-SCRAPER_RETRY_DELAY = 1
+SCRAPER_TIMEOUT = int(os.getenv("SCRAPER_TIMEOUT", PERFORMANCE["timeout"]))
+SCRAPER_MAX_RETRIES = int(os.getenv("SCRAPER_MAX_RETRIES", 3))
+SCRAPER_RETRY_DELAY = int(os.getenv("SCRAPER_RETRY_DELAY", 1))
 
 # =============================================================================
 # ADVANCED SETTINGS (With defaults)
@@ -90,17 +91,17 @@ SCRAPER_RETRY_DELAY = 1
 
 # AI Configuration
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4-vision-preview")
-AI_CIRCUIT_BREAKER_THRESHOLD = 3
-AI_CIRCUIT_BREAKER_RESET_MINUTES = 60
+AI_CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("AI_CIRCUIT_BREAKER_THRESHOLD", 3))
+AI_CIRCUIT_BREAKER_RESET_MINUTES = int(os.getenv("AI_CIRCUIT_BREAKER_RESET_MINUTES", 60))
 
-# Legacy prompt IDs (for compatibility)
+# OpenAI Prompt IDs (Required for AI analysis)
 OPENAI_PROMPT_BRIEFSTRATEGY_ID = os.getenv("OPENAI_PROMPT_BRIEFSTRATEGY_ID")
 OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID = os.getenv("OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID")
 
 # TradingView Chart
-TRADINGVIEW_CHART_HEIGHT = 400
-TRADINGVIEW_CHART_INTERVAL = "1"
-TRADINGVIEW_CHART_TIMEZONE = "America/New_York"
+TRADINGVIEW_CHART_HEIGHT = int(os.getenv("TRADINGVIEW_CHART_HEIGHT", 400))
+TRADINGVIEW_CHART_INTERVAL = os.getenv("TRADINGVIEW_CHART_INTERVAL", "1")
+TRADINGVIEW_CHART_TIMEZONE = os.getenv("TRADINGVIEW_CHART_TIMEZONE", "America/New_York")
 
 # Debug and Logging
 DEBUG_MODE = FEATURES["debug_mode"]
@@ -194,9 +195,19 @@ def get_config_summary():
 # =============================================================================
 
 # Ensure required settings are present
-if not OPENAI_API_KEY and FEATURES["ai_analysis"]:
-    print("WARNING: OPENAI_API_KEY not set. AI analysis features will be disabled.")
-    FEATURES["ai_analysis"] = False
+if FEATURES["ai_analysis"]:
+    missing_ai_config = []
+    if not OPENAI_API_KEY:
+        missing_ai_config.append("OPENAI_API_KEY")
+    if not OPENAI_PROMPT_BRIEFSTRATEGY_ID:
+        missing_ai_config.append("OPENAI_PROMPT_BRIEFSTRATEGY_ID")
+    if not OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID:
+        missing_ai_config.append("OPENAI_PROMPT_BRIEFSTRATEGY_VERSION_ID")
+    
+    if missing_ai_config:
+        print(f"WARNING: Missing AI configuration: {', '.join(missing_ai_config)}")
+        print("AI analysis features will be disabled.")
+        FEATURES["ai_analysis"] = False
 
 # Ensure reasonable performance settings
 if PERFORMANCE["refresh_interval"] < 5000:
