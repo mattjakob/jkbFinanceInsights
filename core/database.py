@@ -64,8 +64,8 @@ class DatabaseManager:
                 conn.execute("PRAGMA temp_store=MEMORY")
                 # Set busy timeout to 60 seconds (60000ms) for better lock handling
                 conn.execute("PRAGMA busy_timeout=60000")
-                # Optimize for multi-threaded access
-                conn.execute("PRAGMA locking_mode=EXCLUSIVE")
+                # Use NORMAL locking mode for better concurrency (not EXCLUSIVE)
+                conn.execute("PRAGMA locking_mode=NORMAL")
                 # Set page size for better performance
                 conn.execute("PRAGMA page_size=4096")
                 # Enable mmap for better performance
@@ -189,30 +189,38 @@ class DatabaseManager:
     def get_write_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Get database connection for write operations with exclusive lock"""
         # Try to acquire lock with timeout
+        debug_info("Attempting to acquire database write lock...")
         if _db_write_lock.acquire(timeout=30):  # 30 second timeout
+            debug_info("Database write lock acquired")
             try:
                 # Use regular connection but with global write lock
                 with self.get_connection() as conn:
                     yield conn
             finally:
                 _db_write_lock.release()
+                debug_info("Database write lock released")
         else:
             # Timeout - raise an exception
+            debug_error("Database write lock timeout after 30 seconds")
             raise sqlite3.OperationalError("Database write lock timeout after 30 seconds")
     
     @contextmanager
     def get_write_session(self) -> Generator[sqlite3.Connection, None, None]:
         """Get database session for write operations with exclusive lock"""
         # Try to acquire lock with timeout
+        debug_info("Attempting to acquire database write lock for session...")
         if _db_write_lock.acquire(timeout=30):  # 30 second timeout
+            debug_info("Database write lock acquired for session")
             try:
                 # Use regular session but with global write lock
                 with self.get_session() as conn:
                     yield conn
             finally:
                 _db_write_lock.release()
+                debug_info("Database write lock released for session")
         else:
             # Timeout - raise an exception
+            debug_error("Database write lock timeout after 30 seconds for session")
             raise sqlite3.OperationalError("Database write lock timeout after 30 seconds")
     
     def execute_write_with_retry(self, operation_name: str, operation_func):
@@ -325,6 +333,20 @@ _db_manager: Optional[DatabaseManager] = None
 
 # Global write lock for database operations
 _db_write_lock = threading.RLock()
+
+
+def force_close_all_connections():
+    """Force release of all database locks and connections"""
+    global _db_write_lock
+    try:
+        # Try to release the write lock if it's held
+        if _db_write_lock._count > 0:
+            debug_warning(f"Force releasing database write lock (was held {_db_write_lock._count} times)")
+            # Force release all recursive acquisitions
+            while _db_write_lock._count > 0:
+                _db_write_lock.release()
+    except Exception as e:
+        debug_error(f"Error force releasing database locks: {e}")
 
 
 def get_db_manager() -> DatabaseManager:
