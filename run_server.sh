@@ -60,7 +60,7 @@ trap cleanup SIGINT SIGTERM
 # Start the server with autoreload and console output
 echo "Starting server on http://$SERVER_HOST:$SERVER_PORT"
 echo "Press Ctrl+C to stop the server"
-uvicorn main:app --host $SERVER_HOST --port $SERVER_PORT --log-level info &
+uvicorn main:app --host $SERVER_HOST --port $SERVER_PORT --reload --log-level info &
 
 # Wait for the background process
 SERVER_PID=$!
