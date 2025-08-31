@@ -38,9 +38,19 @@ SERVER_PORT=${SERVER_PORT:-8000}
 
 # Function to cleanup on exit
 cleanup() {
-    echo "Shutting down server..."
-    pkill -f "uvicorn main:app" 2>/dev/null || true
+    echo "🛑 Force killing server processes..."
+    # Kill the background uvicorn process
+    if [ ! -z "$SERVER_PID" ]; then
+        kill -9 $SERVER_PID 2>/dev/null || true
+    fi
+    # Kill all uvicorn processes
+    pkill -9 -f "uvicorn main:app" 2>/dev/null || true
+    pkill -9 -f "uvicorn" 2>/dev/null || true
+    # Kill processes on the port
     lsof -ti :$SERVER_PORT | xargs kill -9 2>/dev/null || true
+    # Kill any Python processes in this directory
+    pkill -9 -f "jkbFinanceInsights" 2>/dev/null || true
+    echo "💀 All server processes killed"
     exit 0
 }
 

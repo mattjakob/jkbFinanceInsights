@@ -76,9 +76,9 @@ async def lifespan(app: FastAPI):
     # Startup logic
     debug_info("Starting JKB Finance Insights...")
     
-    # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # Signal handling is done by the run_server.sh script
+    # signal.signal(signal.SIGINT, signal_handler)
+    # signal.signal(signal.SIGTERM, signal_handler)
     
     try:
         # Initialize database
