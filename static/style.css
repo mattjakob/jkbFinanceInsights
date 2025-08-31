@@ -377,8 +377,12 @@
 .block-header-content {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     width: 100%;
+}
+
+.block-header-spacing {
+    width: 1rem;
 }
 
 .block-header-time {
@@ -386,7 +390,6 @@
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    font-family: 'Courier New', monospace;
 }
 
 .block-header-action {
@@ -418,7 +421,6 @@
 
 .summary-section {
     background: rgba(255, 255, 255, 0.02);
-    padding: 1rem;
     border-radius: var(--base-border-radius);
     border: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -431,8 +433,7 @@
 
 /* Level Badges - Sleek Monochrome Design */
 .levels-section {
-    margin-top: 2rem;
-    margin-bottom: 2rem;
+
 }
 
 .ai-levels-container {
@@ -522,99 +523,40 @@
     /* All use the same monochrome styling defined above */
 }
 
-/* Metrics Section - Enhanced Layout */
+/* Metrics Section - Simple One-Line Design */
 .metrics-section {
-    margin-top: 2.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 1.5rem;
 }
 
-.metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
-    max-width: 600px;
-    margin: 0 auto;
-}
-
-.metric-card {
-    background: transparent;
-    border: 1px solid var(--text-color);
+.metrics-line {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    padding: 0.75rem;
+    border-top: 1px solid var(--text-color);
     border-radius: 4px;
-    padding: 0;
-    text-align: center;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-}
-
-.metric-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-}
-
-.metric-card:hover {
-    transform: translateY(-4px) scale(1.02);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25), 0 4px 10px rgba(0, 0, 0, 0.15);
-    border-color: var(--text-color);
-}
-
-.metric-card:hover::before {
-    opacity: 1;
-}
-
-.metric-header {
-    background-color: var(--text-color);
-    color: var(--bg-color);
-    padding: 0.8rem;
-    margin: 0;
-    border-bottom: 1px solid var(--text-color);
-    position: relative;
-    z-index: 1;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 2rem;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.metric-item {
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
 }
 
-.metric-icon {
-    font-size: 0.9rem;
-    font-weight: 700;
-}
-
-.metric-title {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.metric-content {
-    background-color: var(--bg-color);
+.metric-label {
     color: var(--text-color);
-    padding: 1rem;
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 700;
-    font-family: 'Courier New', monospace;
-    position: relative;
-    z-index: 1;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    opacity: 0.8;
 }
 
-.confidence-value {
-    /* Removed color to maintain monochrome design */
+.metric-value {
+    color: var(--text-color);
+    font-family: 'Courier New', monospace;
 }
 
 .status-indicator {
@@ -998,11 +940,16 @@
 
 /* Table column alignment */
 .type-col,
-.summary-col,
+
 .action-col,
 .confidence-col,
 .horizon-col {
     text-align: center;
+}
+
+.summary-col
+{
+    text-align: left;
 }
 
 .status-task-item {

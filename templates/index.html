@@ -268,6 +268,7 @@
                 <span class="block-header-time" id="reportTimeFetched">
                     {% if latest_report %}{{ latest_report.timeFetched | format_date }}{% else %}-{% endif %}
                 </span>
+                <span class="block-header-spacing"></span>
                 <div class="block-header-action" id="reportAIAction">
                     {% if latest_report and latest_report.AIAction %}{{ action_badge(latest_report.AIAction) }}{% else %}-{% endif %}
                 </div>
@@ -312,37 +313,24 @@
             </div>
             
             <div class="metrics-section">
-                
-                <div class="metrics-grid">
-                    
-                    <div class="metric-card confidence-card">
-                        <div class="metric-header">
-                            <span class="metric-icon">%</span>
-                            <span class="metric-title">CONFIDENCE</span>
-                        </div>
-                        <div class="metric-content confidence-value" id="reportAIConfidence">
+                <div class="metrics-line">
+                    <div class="metric-item">
+                        <span class="metric-label">CONFIDENCE:</span>
+                        <span class="metric-value" id="reportAIConfidence">
                             {% if latest_report and latest_report.AIConfidence is not none %}{{ "%.0f%%"|format(latest_report.AIConfidence * 100) }}{% else %}-{% endif %}
-                        </div>
+                        </span>
                     </div>
-                    
-                    <div class="metric-card event-card">
-                        <div class="metric-header">
-                            <span class="metric-icon">⏰</span>
-                            <span class="metric-title">EVENT TIME</span>
-                        </div>
-                        <div class="metric-content" id="reportAIEventTime">
+                    <div class="metric-item">
+                        <span class="metric-label">EVENT TIME:</span>
+                        <span class="metric-value" id="reportAIEventTime">
                             {% if latest_report and latest_report.AIEventTime %}{{ latest_report.AIEventTime | format_date }}{% else %}-{% endif %}
-                        </div>
+                        </span>
                     </div>
-                    
-                    <div class="metric-card status-card">
-                        <div class="metric-header">
-                            <span class="metric-icon">●</span>
-                            <span class="metric-title">STATUS</span>
-                        </div>
-                        <div class="metric-content status-indicator" id="reportAIAnalysisStatus">
+                    <div class="metric-item">
+                        <span class="metric-label">STATUS:</span>
+                        <span class="metric-value" id="reportAIAnalysisStatus">
                             {% if latest_report and latest_report.TaskStatus %}{{ latest_report.TaskStatus|upper }}{% else %}-{% endif %}
-                        </div>
+                        </span>
                     </div>
                 </div>
             </div>
