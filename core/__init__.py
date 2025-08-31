@@ -22,7 +22,9 @@ from .database import (
     DatabaseManager,
     get_db_manager,
     get_db_connection,
-    get_db_session
+    get_db_session,
+    get_db_write_connection,
+    get_db_write_session
 )
 
 __all__ = [
@@ -42,7 +44,9 @@ __all__ = [
     'DatabaseManager',
     'get_db_manager',
     'get_db_connection',
-    'get_db_session'
+    'get_db_session',
+    'get_db_write_connection',
+    'get_db_write_session'
 ]
 
 

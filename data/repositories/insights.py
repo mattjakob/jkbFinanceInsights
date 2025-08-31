@@ -25,7 +25,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import hashlib
 
-from core import InsightModel, FeedType, TaskStatus, TaskName, TaskInfo, get_db_session
+from core import InsightModel, FeedType, TaskStatus, TaskName, TaskInfo, get_db_session, get_db_write_session
 from config import SCRAPER_DUPLICATE_WINDOW_HOURS
 from debugger import debug_info, debug_warning, debug_error
 
@@ -66,8 +66,8 @@ class InsightsRepository:
             debug_warning(f"Found duplicate insight: ID {duplicate_id}")
             return (duplicate_id, False)
         
-        # Insert new insight
-        with get_db_session() as conn:
+        # Insert new insight - use write session for thread-safe writes
+        with get_db_write_session() as conn:
             cursor = conn.cursor()
             
             data = insight.to_dict()
@@ -146,7 +146,7 @@ class InsightsRepository:
         
         values.append(insight_id)
         
-        with get_db_session() as conn:
+        with get_db_write_session() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 f"UPDATE insights SET {', '.join(set_clauses)} WHERE id = ?",
@@ -167,7 +167,7 @@ class InsightsRepository:
          Returns:
          - True if deleted, False if not found
         """
-        with get_db_session() as conn:
+        with get_db_write_session() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM insights WHERE id = ?", (insight_id,))
             return cursor.rowcount > 0
@@ -274,7 +274,7 @@ class InsightsRepository:
          Returns:
          - Tuple of (count_deleted, list_of_ids)
         """
-        with get_db_session() as conn:
+        with get_db_write_session() as conn:
             # First get the IDs
             cursor = conn.cursor()
             ids = cursor.execute(
@@ -352,7 +352,7 @@ class InsightsRepository:
          Returns:
          - Number of insights reset
         """
-        with get_db_session() as conn:
+        with get_db_write_session() as conn:
             reset_count = conn.execute("""
                 UPDATE insights
                 SET TaskStatus = ?
@@ -377,7 +377,7 @@ class InsightsRepository:
          Returns:
          - Number of insights reset
         """
-        with get_db_session() as conn:
+        with get_db_write_session() as conn:
             reset_count = conn.execute("""
                 UPDATE insights
                 SET TaskStatus = ?
@@ -406,7 +406,7 @@ class InsightsRepository:
          Returns:
          - Number of insights reset
         """
-        with get_db_session() as conn:
+        with get_db_write_session() as conn:
             cursor = conn.cursor()
             
             # Reset insights stuck in PENDING, PROCESSING, or FAILED to EMPTY
@@ -446,10 +446,10 @@ class InsightsRepository:
          - symbol: Symbol to reset
          - feed_type: Optional feed type to filter by
          
-         Returns:
-         - Tuple of (insights_reset_count, tasks_cancelled_count)
+                 Returns:
+        - Tuple of (insights_reset_count, tasks_cancelled_count)
         """
-        with get_db_session() as conn:
+        with get_db_write_session() as conn:
             # First get the insights to reset
             query = """
                 SELECT id, TaskStatus 

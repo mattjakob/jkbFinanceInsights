@@ -8,6 +8,7 @@ from typing import Generator, Optional
 import os
 from pathlib import Path
 import time
+import threading
 
 from config import DATABASE_URL, DATABASE_TIMEOUT, DATABASE_MAX_RETRIES, DATABASE_RETRY_DELAY, DATABASE_WAL_MODE
 from debugger import debug_info, debug_error, debug_warning
@@ -38,6 +39,7 @@ class DatabaseManager:
     
     def __init__(self, config: Optional[DatabaseConfig] = None):
         self.config = config or DatabaseConfig()
+        self._write_lock = threading.Lock()
         self._ensure_database_exists()
     
     def _ensure_database_exists(self):
@@ -52,10 +54,22 @@ class DatabaseManager:
         """Configure SQLite connection with WAL mode and optimizations"""
         if DATABASE_WAL_MODE:
             try:
+                # Enable WAL mode for better concurrency
                 conn.execute("PRAGMA journal_mode=WAL")
+                # Set synchronous to NORMAL for better performance
                 conn.execute("PRAGMA synchronous=NORMAL")
+                # Increase cache size
                 conn.execute("PRAGMA cache_size=10000")
+                # Use memory for temp storage
                 conn.execute("PRAGMA temp_store=MEMORY")
+                # Set busy timeout to 60 seconds (60000ms) for better lock handling
+                conn.execute("PRAGMA busy_timeout=60000")
+                # Optimize for multi-threaded access
+                conn.execute("PRAGMA locking_mode=EXCLUSIVE")
+                # Set page size for better performance
+                conn.execute("PRAGMA page_size=4096")
+                # Enable mmap for better performance
+                conn.execute("PRAGMA mmap_size=268435456")  # 256MB
                 #debug_info("WAL mode enabled for database connection")
             except Exception as e:
                 debug_warning(f"Failed to enable WAL mode: {e}")
@@ -171,6 +185,42 @@ class DatabaseManager:
         finally:
             conn.close()
     
+    @contextmanager
+    def get_write_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Get database connection for write operations with exclusive lock"""
+        with _db_write_lock:
+            # Use regular connection but with global write lock
+            with self.get_connection() as conn:
+                yield conn
+    
+    @contextmanager
+    def get_write_session(self) -> Generator[sqlite3.Connection, None, None]:
+        """Get database session for write operations with exclusive lock"""
+        with _db_write_lock:
+            # Use regular session but with global write lock
+            with self.get_session() as conn:
+                yield conn
+    
+    def execute_write_with_retry(self, operation_name: str, operation_func):
+        """Execute write operation with retry logic for database locks"""
+        max_retries = 5
+        base_delay = 0.1  # 100ms
+        
+        for attempt in range(max_retries):
+            try:
+                with _db_write_lock:
+                    return operation_func()
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    debug_warning(f"Database locked during {operation_name}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise
+            except Exception as e:
+                raise
+    
     def execute_script(self, script: str):
         """Execute SQL script"""
         with self.get_connection() as conn:
@@ -250,6 +300,9 @@ class DatabaseManager:
 # Global instance
 _db_manager: Optional[DatabaseManager] = None
 
+# Global write lock for database operations
+_db_write_lock = threading.RLock()
+
 
 def get_db_manager() -> DatabaseManager:
     """Get global database manager instance"""
@@ -272,4 +325,18 @@ def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
 def get_db_session() -> Generator[sqlite3.Connection, None, None]:
     """Convenience function for getting database session with row factory"""
     with get_db_manager().get_session() as conn:
+        yield conn
+
+
+@contextmanager
+def get_db_write_connection() -> Generator[sqlite3.Connection, None, None]:
+    """Convenience function for getting database connection for write operations"""
+    with get_db_manager().get_write_connection() as conn:
+        yield conn
+
+
+@contextmanager
+def get_db_write_session() -> Generator[sqlite3.Connection, None, None]:
+    """Convenience function for getting database session for write operations"""
+    with get_db_manager().get_write_session() as conn:
         yield conn 
