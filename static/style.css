@@ -32,7 +32,7 @@
     --mono-font: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     --base-font-size: 13px;
     --base-padding: 0.4rem 0.75rem;
-    --base-border-radius: 4px;
+    --base-border-radius: 2px;
 }
 
 /* Base Styles */
@@ -125,7 +125,7 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.2rem 0.5rem;
-    border-radius: 3px;
+    border-radius: 2px;
     font-size: 10px;
     font-weight: bold;
     text-transform: uppercase;
@@ -320,7 +320,7 @@
 .status-badge {
     display: inline-block;
     padding: 0.25rem 0.5rem;
-    border-radius: 3px;
+    border-radius: 2px;
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
@@ -440,7 +440,7 @@
 .level-badge {
     background: transparent;
     border: 1px solid var(--text-color);
-    border-radius: 8px;
+    border-radius: 4px;
     padding: 0;
     min-width: 130px;
     text-align: center;
@@ -814,7 +814,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 0.25rem 0.5rem;
-    border-radius: 3px;
+    border-radius: 2px;
     font-weight: 600;
     border: 1px solid rgba(255, 255, 255, 0.25);
     white-space: nowrap;
@@ -936,7 +936,7 @@
     font-weight: 600;
     font-size: 10px;
     padding: 0.125rem 0.25rem;
-    border-radius: 2px;
+    border-radius: 1px;
     text-transform: uppercase;
     flex-shrink: 0;
     width: 60px;
