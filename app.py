@@ -124,10 +124,17 @@ async def lifespan(app: FastAPI):
         # Force close any remaining database connections
         try:
             from core.database import force_close_all_connections
+            from core.db_writer import get_db_writer
+            
+            # Close the singleton writer first
+            writer = get_db_writer()
+            writer.close()
+            
+            # Then force close any other connections
             force_close_all_connections()
-            debug_info("Database locks force released")
+            debug_info("Database connections and locks closed")
         except Exception as e:
-            debug_error(f"Error releasing database locks: {e}")
+            debug_error(f"Error closing database connections: {e}")
         
         debug_info("Application shutdown complete")
 

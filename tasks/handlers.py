@@ -574,7 +574,7 @@ async def handle_cleanup(days: int = 7, **kwargs) -> Dict[str, Any]:
     }
 
 
-async def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def handle_ai_report_generation(**kwargs) -> Dict[str, Any]:
     """
      ┌─────────────────────────────────────┐
      │    HANDLE_AI_REPORT_GENERATION      │
@@ -585,9 +585,9 @@ async def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]
      using all available insights.
     """
     try:
-        symbol = payload.get('symbol')
-        content = payload.get('content')
-        insights_count = payload.get('insights_count', 0)
+        symbol = kwargs.get('symbol')
+        content = kwargs.get('content')
+        insights_count = kwargs.get('insights_count', 0)
         
         if not symbol:
             debug_error("No symbol provided for report generation")
@@ -683,17 +683,25 @@ async def handle_scraping_task(feed_type: FeedType, **kwargs) -> Dict[str, Any]:
         
         # Scraping task processing
         
-        # Import scraper manager to avoid circular imports
+        # Import necessary modules
+        import asyncio
         from scrapers import ScraperManager
-        manager = ScraperManager()
         
-        # Fetch and store data
-        result = manager.fetch_and_store(
-            feed_type=feed_type,
-            symbol=symbol,
-            exchange=exchange,
-            limit=limit
-        )
+        # Run synchronous database operations in a thread pool to avoid blocking the event loop
+        loop = asyncio.get_running_loop()
+        
+        def sync_fetch_and_store():
+            """Synchronous wrapper for fetch_and_store"""
+            manager = ScraperManager()
+            return manager.fetch_and_store(
+                feed_type=feed_type,
+                symbol=symbol,
+                exchange=exchange,
+                limit=limit
+            )
+        
+        # Execute in thread pool to prevent blocking
+        result = await loop.run_in_executor(None, sync_fetch_and_store)
         
         # Log results
         if result['success']:

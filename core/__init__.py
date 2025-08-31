@@ -27,6 +27,8 @@ from .database import (
     get_db_write_session
 )
 
+from .db_writer import get_db_writer, db_write_operation
+
 __all__ = [
     # Models
     'FeedType',
@@ -46,7 +48,9 @@ __all__ = [
     'get_db_connection',
     'get_db_session',
     'get_db_write_connection',
-    'get_db_write_session'
+    'get_db_write_session',
+    'get_db_writer',
+    'db_write_operation'
 ]
 
 

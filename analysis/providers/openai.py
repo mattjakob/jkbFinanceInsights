@@ -232,7 +232,7 @@ class OpenAIProvider(AIProvider):
         return response.choices[0].message.content
     
     def _build_text_prompt(self, request: AnalysisRequest) -> str:
-        """Build analysis prompt"""
+        """Build analysis prompt (legacy method for sync calls)"""
         prompt = f"""
         Analyze this {request.item_type} for {request.symbol}:
         
@@ -270,6 +270,32 @@ class OpenAIProvider(AIProvider):
         
         return prompt
     
+    def _build_structured_prompt(self, request: AnalysisRequest) -> str:
+        """Build structured analysis prompt for schema-based output"""
+        prompt = f"""
+        Analyze this {request.item_type} for {request.symbol} and provide a comprehensive trading brief:
+        
+        Title: {request.title}
+        Content: {request.text}
+        """
+        
+        if request.technical:
+            prompt += f"\n\nTechnical Analysis:\n{request.technical}"
+        
+        prompt += """
+        
+        Please provide:
+        1. A concise summary of the trading strategy and key insights
+        2. A clear trading action recommendation (buy/sell/hold)
+        3. Your confidence level in this recommendation (0-100)
+        4. Any relevant event timing (if mentioned in the content)
+        5. Key price levels including entry, take profit, stop loss, support, and resistance
+        
+        Focus on actionable trading insights and be specific about price levels when available.
+        """
+        
+        return prompt
+    
     def _build_image_prompt(self, symbol: str) -> str:
         """Build image analysis prompt"""
         return f"""You are an expert day trader. Analyze the attached image, which contains a Technical Analysis chart for {symbol} to extract a day trading strategy.
@@ -290,9 +316,15 @@ Return a {symbol} trading brief with:
     def _parse_response(self, response: str) -> AnalysisResult:
         """Parse JSON response to AnalysisResult"""
         try:
-            # Clean the response - remove markdown formatting and extract JSON
-            cleaned_response = self._extract_json_from_response(response)
-            data = json.loads(cleaned_response)
+            # For structured output, response should be clean JSON
+            # But still handle legacy responses that might need cleaning
+            if response.strip().startswith('{'):
+                # Direct JSON response (structured output)
+                data = json.loads(response)
+            else:
+                # Legacy response that might need cleaning
+                cleaned_response = self._extract_json_from_response(response)
+                data = json.loads(cleaned_response)
             
             # Parse action
             action_str = data.get('action', 'hold').lower()
@@ -301,8 +333,14 @@ Return a {symbol} trading brief with:
             except ValueError:
                 action = AnalysisAction.HOLD
             
-            # Parse confidence (0-100 to 0-1)
-            confidence = data.get('confidence', 50) / 100.0
+            # Parse confidence - structured output returns 0-100, convert to 0-1
+            confidence_raw = data.get('confidence', 50)
+            if confidence_raw > 1.0:
+                # Assume it's 0-100 scale, convert to 0-1
+                confidence = confidence_raw / 100.0
+            else:
+                # Already 0-1 scale
+                confidence = confidence_raw
             
             # Parse levels
             levels = data.get('levels', {})
@@ -458,22 +496,134 @@ Return a {symbol} trading brief with:
         return await self._call_direct_async(request)
     
     async def _call_direct_async(self, request: AnalysisRequest) -> str:
-        """Async direct OpenAI call without template"""
+        """Async direct OpenAI call without template using structured output"""
+        # Define the structured schema
+        trading_brief_schema = {
+            "name": "trading_brief",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "Summary of trading strategy",
+                        "minLength": 1
+                    },
+                    "action": {
+                        "type": "string",
+                        "description": "Proposed market action.",
+                        "enum": ["buy", "sell", "hold"]
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Confidence score in the action/recommendation (0-100).",
+                        "minimum": 0,
+                        "maximum": 100
+                    },
+                    "event_time": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "ISO-8601 date-time for relevant event"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "levels": {
+                        "type": "object",
+                        "properties": {
+                            "entry": {
+                                "anyOf": [
+                                    {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Price level identified as entry"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "take_profit": {
+                                "anyOf": [
+                                    {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Price level identified for take profit"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "stop_loss": {
+                                "anyOf": [
+                                    {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Price level identified for stop-loss"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "support": {
+                                "anyOf": [
+                                    {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Price level identified as support"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            },
+                            "resistance": {
+                                "anyOf": [
+                                    {
+                                        "type": "number",
+                                        "format": "float",
+                                        "description": "Price level identified as resistance"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ]
+                            }
+                        },
+                        "required": ["entry", "take_profit", "stop_loss", "support", "resistance"],
+                        "additionalProperties": False
+                    }
+                },
+                "required": ["summary", "action", "confidence", "event_time", "levels"],
+                "additionalProperties": False
+            }
+        }
+        
         messages = [
             {
                 "role": "system",
-                "content": "You are an expert financial analyst specializing in day trading."
+                "content": "You are an expert financial analyst specializing in day trading. Analyze the provided content and return a structured trading brief."
             },
             {
                 "role": "user",
-                "content": self._build_text_prompt(request)
+                "content": self._build_structured_prompt(request)
             }
         ]
         
         response = await self.async_client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-2024-08-06",  # Use model that supports structured outputs
             messages=messages,
-            temperature=0.3
+            temperature=0.3,
+            response_format={
+                "type": "json_schema",
+                "json_schema": trading_brief_schema
+            }
         )
         
         return response.choices[0].message.content
@@ -562,9 +712,16 @@ Return a {symbol} trading brief with:
         
         {request.text}
         
+        Analyze all the insights and provide:
+        1. A comprehensive summary that synthesizes the key trading themes and opportunities
+        2. A clear trading recommendation (buy/sell/hold) based on the overall analysis
+        3. Your confidence level in this recommendation
+        4. Any relevant timing for the trade
+        5. Key price levels for entry, profit taking, stop loss, support and resistance
+        
         Provide a JSON response with the exact structure:
         {{
-            "summary": "Comprehensive trading analysis and recommendation",
+            "summary": "Your comprehensive analysis summary here - synthesize the insights into actionable trading intelligence",
             "action": "buy",
             "confidence": 75,
             "event_time": null,

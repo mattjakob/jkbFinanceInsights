@@ -140,7 +140,7 @@ class SymbolService:
                 {
                     "symbol": symbol,
                     "exchange": exchange,
-                    "url": f"/api/insights/{exchange}:{symbol}"
+                    "url": f"/?symbol={exchange}:{symbol}"
                 }
                 for symbol, exchange in symbol_map.items()
             ]

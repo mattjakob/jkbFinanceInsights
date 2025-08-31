@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 import hashlib
 
 from core import InsightModel, FeedType, TaskStatus, TaskName, TaskInfo, get_db_session, get_db_write_session
+from core.db_writer import get_db_writer
 from config import SCRAPER_DUPLICATE_WINDOW_HOURS
 from debugger import debug_info, debug_warning, debug_error
 
@@ -58,38 +59,47 @@ class InsightsRepository:
          
          Notes:
          - Returns existing ID if duplicate found
-         - Duplicate check uses 48-hour window
+         - Uses singleton writer to prevent locks
         """
-        # Check for duplicates first
-        duplicate_id = self._check_duplicate(insight)
-        if duplicate_id:
-            debug_warning(f"Found duplicate insight: ID {duplicate_id}")
-            return (duplicate_id, False)
-        
-        # Insert new insight - use write session for thread-safe writes
-        with get_db_write_session() as conn:
-            cursor = conn.cursor()
+        try:
+            # Check for duplicates first
+            duplicate_id = self._check_duplicate(insight)
+            if duplicate_id:
+                debug_warning(f"Found duplicate insight: ID {duplicate_id}")
+                return (duplicate_id, False)
             
-            data = insight.to_dict()
-            cursor.execute("""
-                INSERT INTO insights (
-                    timeFetched, timePosted, type, title, content,
-                    symbol, exchange, imageURL,
-                    AIImageSummary, AISummary, AIAction,
-                    AIConfidence, AIEventTime, AILevels, TaskStatus, TaskName
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                data['timeFetched'], data['timePosted'], data['type'],
-                data['title'], data['content'], data['symbol'],
-                data['exchange'], data['imageURL'],
-                data['AIImageSummary'], data['AISummary'], data['AIAction'],
-                data['AIConfidence'], data['AIEventTime'], data['AILevels'],
-                data['TaskStatus'], data['TaskName']
-            ))
+            # Define the write operation
+            def insert_insight(conn):
+                cursor = conn.cursor()
+                data = insight.to_dict()
+                cursor.execute("""
+                    INSERT INTO insights (
+                        timeFetched, timePosted, type, title, content,
+                        symbol, exchange, imageURL,
+                        AIImageSummary, AISummary, AIAction,
+                        AIConfidence, AIEventTime, AILevels, TaskStatus, TaskName
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    data['timeFetched'], data['timePosted'], data['type'],
+                    data['title'], data['content'], data['symbol'],
+                    data['exchange'], data['imageURL'],
+                    data['AIImageSummary'], data['AISummary'], data['AIAction'],
+                    data['AIConfidence'], data['AIEventTime'], data['AILevels'],
+                    data['TaskStatus'], data['TaskName']
+                ))
+                return cursor.lastrowid
             
-            insight_id = cursor.lastrowid
+            # Execute through singleton writer
+            writer = get_db_writer()
+            insight_id = writer.execute_write(insert_insight)
+            
             debug_info(f"Insight {insight_id} created for {insight.symbol} {insight.type}")
             return (insight_id, True)
+            
+        except Exception as e:
+            debug_error(f"Error creating insight: {e}")
+            # Re-raise to ensure proper error propagation
+            raise
     
     def get_by_id(self, insight_id: int) -> Optional[InsightModel]:
         """
@@ -135,24 +145,29 @@ class InsightsRepository:
         if not updates:
             return False
         
-        # Build SET clause
-        set_clauses = []
-        values = []
-        for key, value in updates.items():
-            # Convert Python field names to database column names
-            db_column = self._to_db_column(key)
-            set_clauses.append(f"{db_column} = ?")
-            values.append(value)
-        
-        values.append(insight_id)
-        
-        with get_db_write_session() as conn:
+        # Define the update operation
+        def update_insight(conn):
+            # Build SET clause
+            set_clauses = []
+            values = []
+            for key, value in updates.items():
+                # Convert Python field names to database column names
+                db_column = self._to_db_column(key)
+                set_clauses.append(f"{db_column} = ?")
+                values.append(value)
+            
+            values.append(insight_id)
+            
             cursor = conn.cursor()
             cursor.execute(
                 f"UPDATE insights SET {', '.join(set_clauses)} WHERE id = ?",
                 values
             )
             return cursor.rowcount > 0
+        
+        # Execute through singleton writer
+        writer = get_db_writer()
+        return writer.execute_write(update_insight)
     
     def delete(self, insight_id: int) -> bool:
         """

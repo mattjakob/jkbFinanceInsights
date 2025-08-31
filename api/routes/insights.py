@@ -25,14 +25,15 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-from services import InsightManagementService
+from services import InsightManagementService, SymbolService
 from debugger import debug_info, debug_error, debug_success
 
 # Create router
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
-# Service instance
+# Service instances
 insights_service = InsightManagementService()
+symbol_service = SymbolService()
 
 
 @router.get("", response_model=List[Dict[str, Any]])
