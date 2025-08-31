@@ -221,6 +221,15 @@ class DatabaseManager:
             except Exception as e:
                 raise
     
+    def force_close_all_connections(self):
+        """Force close all database connections during shutdown"""
+        try:
+            # Release the write lock if held
+            if _db_write_lock.locked():
+                _db_write_lock.release()
+        except:
+            pass
+    
     def execute_script(self, script: str):
         """Execute SQL script"""
         with self.get_connection() as conn:

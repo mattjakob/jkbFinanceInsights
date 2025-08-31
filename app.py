@@ -27,19 +27,26 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import asyncio
+import signal
+import sys
 from typing import Optional
 
 from api import api_router
 from views import web_router
 from core import get_db_manager
 from tasks import HANDLERS, WorkerPool
-from debugger import debug_success, debug_info
+from debugger import debug_success, debug_info, debug_error
 from config import (
     APP_NAME, APP_VERSION, TASK_WORKER_COUNT
 )
 
 # Global worker pool
 worker_pool: Optional[WorkerPool] = None
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    debug_info(f"Received signal {signum}, initiating immediate shutdown...")
+    sys.exit(0)
 
 
 @asynccontextmanager
@@ -56,6 +63,10 @@ async def lifespan(app: FastAPI):
     
     # Startup logic
     debug_info("Starting JKB Finance Insights...")
+    
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     try:
         # Initialize database
@@ -86,12 +97,24 @@ async def lifespan(app: FastAPI):
         if worker_pool:
             try:
                 debug_info("Stopping background workers...")
-                await asyncio.wait_for(worker_pool.stop(), timeout=10.0)
+                await asyncio.wait_for(worker_pool.stop(), timeout=3.0)  # Reduced to 3 seconds
                 debug_success("Workers stopped")
             except asyncio.TimeoutError:
-                debug_error("Worker shutdown timed out after 10 seconds")
+                debug_error("Worker shutdown timed out after 3 seconds, forcing shutdown")
+                # Force shutdown without waiting
+                try:
+                    await worker_pool.stop()
+                except:
+                    debug_error("Force shutdown also failed")
             except Exception as e:
                 debug_error(f"Error stopping workers: {e}")
+        
+        # Force close any remaining database connections
+        try:
+            db_manager = get_db_manager()
+            db_manager.force_close_all_connections()
+        except:
+            pass
         
         debug_info("Application shutdown complete")
 

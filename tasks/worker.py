@@ -231,7 +231,7 @@ class WorkerPool:
         """Stop all workers gracefully"""
         debug_info("Stopping all workers...")
         
-        # Signal workers to stop
+        # Signal workers to stop immediately
         for worker in self.workers:
             worker.stop()
         
@@ -240,30 +240,38 @@ class WorkerPool:
             self._shutdown_event = asyncio.Event()
         self._shutdown_event.set()
         
-        # Wait briefly for graceful shutdown
-        await asyncio.sleep(0.5)
-        
-        # Cancel tasks if still running
+        # Force cancel all tasks immediately
         for task in self.tasks:
             if not task.done():
                 task.cancel()
         
-        # Wait for all tasks to complete with timeout
-        if self.tasks:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*self.tasks, return_exceptions=True),
-                    timeout=5.0  # 5 second timeout
-                )
-            except asyncio.TimeoutError:
-                debug_warning("Some worker tasks did not stop within timeout")
+        # Wait very briefly for tasks to cancel
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*self.tasks, return_exceptions=True),
+                timeout=1.0  # Reduced to 1 second
+            )
+        except asyncio.TimeoutError:
+            debug_warning("Worker tasks did not stop within 1 second timeout")
+            # Force kill remaining tasks
+            for task in self.tasks:
+                if not task.done():
+                    try:
+                        task.cancel()
+                    except:
+                        pass
         
-        # Close queue connections
+        # Close queue connections with minimal timeout
         if self.shared_queue:
             try:
-                await asyncio.wait_for(self.shared_queue.close(), timeout=2.0)
+                await asyncio.wait_for(self.shared_queue.close(), timeout=0.5)
             except asyncio.TimeoutError:
-                debug_warning("Queue close timed out")
+                debug_warning("Queue close timed out, forcing close")
+                # Force close without waiting
+                try:
+                    await self.shared_queue.close()
+                except:
+                    pass
         
         debug_success("All workers stopped")
     
