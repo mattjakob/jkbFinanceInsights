@@ -28,7 +28,11 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
-import sqlite3
+try:
+    import aiosqlite
+except ImportError:
+    # Fallback to regular sqlite3 if aiosqlite not available
+    import sqlite3 as aiosqlite
 import threading
 
 from core.models import TaskStatus, TaskName
