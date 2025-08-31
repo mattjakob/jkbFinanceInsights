@@ -272,6 +272,13 @@
                 <div class="block-header-action" id="reportAIAction">
                     {% if latest_report and latest_report.AIAction %}{{ action_badge(latest_report.AIAction) }}{% else %}-{% endif %}
                 </div>
+                <div class="block-header-delete">
+                    {% if latest_report %}
+                    <button class="delete-report-btn" data-report-id="{{ latest_report.id }}" title="Delete Report">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    {% endif %}
+                </div>
             </div>
         </div>
         

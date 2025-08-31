@@ -146,6 +146,12 @@ class SimpleApp {
             deleteBtn.addEventListener('click', () => this.handleDeleteByType());
         }
 
+        // Delete report button
+        const deleteReportBtn = document.querySelector('.delete-report-btn');
+        if (deleteReportBtn) {
+            deleteReportBtn.addEventListener('click', (e) => this.handleDeleteReport(e));
+        }
+
         // Status dropdown toggle
         const statusDropdownToggle = document.getElementById('statusDropdownToggle');
         if (statusDropdownToggle) {
@@ -994,6 +1000,52 @@ class SimpleApp {
             }
         } catch (error) {
             this.sendDebugMessage(`Delete failed: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      HANDLE DELETE REPORT           │
+     *  └─────────────────────────────────────┘
+     *  Handle delete report button click
+     */
+    async handleDeleteReport(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const reportId = event.currentTarget.dataset.reportId;
+        
+        if (!reportId) {
+            this.sendDebugMessage('No report ID found', 'error');
+            return;
+        }
+        
+        if (!confirm('Are you sure you want to delete this report?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/reports/${reportId}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.sendDebugMessage('Report deleted successfully', 'success');
+                // Hide the report block
+                const reportBlock = document.getElementById('reportBlock');
+                if (reportBlock) {
+                    reportBlock.classList.add('d-none');
+                }
+                // Refresh the page to update the latest report
+                setTimeout(() => window.location.reload(), this.config.UI_REFRESH || 1000);
+            } else {
+                this.sendDebugMessage(`Delete failed: ${result.message || 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            this.sendDebugMessage(`Delete error: ${error.message}`, 'error');
         }
     }
 
