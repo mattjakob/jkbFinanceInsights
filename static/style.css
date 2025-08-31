@@ -392,7 +392,7 @@
 .delete-report-btn {
     background: transparent;
     border: none;
-    color: var(--text-color);
+    color: var(--bg-color);
     font-size: 11px;
     padding: 0.2rem 0.4rem;
     cursor: pointer;
@@ -403,7 +403,7 @@
 
 .delete-report-btn:hover {
     opacity: 1;
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(0, 0, 0, 0.1);
 }
 
 .block-header-time {
@@ -419,9 +419,9 @@
 }
 
 .block-header-action .action-badge {
-    background-color: var(--text-color);
+    background-color: var(--bg-color);
     color: #333333;
-    border: 1px solid var(--text-color);
+    border: 1px solid var(--bg-color);
     font-size: 10px;
     padding: 0.2rem 0.5rem;
     font-weight: bold;
