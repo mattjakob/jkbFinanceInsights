@@ -241,20 +241,29 @@ class WorkerPool:
         self._shutdown_event.set()
         
         # Wait briefly for graceful shutdown
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
         
         # Cancel tasks if still running
         for task in self.tasks:
             if not task.done():
                 task.cancel()
         
-        # Wait for all tasks to complete
+        # Wait for all tasks to complete with timeout
         if self.tasks:
-            await asyncio.gather(*self.tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self.tasks, return_exceptions=True),
+                    timeout=5.0  # 5 second timeout
+                )
+            except asyncio.TimeoutError:
+                debug_warning("Some worker tasks did not stop within timeout")
         
         # Close queue connections
         if self.shared_queue:
-            await self.shared_queue.close()
+            try:
+                await asyncio.wait_for(self.shared_queue.close(), timeout=2.0)
+            except asyncio.TimeoutError:
+                debug_warning("Queue close timed out")
         
         debug_success("All workers stopped")
     

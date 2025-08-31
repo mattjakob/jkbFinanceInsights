@@ -63,6 +63,7 @@ class DatabaseManager:
     @contextmanager
     def get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Get raw database connection with retry logic"""
+        # Retry logic happens BEFORE yielding
         conn = None
         last_error = None
         
@@ -76,39 +77,47 @@ class DatabaseManager:
                 # Configure connection with WAL mode and optimizations
                 self._configure_connection(conn)
                 
-                yield conn
-                conn.commit()
-                return  # Success, exit retry loop
+                # Connection successful, break out of retry loop
+                break
                 
             except sqlite3.OperationalError as e:
                 last_error = e
-                if "database is locked" in str(e).lower():
-                    if attempt < self.config.max_retries - 1:
-                        debug_warning(f"Database locked, retrying in {self.config.retry_delay}s (attempt {attempt + 1}/{self.config.max_retries})")
-                        # Always use time.sleep in sync context
-                        time.sleep(self.config.retry_delay * (2 ** attempt))  # Exponential backoff
-                        continue
-                # Re-raise non-locking errors immediately
-                raise
-            except Exception as e:
-                last_error = e
-                raise
-            finally:
                 if conn:
                     try:
-                        conn.rollback()
+                        conn.close()
                     except:
                         pass
-                conn = None  # Reset connection for next attempt
+                    conn = None
+                    
+                if "database is locked" in str(e).lower() and attempt < self.config.max_retries - 1:
+                    debug_warning(f"Database locked, retrying in {self.config.retry_delay}s (attempt {attempt + 1}/{self.config.max_retries})")
+                    time.sleep(self.config.retry_delay * (2 ** attempt))  # Exponential backoff
+                    continue
+                else:
+                    # Either not a lock error or we're out of retries
+                    raise
+                    
+        if conn is None:
+            if last_error:
+                debug_error(f"Failed to establish database connection after {self.config.max_retries} retries: {last_error}")
+                raise last_error
+            else:
+                raise RuntimeError("Failed to establish database connection")
         
-        # If we get here, all retries failed
-        if last_error:
-            debug_error(f"Failed to establish database connection after {self.config.max_retries} retries: {last_error}")
-            raise last_error
+        # Now yield the connection
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
     
     @contextmanager
     def get_session(self) -> Generator[sqlite3.Connection, None, None]:
         """Get database connection with row factory and retry logic"""
+        # Retry logic happens BEFORE yielding
         conn = None
         last_error = None
         
@@ -118,40 +127,49 @@ class DatabaseManager:
                     self.config.database_url,
                     **self.config.connection_kwargs
                 )
+                
+                # Enable row factory for dict-like access
                 conn.row_factory = sqlite3.Row
                 
                 # Configure connection with WAL mode and optimizations
                 self._configure_connection(conn)
                 
-                yield conn
-                conn.commit()
-                return  # Success, exit retry loop
+                # Connection successful, break out of retry loop
+                break
                 
             except sqlite3.OperationalError as e:
                 last_error = e
-                if "database is locked" in str(e).lower():
-                    if attempt < self.config.max_retries - 1:
-                        debug_warning(f"Database session locked, retrying in {self.config.retry_delay}s (attempt {attempt + 1}/{self.config.max_retries})")
-                        # Always use time.sleep in sync context
-                        time.sleep(self.config.retry_delay * (2 ** attempt))  # Exponential backoff
-                        continue
-                # Re-raise non-locking errors immediately
-                raise
-            except Exception as e:
-                last_error = e
-                raise
-            finally:
                 if conn:
                     try:
-                        conn.rollback()
+                        conn.close()
                     except:
                         pass
-                conn = None  # Reset connection for next attempt
+                    conn = None
+                    
+                if "database is locked" in str(e).lower() and attempt < self.config.max_retries - 1:
+                    debug_warning(f"Database session locked, retrying in {self.config.retry_delay}s (attempt {attempt + 1}/{self.config.max_retries})")
+                    time.sleep(self.config.retry_delay * (2 ** attempt))  # Exponential backoff
+                    continue
+                else:
+                    # Either not a lock error or we're out of retries
+                    raise
+                    
+        if conn is None:
+            if last_error:
+                debug_error(f"Failed to establish database session after {self.config.max_retries} retries: {last_error}")
+                raise last_error
+            else:
+                raise RuntimeError("Failed to establish database session")
         
-        # If we get here, all retries failed
-        if last_error:
-            debug_error(f"Failed to establish database session after {self.config.max_retries} retries: {last_error}")
-            raise last_error
+        # Now yield the connection
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
     
     def execute_script(self, script: str):
         """Execute SQL script"""

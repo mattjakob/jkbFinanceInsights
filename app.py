@@ -57,30 +57,43 @@ async def lifespan(app: FastAPI):
     # Startup logic
     debug_info("Starting JKB Finance Insights...")
     
-    # Initialize database
-    db_manager = get_db_manager()
-    debug_success("Database initialized")
-    
-    # Start task workers in background (non-blocking)
-    worker_pool = WorkerPool(worker_count=TASK_WORKER_COUNT)
-    
-    # Register all handlers
-    for task_type, handler in HANDLERS.items():
-        worker_pool.register_handler(task_type, handler)
-    
-    # Start workers (this should be non-blocking now)
-    await worker_pool.start()
-    
-    debug_success(f"Application started successfully")
-    debug_success(f"Workers: {TASK_WORKER_COUNT}")
-    
-    yield  # Application runs here
-    
-    # Shutdown logic
-    if worker_pool:
-        debug_info("Stopping background workers...")
-        await worker_pool.stop()
-        debug_success("Workers stopped")
+    try:
+        # Initialize database
+        db_manager = get_db_manager()
+        debug_success("Database initialized")
+        
+        # Start task workers in background (non-blocking)
+        worker_pool = WorkerPool(worker_count=TASK_WORKER_COUNT)
+        
+        # Register all handlers
+        for task_type, handler in HANDLERS.items():
+            worker_pool.register_handler(task_type, handler)
+        
+        # Start workers (this should be non-blocking now)
+        await worker_pool.start()
+        
+        debug_success(f"Application started successfully")
+        debug_success(f"Workers: {TASK_WORKER_COUNT}")
+        
+        yield  # Application runs here
+        
+    except Exception as e:
+        debug_error(f"Startup error: {e}")
+        raise
+    finally:
+        # Shutdown logic
+        debug_info("Shutting down application...")
+        if worker_pool:
+            try:
+                debug_info("Stopping background workers...")
+                await asyncio.wait_for(worker_pool.stop(), timeout=10.0)
+                debug_success("Workers stopped")
+            except asyncio.TimeoutError:
+                debug_error("Worker shutdown timed out after 10 seconds")
+            except Exception as e:
+                debug_error(f"Error stopping workers: {e}")
+        
+        debug_info("Application shutdown complete")
 
 
 def create_app() -> FastAPI:
