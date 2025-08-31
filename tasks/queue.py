@@ -28,8 +28,8 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
-import aiosqlite
 import sqlite3
+import threading
 
 from core.models import TaskStatus, TaskName
 from debugger import debug_info, debug_error, debug_warning, debug_success

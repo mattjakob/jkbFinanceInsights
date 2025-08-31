@@ -45,10 +45,20 @@ worker_pool: Optional[WorkerPool] = None
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
-    debug_info(f"Received signal {signum}, initiating immediate shutdown...")
-    # Force exit immediately without cleanup
+    print(f"\n🛑 Received signal {signum}, forcing immediate shutdown...")
+    print("💀 Killing all processes...")
+    # Force kill all related processes
+    import subprocess
     import os
-    os._exit(1)
+    try:
+        # Kill uvicorn processes
+        subprocess.run(['pkill', '-9', '-f', 'uvicorn'], stderr=subprocess.DEVNULL)
+        # Kill processes on port 8000
+        subprocess.run(['bash', '-c', 'lsof -ti :8000 | xargs kill -9'], stderr=subprocess.DEVNULL)
+    except:
+        pass
+    # Force exit immediately
+    os._exit(0)
 
 
 @asynccontextmanager
