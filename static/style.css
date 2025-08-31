@@ -362,43 +362,45 @@
 }
 
 .report-container {
-    padding: 1.5rem;
+    padding: 0;
 }
 
-.report-header {
+/* Block Header Styling */
+.report-block-header {
+    background-color: var(--text-color);
+    color: var(--bg-color);
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--text-color);
+    position: relative;
+}
+
+.block-header-content {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
+    width: 100%;
 }
 
-.report-title-section {
+.block-header-time {
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: 'Courier New', monospace;
+}
+
+.block-header-action {
     display: flex;
     align-items: center;
-    gap: 1rem;
 }
 
-.report-badge {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-    color: white;
-    padding: 0.5rem;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.report-icon {
-    font-size: 1.2rem;
-}
-
-.report-symbol-section {
-    display: flex;
-    flex-direction: column;
+.block-header-action .action-badge {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--bg-color);
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
+    font-weight: 700;
 }
 
 .report-time {
@@ -411,6 +413,7 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    padding: 1.5rem;
 }
 
 .summary-section {

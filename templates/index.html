@@ -263,17 +263,12 @@
 <!-- Report Block - Enhanced Visual Design -->
 <div class="report-block mb-3 {% if not latest_report %}d-none{% endif %}" id="reportBlock">
     <div class="report-container">
-        <div class="report-header">
-            <div class="report-title-section">
-                <div class="report-badge">
-                    <span class="report-icon"><i class="bi bi-calendar-event"></i></span>
-                </div>
-                <div class="report-symbol-section">
-                    <span class="report-time" id="reportTimeFetched">
-                        {% if latest_report %}{{ latest_report.timeFetched | format_date }}{% else %}-{% endif %}
-                    </span>
-                </div>
-                <div class="metric-content" id="reportAIAction">
+        <div class="report-block-header">
+            <div class="block-header-content">
+                <span class="block-header-time" id="reportTimeFetched">
+                    {% if latest_report %}{{ latest_report.timeFetched | format_date }}{% else %}-{% endif %}
+                </span>
+                <div class="block-header-action" id="reportAIAction">
                     {% if latest_report and latest_report.AIAction %}{{ action_badge(latest_report.AIAction) }}{% else %}-{% endif %}
                 </div>
             </div>
