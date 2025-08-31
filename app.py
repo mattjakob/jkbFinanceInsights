@@ -46,7 +46,9 @@ worker_pool: Optional[WorkerPool] = None
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
     debug_info(f"Received signal {signum}, initiating immediate shutdown...")
-    sys.exit(0)
+    # Force exit immediately without cleanup
+    import os
+    os._exit(1)
 
 
 @asynccontextmanager

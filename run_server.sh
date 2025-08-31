@@ -36,6 +36,22 @@ sleep 1
 SERVER_HOST=${SERVER_HOST:-0.0.0.0}
 SERVER_PORT=${SERVER_PORT:-8000}
 
+# Function to cleanup on exit
+cleanup() {
+    echo "Shutting down server..."
+    pkill -f "uvicorn main:app" 2>/dev/null || true
+    lsof -ti :$SERVER_PORT | xargs kill -9 2>/dev/null || true
+    exit 0
+}
+
+# Set trap for cleanup on SIGINT and SIGTERM
+trap cleanup SIGINT SIGTERM
+
 # Start the server with autoreload and console output
 echo "Starting server on http://$SERVER_HOST:$SERVER_PORT"
-uvicorn main:app --host $SERVER_HOST --port $SERVER_PORT --reload --log-level info
+echo "Press Ctrl+C to stop the server"
+uvicorn main:app --host $SERVER_HOST --port $SERVER_PORT --reload --log-level info &
+
+# Wait for the background process
+SERVER_PID=$!
+wait $SERVER_PID
