@@ -296,7 +296,7 @@
                                 {% set level_values = level_part.split(':')[1].strip() if ':' in level_part else '' %}
                                 {% if level_type in ['Entry', 'E', 'TP', 'SL', 'S', 'R'] and level_values %}
                                 <div class="col-auto">
-                                    <div class="level-badge level-{{ level_type.lower() }}">
+                                    <div class="level-badge">
                                         <div class="level-type">
                                             {% if level_type == 'E' %}ENTRY
                                             {% elif level_type == 'TP' %}TAKE_PROFIT
