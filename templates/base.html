@@ -15,12 +15,17 @@
                 <i class="bi bi-terminal"></i>
                 JKB Finance Terminal
             </a>
+            <div class="navbar-nav me-auto">
+                <a class="nav-link" href="/reports">
+                    <i class="bi bi-file-text"></i> Reports
+                </a>
+            </div>
             <div class="navbar-nav ms-auto">
                 <div class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="symbolsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-list-ul"></i> RECENTS
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-dark" id="symbolsDropdownMenu" aria-labelledby="symbolsDropdown">
+                    <ul class="dropdown-menu symbol-dropdown" id="symbolsDropdownMenu" aria-labelledby="symbolsDropdown">
                         <li><div class="dropdown-header">Loading symbols...</div></li>
                     </ul>
                 </div>
@@ -28,7 +33,7 @@
                     <a class="nav-link dropdown-toggle" href="#" id="utilitiesDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-tools"></i> UTILITIES
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-dark" id="utilitiesDropdownMenu" aria-labelledby="utilitiesDropdown">
+                    <ul class="dropdown-menu" id="utilitiesDropdownMenu" aria-labelledby="utilitiesDropdown">
                         <li><a class="dropdown-item utility-item" href="#" data-command="reset_tasks">
                             <i class="bi bi-arrow-repeat"></i> RESET TASKS
                         </a></li>
@@ -43,7 +48,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/debugger.js"></script>
     
     <script>
         /**
@@ -80,16 +84,14 @@
                         const listItem = document.createElement('li');
                         const link = document.createElement('a');
                         
-                        link.className = 'dropdown-item';
+                        link.className = 'dropdown-item symbol-dropdown-item';
                         link.href = symbolData.url;
                         link.innerHTML = `
-                            <div class="symbol-content">
-                                <div class="symbol-line">
-                                    <span class="symbol-text">${symbolData.symbol}</span>
-                                    <span class="exchange-tag">${symbolData.exchange}</span>
-                                </div>
+                            <div class="symbol-info">
+                                <span class="symbol-text">${symbolData.symbol}</span>
                                 <span class="company-name">${symbolData.company_name || ''}</span>
                             </div>
+                            <span class="exchange-tag">${symbolData.exchange}</span>
                         `;
                         
                         listItem.appendChild(link);
@@ -215,6 +217,20 @@
                                         max_items: maxItems
                                     })
                                 });
+                                const fetchData = await result.json();
+                                // Handle task-based response
+                                if (fetchData.success && (fetchData.task_id || fetchData.tasks_created)) {
+                                    // Show task creation message
+                                    const taskCount = fetchData.tasks_created || 1;
+                                    item.innerHTML = `<i class="bi bi-check-circle"></i> Created ${taskCount} task(s)!`;
+                                    // Refresh after delay to show processing results
+                                    setTimeout(() => {
+                                        if (window.app && window.app.refreshTable) {
+                                            window.app.refreshTable();
+                                        }
+                                    }, 3000);
+                                }
+                                result = { json: async () => fetchData };
                                 break;
                                 
                             case 'analyze_all':

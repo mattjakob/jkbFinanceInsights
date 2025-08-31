@@ -49,8 +49,13 @@ class TradingViewOpinionsScraper(BaseScraper):
             raise ValueError("Symbol required for fetching opinions")
         
         # TradingView opinions use the minds API
-        # API has a maximum limit of ~20 items, so cap the request
-        api_limit = min(limit, 20) if limit else 20
+        from config import OPINIONS_API_MAX_LIMIT
+        
+        # API has a hard limit - cap the request but inform user
+        api_limit = min(limit, OPINIONS_API_MAX_LIMIT)
+        if limit > OPINIONS_API_MAX_LIMIT:
+            debug_warning(f"TD OPINIONS API limited to {OPINIONS_API_MAX_LIMIT} items (requested: {limit}). Will fetch {api_limit} items.")
+        
         url = f"https://www.tradingview.com/api/v1/minds/?symbol={symbol}&limit={api_limit}"
         params = {}
         

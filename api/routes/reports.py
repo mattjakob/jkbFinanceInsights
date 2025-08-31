@@ -27,7 +27,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from core.models import ReportModel, AIAction, TaskStatus
+from core.models import ReportModel, TradingAction, TaskStatus
 from data.repositories.reports import get_reports_repository
 from debugger import debug_info, debug_error, debug_success
 
@@ -77,6 +77,37 @@ class ReportResponse(BaseModel):
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
+@router.get("/symbols")
+async def get_unique_symbols():
+    """
+     ┌─────────────────────────────────────┐
+     │        GET_UNIQUE_SYMBOLS           │
+     └─────────────────────────────────────┘
+     Get list of unique symbols from reports
+     
+     Returns a list of all unique symbols that have reports.
+    """
+    try:
+        repo = get_reports_repository()
+        all_reports = repo.get_all(limit=1000)  # Get a large number of reports
+        
+        # Extract unique symbols
+        symbols = sorted(list(set(report.symbol for report in all_reports if report.symbol)))
+        
+        return {
+            "success": True,
+            "count": len(symbols),
+            "symbols": symbols
+        }
+    except Exception as e:
+        debug_error(f"Error getting unique symbols: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "symbols": []
+        }
+
+
 @router.post("/", response_model=ReportResponse)
 async def create_report(report_data: ReportCreate):
     """
@@ -93,7 +124,7 @@ async def create_report(report_data: ReportCreate):
             time_fetched=datetime.now(),
             symbol=report_data.symbol.upper(),
             ai_summary=report_data.ai_summary,
-            ai_action=AIAction(report_data.ai_action.upper()),
+            ai_action=TradingAction(report_data.ai_action.upper()),
             ai_confidence=report_data.ai_confidence,
             ai_event_time=report_data.ai_event_time,
             ai_levels=report_data.ai_levels,
@@ -323,4 +354,25 @@ async def cleanup_old_reports(days: int = 30):
         "message": f"Deleted {deleted_count} old reports",
         "days": days,
         "count": deleted_count
+    }
+
+
+@router.delete("/all")
+async def delete_all_reports():
+    """
+     ┌─────────────────────────────────────┐
+     │       DELETE_ALL_REPORTS            │
+     └─────────────────────────────────────┘
+     Delete all reports from the database
+     
+     Returns count of deleted reports.
+    """
+    repo = get_reports_repository()
+    deleted_count = repo.delete_all()
+    
+    debug_info(f"Deleted all {deleted_count} reports")
+    return {
+        "success": True,
+        "message": f"Deleted all {deleted_count} reports",
+        "deleted_count": deleted_count
     }

@@ -18,10 +18,10 @@ class DatabaseConfig:
     
     def __init__(self, database_url: str = DATABASE_URL):
         self.database_url = database_url
-        self.timeout = DATABASE_TIMEOUT
+        self.timeout = DATABASE_TIMEOUT / 1000.0  # Convert milliseconds to seconds
         self.check_same_thread = False
         self.max_retries = DATABASE_MAX_RETRIES
-        self.retry_delay = DATABASE_RETRY_DELAY
+        self.retry_delay = DATABASE_RETRY_DELAY / 1000.0  # Convert milliseconds to seconds
         
     @property
     def connection_kwargs(self) -> dict:
@@ -85,6 +85,7 @@ class DatabaseManager:
                 if "database is locked" in str(e).lower():
                     if attempt < self.config.max_retries - 1:
                         debug_warning(f"Database locked, retrying in {self.config.retry_delay}s (attempt {attempt + 1}/{self.config.max_retries})")
+                        # Always use time.sleep in sync context
                         time.sleep(self.config.retry_delay * (2 ** attempt))  # Exponential backoff
                         continue
                 # Re-raise non-locking errors immediately
@@ -131,6 +132,7 @@ class DatabaseManager:
                 if "database is locked" in str(e).lower():
                     if attempt < self.config.max_retries - 1:
                         debug_warning(f"Database session locked, retrying in {self.config.retry_delay}s (attempt {attempt + 1}/{self.config.max_retries})")
+                        # Always use time.sleep in sync context
                         time.sleep(self.config.retry_delay * (2 ** attempt))  # Exponential backoff
                         continue
                 # Re-raise non-locking errors immediately

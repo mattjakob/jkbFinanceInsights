@@ -24,7 +24,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 
-from tasks import TaskQueue
+from tasks import get_task_queue
 from tasks.handlers import handle_bulk_analysis
 from data import InsightsRepository
 from core import TaskStatus, TaskName
@@ -34,7 +34,6 @@ from debugger import debug_info, debug_error, debug_success
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
 # Initialize dependencies
-task_queue = TaskQueue()
 insights_repo = InsightsRepository()
 
 
@@ -165,7 +164,7 @@ async def analyze_single_insight(insight_id: int):
             entity_id=insight_id
         )
         
-        debug_success(f"Created analysis task {task_id} for insight {insight_id}")
+        # Task creation logged by queue
         
         return {
             "success": True,
@@ -221,21 +220,20 @@ async def generate_ai_report(request: Dict[str, Any]):
         content = "\n".join(content_parts) if content_parts else f"Analysis data for {symbol}"
         
         # Create a task in the queue for report generation
-        from tasks.queue import TaskQueue
-        task_queue = TaskQueue()
+        task_queue = await get_task_queue()
         
-        task_id = task_queue.add_task(
+        task_id = await task_queue.add_task(
             task_type=TaskName.REPORT_GENERATION.value,
             payload={
                 "symbol": symbol,
                 "content": content,
                 "insights_count": len(insights)
             },
-            entity_type="symbol",
-            entity_id=hash(symbol)  # Use hash of symbol as entity ID
+            entity_type="report",
+            entity_id=None  # Report tasks don't track specific entity
         )
         
-        debug_success(f"AI report generation task created for {symbol} (Task ID: {task_id})")
+        # Task creation logged by queue
         
         return {
             "success": True,

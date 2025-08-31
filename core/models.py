@@ -76,6 +76,12 @@ class TaskName(str, Enum):
     BULK_ANALYSIS = "bulk_analysis"
     CLEANUP = "cleanup"
     REPORT_GENERATION = "ai_report_generation"
+    # Scraping tasks
+    SCRAPING_NEWS = "scraping_news"
+    SCRAPING_IDEAS_RECENT = "scraping_ideas_recent"
+    SCRAPING_IDEAS_POPULAR = "scraping_ideas_popular"
+    SCRAPING_OPINIONS = "scraping_opinions"
+    SCRAPING_ALL = "scraping_all"
 
 
 @dataclass
@@ -139,10 +145,10 @@ class TaskInfo:
         return self.status in [TaskStatus.EMPTY, TaskStatus.FAILED]
 
 
-class AIAction(str, Enum):
+class TradingAction(str, Enum):
     """
      ┌─────────────────────────────────────┐
-     │            AIACTION                 │
+     │         TRADING ACTION              │
      └─────────────────────────────────────┘
      AI-recommended trading actions
      
@@ -152,6 +158,8 @@ class AIAction(str, Enum):
     SELL = "SELL"
     HOLD = "HOLD"
     WATCH = "WATCH"
+
+
 
 
 @dataclass
@@ -194,7 +202,7 @@ class InsightModel:
     # AI Analysis fields
     ai_image_summary: Optional[str] = None
     ai_summary: Optional[str] = None
-    ai_action: Optional[AIAction] = None
+    ai_action: Optional[TradingAction] = None
     ai_confidence: Optional[float] = None
     ai_event_time: Optional[str] = None
     ai_levels: Optional[str] = None
@@ -237,7 +245,7 @@ class InsightModel:
             image_url=data.get('imageURL'),
             ai_image_summary=data.get('AIImageSummary'),
             ai_summary=data.get('AISummary'),
-            ai_action=AIAction(data['AIAction']) if data.get('AIAction') else None,
+            ai_action=TradingAction(data['AIAction']) if data.get('AIAction') else None,
             ai_confidence=data.get('AIConfidence'),
             ai_event_time=data.get('AIEventTime'),
             ai_levels=data.get('AILevels'),
@@ -314,7 +322,7 @@ class AIAnalysisResult:
      - Used by AI providers to return structured data
     """
     summary: str
-    action: AIAction
+    action: TradingAction
     confidence: float  # 0.0 to 1.0
     event_time: Optional[str] = None
     levels: Optional[Dict[str, Any]] = None
@@ -371,7 +379,7 @@ class ReportModel:
     
     # AI Analysis fields
     ai_summary: str
-    ai_action: AIAction
+    ai_action: TradingAction
     ai_confidence: float
     ai_event_time: Optional[str] = None
     ai_levels: Optional[str] = None
@@ -403,7 +411,7 @@ class ReportModel:
             time_fetched=datetime.fromisoformat(data['timeFetched']),
             symbol=data['symbol'],
             ai_summary=data['AISummary'],
-            ai_action=AIAction(data['AIAction']),
+            ai_action=TradingAction(data['AIAction']),
             ai_confidence=data['AIConfidence'],
             ai_event_time=data.get('AIEventTime'),
             ai_levels=data.get('AILevels'),

@@ -126,7 +126,9 @@ class BaseScraper(ABC):
             
             self.last_fetch_time = datetime.now()
             
-            debug_info(f"{self.feed_type.value} fetch completed: {len(items)} items retrieved")
+            debug_info(f"{self.feed_type.value} fetch completed: {len(items)} items retrieved (requested: {limit})")
+            if len(items) < limit:
+                debug_warning(f"{self.feed_type.value}: Retrieved {len(items)} items, {limit - len(items)} fewer than requested")
             return items
             
         except Exception as e:

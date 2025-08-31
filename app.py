@@ -32,7 +32,7 @@ from typing import Optional
 from api import api_router
 from views import web_router
 from core import get_db_manager
-from tasks import WorkerPool, HANDLERS
+from tasks import HANDLERS, WorkerPool
 from debugger import debug_success, debug_info
 from config import (
     APP_NAME, APP_VERSION, TASK_WORKER_COUNT
@@ -48,10 +48,9 @@ async def lifespan(app: FastAPI):
      ┌─────────────────────────────────────┐
      │           LIFESPAN                  │
      └─────────────────────────────────────┘
-     Application lifespan manager
+     Application lifespan manager (simplified)
      
-     Handles startup and shutdown logic for the application,
-     including database initialization and worker management.
+     Handles startup and shutdown logic for the application.
     """
     global worker_pool
     
@@ -62,17 +61,18 @@ async def lifespan(app: FastAPI):
     db_manager = get_db_manager()
     debug_success("Database initialized")
     
-    # Start task workers
+    # Start task workers in background (non-blocking)
     worker_pool = WorkerPool(worker_count=TASK_WORKER_COUNT)
     
     # Register all handlers
     for task_type, handler in HANDLERS.items():
         worker_pool.register_handler(task_type, handler)
     
-    # Start workers in background
-    asyncio.create_task(worker_pool.start())
+    # Start workers (this should be non-blocking now)
+    await worker_pool.start()
     
-    debug_success("Application started successfully")
+    debug_success(f"Application started successfully")
+    debug_success(f"Workers: {TASK_WORKER_COUNT}")
     
     yield  # Application runs here
     
@@ -121,9 +121,9 @@ app = create_app()
 
 
 # Additional API endpoints that don't fit in the modular structure
-@app.get("/api/debug-status")
-async def get_debug_status():
-    """Get current debug status for frontend"""
+@app.get("/api/debugger")
+async def get_debugger_status():
+    """Get current debugger status for frontend"""
     from debugger import debugger
     return debugger.get_current_status()
 
@@ -144,7 +144,7 @@ async def send_debug_message(request: dict):
 @app.get("/api/symbols")
 async def get_normalized_symbols():
     """Get a normalized list of unique symbols from insights"""
-    from services import InsightsService
+    from services import SymbolService
     
-    insights_service = InsightsService()
-    return insights_service.get_normalized_symbols()
+    symbol_service = SymbolService()
+    return symbol_service.get_normalized_symbols()

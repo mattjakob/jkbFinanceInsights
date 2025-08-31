@@ -51,20 +51,20 @@
         </div>
         {% endif %}
         <div class="col-auto ms-auto">
-            <a href="/api/insights/{{ insight.exchange or 'NASDAQ' }}:{{ insight.symbol or 'UNKNOWN' }}" class="btn btn-success btn-sm">
+            <a href="/api/insights/{{ insight.exchange or 'NASDAQ' }}:{{ insight.symbol or 'UNKNOWN' }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-arrow-left"></i> TERMINAL
             </a>
         </div>
  
         <div class="col-auto">
-            <button class="btn btn-secondary btn-sm" id="textAnalysisBtn" data-insight-id="{{ insight.id }}">
+            <button class="btn btn-primary btn-sm" id="textAnalysisBtn" data-insight-id="{{ insight.id }}">
                 <i class="bi bi-stars"></i> STRATEGY
             </button>
         </div>
         
         {% if insight.imageURL %}
         <div class="col-auto">
-            <button class="btn btn-secondary btn-sm" id="imageAnalysisBtn" data-insight-id="{{ insight.id }}">
+            <button class="btn btn-primary btn-sm" id="imageAnalysisBtn" data-insight-id="{{ insight.id }}">
                 <i class="bi bi-stars"></i> CHART
             </button>
         </div>
@@ -76,7 +76,7 @@
             </a>
         </div>
         <div class="col-auto">
-            <button class="btn btn-danger btn-sm" id="deleteInsightBtn" data-insight-id="{{ insight.id }}">
+            <button class="btn btn-primary btn-sm" id="deleteInsightBtn" data-insight-id="{{ insight.id }}">
                 <i class="bi bi-trash"></i> DELETE
             </button>
         </div>
@@ -94,7 +94,7 @@
     <div class="terminal-content">{{ insight.AISummary }}</div>
     
     {% if insight.AIEventTime %}
-    <div class="metadata-item" style="margin-top: 1rem;">
+    <div class="metadata-item mt-3">
         <span class="metadata-key">TIME HORIZON:</span>
         <span class="metadata-value">{{ insight.AIEventTime[:19].replace('T', ' ') }}</span>
     </div>

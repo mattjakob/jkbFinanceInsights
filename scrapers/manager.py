@@ -146,13 +146,20 @@ class ScraperManager:
                 else:
                     failed_count += 1
             
-            # Log summary
+            # Log detailed summary
+            total_processed = len(scraped_items)
+            #debug_info(f"Storage summary for {feed_type.value}: {total_processed} items processed")
             if created_count > 0:
-                debug_success(f"Created {created_count} new insights for {feed_type.value}")
+                debug_success(f"Created {created_count} insights for {feed_type.value}")
             if duplicate_count > 0:
                 debug_info(f"Found {duplicate_count} duplicate insights")
             if failed_count > 0:
-                debug_warning(f"Failed to process {failed_count} items")
+                debug_warning(f"Failed to process {failed_count} items for {feed_type.value} during storage")
+            
+            # Calculate and log efficiency
+            if total_processed > 0:
+                efficiency = (created_count / total_processed) * 100
+                #debug_info(f"Storage efficiency: {efficiency:.1f}% ({created_count}/{total_processed} new items)")
             
             return {
                 'success': True,

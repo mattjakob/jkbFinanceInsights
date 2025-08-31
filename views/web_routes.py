@@ -25,12 +25,15 @@ from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
+from datetime import datetime
+import re
 
-from services import InsightsService
+from services import InsightManagementService, SymbolService
 from core import FeedType
 from data.repositories.reports import get_reports_repository
+from tasks import get_task_queue
 from config import (
-    FRONTEND_REFRESH_INTERVALS, APP_BEHAVIOR,
+    UI_REFRESH, FRONTEND_REFRESH_INTERVALS, APP_BEHAVIOR,
     TRADINGVIEW_CHART_HEIGHT, TRADINGVIEW_CHART_INTERVAL, 
     TRADINGVIEW_CHART_TIMEZONE
 )
@@ -41,114 +44,104 @@ router = APIRouter()
 # Setup templates
 templates = Jinja2Templates(directory="templates")
 
+# Custom Jinja2 filters
+def format_date_filter(date_string):
+    """
+    Format date string to 'ddd, mmm dd yyyy - hh:mm' format
+    Example: '2025-08-29T22:24:52.911576' -> 'Friday, August 29 2025 - 10:24pm'
+    """
+    if not date_string or date_string == '-':
+        return '-'
+    
+    try:
+        # Parse ISO format datetime
+        dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+        
+        # Format to desired output
+        formatted = dt.strftime('%A, %B %d %Y - %I:%M%p')
+        
+        # Convert to lowercase for am/pm
+        formatted = formatted.replace('AM', 'am').replace('PM', 'pm')
+        
+        return formatted
+    except (ValueError, TypeError):
+        # Return original if parsing fails
+        return date_string
+
+# Register the filter
+templates.env.filters["format_date"] = format_date_filter
+
 # Service instances
-insights_service = InsightsService()
+insights_service = InsightManagementService()
+symbol_service = SymbolService()
 reports_repo = get_reports_repository()
 
 
 @router.get("/", response_class=HTMLResponse)
-async def home(request: Request, type: Optional[str] = Query(None, description="Filter by feed type")):
+async def home(request: Request, 
+               type: Optional[str] = Query(None, description="Filter by feed type"),
+               symbol: Optional[str] = Query(None, description="Filter by symbol")):
     """
      ┌─────────────────────────────────────┐
      │             HOME                    │
      └─────────────────────────────────────┘
      Display the main web interface
      
-     Shows all insights with optional type filtering.
+     Shows all insights with optional type and symbol filtering.
     """
+    # Parse symbol and exchange from symbol parameter
+    exchange = ""
+    symbol_filter = ""
+    if symbol:
+        if ':' in symbol:
+            parts = symbol.split(':', 1)
+            if len(parts) == 2:
+                exchange = parts[0].upper()
+                symbol_filter = parts[1].upper()
+        else:
+            symbol_filter = symbol.upper()
+    
     # Clean type filter if provided
     clean_type = None
     if type:
         clean_type = type.replace('+', ' ').upper()
     
-    # Get insights with optional type filter
-    insights_data = insights_service.get_insights(type_filter=clean_type)
-    
-    # Get feed types for filter dropdown
-    feed_names = [
-        {"name": feed_type.value, "description": f"{feed_type.value} feed"}
-        for feed_type in FeedType
-    ]
-    
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "insights": insights_data,
-        "feed_names": feed_names,
-        "selected_symbol": "",
-        "selected_exchange": "",
-        "selected_type": clean_type or "",
-        "latest_report": None,
-        "config": {
-            "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
-            "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
-            "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
-            "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
-            "app_reload_delay": APP_BEHAVIOR["reload_delay"],
-            "app_max_items": APP_BEHAVIOR["max_items"],
-            "app_search_debounce": APP_BEHAVIOR["search_debounce"],
-            "app_auto_refresh": APP_BEHAVIOR["auto_refresh"],
-            "tradingview_chart_height": TRADINGVIEW_CHART_HEIGHT,
-            "tradingview_chart_interval": TRADINGVIEW_CHART_INTERVAL,
-            "tradingview_chart_timezone": TRADINGVIEW_CHART_TIMEZONE
-        }
-    })
-
-
-@router.get("/api/insights/{exchange_symbol}", response_class=HTMLResponse)
-async def insights_by_symbol(request: Request, exchange_symbol: str, type: Optional[str] = None):
-    """
-     ┌─────────────────────────────────────┐
-     │      INSIGHTS BY EXCHANGE-SYMBOL    │
-     └─────────────────────────────────────┘
-     Display insights filtered by exchange and symbol
-     
-     Shows insights for a specific exchange-symbol combination.
-     Also supports type filtering via query parameter for backward compatibility.
-    """
-    # Parse exchange-symbol format (e.g., "BINANCE:BTCUSD" -> exchange="BINANCE", symbol="BTCUSD")
-    exchange = ""
-    symbol = exchange_symbol.upper()
-    
-    if ':' in exchange_symbol:
-        parts = exchange_symbol.split(':', 1)
-        if len(parts) == 2:
-            exchange = parts[0].upper()
-            symbol = parts[1].upper()
-    
-    # Clean type filter if provided via query parameter
-    clean_type = ""
-    if type:
-        clean_type = type.replace('+', ' ').upper()
-    
-    # Get filtered insights
+    # Get insights with optional filters
     insights_data = insights_service.get_insights(
-        symbol_filter=symbol, 
-        type_filter=clean_type if clean_type else None
+        type_filter=clean_type,
+        symbol_filter=symbol_filter
     )
     
-    # Get latest report for the symbol
-    latest_report = None
-    if symbol:
-        latest_report = reports_repo.get_latest_by_symbol(symbol)
-    
     # Get feed types for filter dropdown
     feed_names = [
         {"name": feed_type.value, "description": f"{feed_type.value} feed"}
         for feed_type in FeedType
     ]
     
+    # Get latest report for the symbol if provided
+    latest_report = None
+    if symbol_filter:
+        latest_report = reports_repo.get_latest_by_symbol(symbol_filter)
+    
+    # Get actual task stats from queue
+    task_queue = await get_task_queue()
+    task_stats = await task_queue.get_stats()
+    
     return templates.TemplateResponse("index.html", {
         "request": request,
         "insights": insights_data,
         "feed_names": feed_names,
-        "selected_symbol": symbol,
+        "selected_symbol": symbol_filter,
         "selected_exchange": exchange,
-        "selected_type": clean_type,
+        "selected_type": clean_type or "",
         "latest_report": latest_report.to_dict() if latest_report else None,
+        "current_time": datetime.now(),
+        "task_stats": task_stats,
         "config": {
+            "UI_REFRESH": UI_REFRESH,
             "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
             "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
-            "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
+            "UI_REFRESH_TABLE": FRONTEND_REFRESH_INTERVALS["table"],
             "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
             "app_reload_delay": APP_BEHAVIOR["reload_delay"],
             "app_max_items": APP_BEHAVIOR["max_items"],
@@ -161,7 +154,90 @@ async def insights_by_symbol(request: Request, exchange_symbol: str, type: Optio
     })
 
 
-@router.get("/api/insights/{exchange_symbol}/{type_filter}", response_class=HTMLResponse)
+@router.get("/reports", response_class=HTMLResponse)
+async def reports(request: Request, symbol: Optional[str] = Query(None, description="Filter by symbol"), 
+                  status: Optional[str] = Query(None, description="Filter by status"),
+                  time_range: Optional[str] = Query("all", description="Time range in hours")):
+    """
+     ┌─────────────────────────────────────┘
+     │            REPORTS                  │
+     └─────────────────────────────────────┘
+     Display AI analysis reports
+     
+     Shows all AI analysis reports with optional filtering.
+    """
+    try:
+        # Get reports with optional filters
+        if time_range and time_range != "all":
+            try:
+                hours = int(time_range)
+                reports_data = reports_repo.get_recent(hours=hours)
+            except ValueError:
+                reports_data = reports_repo.get_recent(hours=24)
+        else:
+            reports_data = reports_repo.get_all(limit=250)
+        
+        # Apply additional filters if provided
+        if symbol:
+            symbol = symbol.upper()
+            reports_data = [r for r in reports_data if r.symbol == symbol]
+        
+        if status:
+            reports_data = [r for r in reports_data if r.ai_task.status.value == status]
+        
+        # Convert to dict format for template
+        reports_dict = [r.to_dict() for r in reports_data]
+        
+        return templates.TemplateResponse("reports.html", {
+            "request": request,
+            "reports": reports_dict,
+            "selected_symbol": symbol or "",
+            "selected_status": status or "",
+            "selected_time_range": time_range or "all",
+            "config": {
+                "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
+                "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
+                "UI_REFRESH_TABLE": FRONTEND_REFRESH_INTERVALS["table"],
+                "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
+                "app_reload_delay": APP_BEHAVIOR["reload_delay"],
+                "app_max_items": APP_BEHAVIOR["max_items"],
+                "app_search_debounce": APP_BEHAVIOR["search_debounce"],
+                "app_auto_refresh": APP_BEHAVIOR["auto_refresh"],
+                "tradingview_chart_height": TRADINGVIEW_CHART_HEIGHT,
+                "tradingview_chart_interval": TRADINGVIEW_CHART_INTERVAL,
+                "tradingview_chart_timezone": TRADINGVIEW_CHART_TIMEZONE
+            }
+        })
+    except Exception as e:
+        from debugger import debug_error
+        debug_error(f"Error in reports route: {str(e)}")
+        # Return empty reports on error
+        return templates.TemplateResponse("reports.html", {
+            "request": request,
+            "reports": [],
+            "selected_symbol": "",
+            "selected_status": "",
+            "selected_time_range": "24",
+            "config": {
+                "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
+                "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
+                "UI_REFRESH_TABLE": FRONTEND_REFRESH_INTERVALS["table"],
+                "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
+                "app_reload_delay": APP_BEHAVIOR["reload_delay"],
+                "app_max_items": APP_BEHAVIOR["max_items"],
+                "app_search_debounce": APP_BEHAVIOR["search_debounce"],
+                "app_auto_refresh": APP_BEHAVIOR["auto_refresh"],
+                "tradingview_chart_height": TRADINGVIEW_CHART_HEIGHT,
+                "tradingview_chart_interval": TRADINGVIEW_CHART_INTERVAL,
+                "tradingview_chart_timezone": TRADINGVIEW_CHART_TIMEZONE
+            }
+        })
+
+
+
+
+
+@router.get("/web/insights/{exchange_symbol}/{type_filter}", response_class=HTMLResponse)
 async def insights_by_symbol_and_type(request: Request, exchange_symbol: str, type_filter: str):
     """
      ┌─────────────────────────────────────┐
@@ -209,10 +285,13 @@ async def insights_by_symbol_and_type(request: Request, exchange_symbol: str, ty
         "selected_exchange": exchange,
         "selected_type": clean_type,
         "latest_report": latest_report.to_dict() if latest_report else None,
+        "current_time": datetime.now(),
+        "task_stats": {"processing": 0, "pending": 0, "completed": 0, "failed": 0},
         "config": {
+            "UI_REFRESH": UI_REFRESH,
             "frontend_unified_refresh_interval": FRONTEND_REFRESH_INTERVALS["unified"],
             "frontend_age_refresh_interval": FRONTEND_REFRESH_INTERVALS["age"],
-            "frontend_table_refresh_interval": FRONTEND_REFRESH_INTERVALS["table"],
+            "UI_REFRESH_TABLE": FRONTEND_REFRESH_INTERVALS["table"],
             "frontend_status_refresh_interval": FRONTEND_REFRESH_INTERVALS["status"],
             "app_reload_delay": APP_BEHAVIOR["reload_delay"],
             "app_max_items": APP_BEHAVIOR["max_items"],

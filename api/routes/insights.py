@@ -25,14 +25,14 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-from services import InsightsService
+from services import InsightManagementService
 from debugger import debug_info, debug_error, debug_success
 
 # Create router
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
 # Service instance
-insights_service = InsightsService()
+insights_service = InsightManagementService()
 
 
 @router.get("", response_model=List[Dict[str, Any]])
@@ -63,7 +63,80 @@ async def get_insights(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{insight_id}", response_model=Dict[str, Any])
+@router.get("/{exchange_symbol}", response_model=List[Dict[str, Any]])
+async def get_insights_by_exchange_symbol(
+    exchange_symbol: str,
+    type: Optional[str] = Query(None, description="Filter by feed type"),
+    limit: Optional[int] = Query(100, description="Maximum results"),
+    offset: int = Query(0, description="Skip first N results")
+):
+    """
+     ┌─────────────────────────────────────┐
+     │ GET_INSIGHTS_BY_EXCHANGE_SYMBOL     │
+     └─────────────────────────────────────┘
+     Get insights filtered by exchange and symbol (JSON response)
+     
+     Returns a JSON list of insights for a specific exchange-symbol combination.
+     Supports additional filtering by type and pagination.
+     Handles format like COINBASE:BTCUSD or just BTCUSD.
+    """
+    try:
+        # Parse exchange-symbol format (e.g., "COINBASE:BTCUSD" -> symbol="BTCUSD")
+        symbol = exchange_symbol.upper()
+        if ':' in exchange_symbol:
+            parts = exchange_symbol.split(':', 1)
+            if len(parts) == 2:
+                symbol = parts[1].upper()
+        
+        return insights_service.get_insights(
+            type_filter=type,
+            symbol_filter=symbol,
+            limit=limit,
+            offset=offset
+        )
+        
+    except Exception as e:
+        debug_error(f"Error getting insights by symbol {exchange_symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/symbol/{exchange_symbol}", response_model=List[Dict[str, Any]])
+async def get_insights_by_symbol(
+    exchange_symbol: str,
+    type: Optional[str] = Query(None, description="Filter by feed type"),
+    limit: Optional[int] = Query(100, description="Maximum results"),
+    offset: int = Query(0, description="Skip first N results")
+):
+    """
+     ┌─────────────────────────────────────┐
+     │    GET_INSIGHTS_BY_SYMBOL           │
+     └─────────────────────────────────────┘
+     Get insights filtered by exchange and symbol (alternative route)
+     
+     Returns a JSON list of insights for a specific exchange-symbol combination.
+     Supports additional filtering by type and pagination.
+    """
+    try:
+        # Parse exchange-symbol format (e.g., "COINBASE:BTCUSD" -> symbol="BTCUSD")
+        symbol = exchange_symbol.upper()
+        if ':' in exchange_symbol:
+            parts = exchange_symbol.split(':', 1)
+            if len(parts) == 2:
+                symbol = parts[1].upper()
+        
+        return insights_service.get_insights(
+            type_filter=type,
+            symbol_filter=symbol,
+            limit=limit,
+            offset=offset
+        )
+        
+    except Exception as e:
+        debug_error(f"Error getting insights by symbol {exchange_symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/id/{insight_id}", response_model=Dict[str, Any])
 async def get_insight(insight_id: int):
     """
      ┌─────────────────────────────────────┐
@@ -100,7 +173,7 @@ async def create_insight(insight_data: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{insight_id}", response_model=Dict[str, Any])
+@router.put("/id/{insight_id}", response_model=Dict[str, Any])
 async def update_insight(insight_id: int, updates: Dict[str, Any]):
     """
      ┌─────────────────────────────────────┐
@@ -116,7 +189,7 @@ async def update_insight(insight_id: int, updates: Dict[str, Any]):
     return updated
 
 
-@router.delete("/{insight_id}")
+@router.delete("/id/{insight_id}")
 async def delete_insight(insight_id: int):
     """
      ┌─────────────────────────────────────┐
@@ -150,7 +223,7 @@ async def delete_insights_by_type(type: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{insight_id}/reset-ai")
+@router.post("/id/{insight_id}/reset-ai")
 async def reset_insight_ai(insight_id: int):
     """
      ┌─────────────────────────────────────┐

@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+
+{% block title %}JKB Finance Reports{% endblock %}
+
+{# Macro for action badges #}
+{% macro action_badge(action) -%}
+    {% if 'SELL' in action|upper %}
+        <span class="action-badge action-sell">SELL <i class="bi bi-graph-down-arrow"></i></span>
+    {% elif 'BUY' in action|upper %}
+        <span class="action-badge action-buy">BUY <i class="bi bi-graph-up-arrow"></i></span>
+    {% elif 'HOLD' in action|upper %}
+        <span class="action-badge action-hold">HOLD <i class="bi bi-hourglass-split"></i></span>
+    {% else %}
+        <span class="action-badge action-neutral">{{ action[:4]|upper }}</span>
+    {% endif %}
+{%- endmacro %}
+
+{# Macro for AI analysis status indicators #}
+{% macro ai_status_indicator(status, content=None) -%}
+    {% if status == 'pending' %}
+        <div class="ai-status-pending">
+            <span class="status-spinner-wrapper">
+                <div class="loading-spinner pending"></div>
+            </span>
+        </div>
+    {% elif status == 'processing' %}
+        <div class="ai-status-processing">
+            <span class="status-spinner-wrapper">
+                <div class="loading-spinner processing"></div>
+            </span>
+        </div>
+    {% elif status == 'failed' %}
+        <div class="ai-status-failed">
+            <span class="status-icon-wrapper">
+                <i class="bi bi-x-circle"></i>
+            </span>
+        </div>
+    {% elif status == 'empty' %}
+        <div class="ai-status-empty">
+            <span class="status-placeholder">-</span>
+        </div>
+    {% elif status == 'completed' and content %}
+        <div class="ai-status-completed">
+            <span class="status-content">{{ content }}</span>
+        </div>
+    {% else %}
+        <div class="ai-status-empty">
+            <span class="status-placeholder">-</span>
+        </div>
+    {% endif %}
+{%- endmacro %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="h3 mb-0">
+                <i class="bi bi-file-text"></i> AI Analysis Reports
+            </h1>
+            <p class="text-muted mb-0">Comprehensive AI analysis reports for trading symbols</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/" class="btn btn-primary btn-sm">
+                <i class="bi bi-arrow-left"></i> Back to Insights
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Control Panel -->
+<div class="control-panel mb-4">
+    <div class="row g-2 align-items-center">
+        <!-- Symbol Filter Dropdown -->
+        <div class="col-auto">
+            <div class="dropdown">
+                <button class="btn btn-primary btn-sm dropdown-toggle" type="button" id="symbolFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span id="selectedSymbolText">ALL SYMBOLS</span>
+                </button>
+                <ul class="dropdown-menu" id="symbolFilterMenu" aria-labelledby="symbolFilterDropdown">
+                    <li><a class="dropdown-item symbol-filter-item" href="#" data-symbol="">ALL SYMBOLS</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><div class="dropdown-header">Loading symbols...</div></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Status Filter -->
+        <div class="col-auto">
+            <select class="form-select form-select-sm" id="statusFilter" title="Analysis Status">
+                <option value="">ALL STATUS</option>
+                <option value="completed">COMPLETED</option>
+                <option value="pending">PENDING</option>
+                <option value="processing">PROCESSING</option>
+                <option value="failed">FAILED</option>
+            </select>
+        </div>
+        
+        <!-- Time Range Filter -->
+        <div class="col-auto">
+            <select class="form-select form-select-sm" id="timeFilter" title="Time Range">
+                <option value="24" {% if selected_time_range == "24" %}selected{% endif %}>Last 24h</option>
+                <option value="48" {% if selected_time_range == "48" %}selected{% endif %}>Last 48h</option>
+                <option value="168" {% if selected_time_range == "168" %}selected{% endif %}>Last Week</option>
+                <option value="720" {% if selected_time_range == "720" %}selected{% endif %}>Last Month</option>
+                <option value="all" {% if selected_time_range == "all" or not selected_time_range %}selected{% endif %}>All Time</option>
+            </select>
+        </div>
+
+        <!-- Action Group -->
+        <div class="col-auto ms-auto">
+            <div class="d-flex gap-2 align-items-center">
+                <button class="btn btn-primary btn-sm refresh-btn">
+                    <i class="bi bi-arrow-clockwise"></i> REFRESH
+                </button>
+                <button class="btn btn-primary btn-sm delete-all-btn">
+                    <i class="bi bi-trash"></i> DELETE ALL
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+<!-- Reports Table -->
+{% if reports %}
+    <div class="table-responsive">
+        <table class="table finance-table">
+            <thead>
+                <tr>
+                    <th>SYMBOL</th>
+                    <th>GENERATED</th>
+                    <th>AI SUMMARY</th>
+                    <th>ACTION</th>
+                    <th>CONFIDENCE</th>
+                    <th>EVENT TIME</th>
+                    <th>PRICE LEVELS</th>
+                    <th>STATUS</th>
+                </tr>
+            </thead>
+            <tbody id="reportsTableBody">
+                {% for report in reports %}
+                <tr class="report-row" data-report-id="{{ report.id }}">
+                    <td class="symbol-col">
+                        <strong class="symbol">{{ report.symbol }}</strong>
+                    </td>
+                    <td class="time-col">
+                        <span class="time-text" data-time-fetched="{{ report.timeFetched }}">-</span>
+                    </td>
+                    <td class="summary-col ai-col-left">
+                        <div class="summary-content" title="Report ID: {{ report.id }}">
+                            {{ report.AISummary[:100] }}{% if report.AISummary|length > 100 %}...{% endif %}
+                        </div>
+                    </td>
+                    <td class="action-col ai-col-center">
+                        {{ ai_status_indicator(report.TaskStatus, action_badge(report.AIAction) if report.AIAction else None) }}
+                    </td>
+                    <td class="confidence-col ai-col-center">
+                        {% if report.TaskStatus == 'completed' and report.AIConfidence is not none %}
+                            {{ ai_status_indicator(report.TaskStatus, "%.0f%%"|format(report.AIConfidence * 100)) }}
+                        {% else %}
+                            {{ ai_status_indicator(report.TaskStatus) }}
+                        {% endif %}
+                    </td>
+                    <td class="event-time-col ai-col-center">
+                        {% if report.AIEventTime %}
+                            <span class="event-time-text">{{ report.AIEventTime }}</span>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="levels-col ai-col-left">
+                        {% if report.AILevels %}
+                            <span class="levels-text" title="{{ report.AILevels }}">
+                                {{ report.AILevels[:50] }}{% if report.AILevels|length > 50 %}...{% endif %}
+                            </span>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="status-col ai-col-center">
+                        <span class="status-badge status-{{ report.TaskStatus }}">
+                            {{ report.TaskStatus|upper }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="empty-state">
+        <div class="terminal-prompt">
+            <span class="prompt-symbol">$</span>
+            <span class="prompt-text">No reports found. Try adjusting your filters or create new reports from the insights page.</span>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/simple-app.js"></script>
+<script>
+/**
+ * 
+ * ┌─────────────────────────────────────┐
+ * │         REPORTS PAGE                │
+ * └─────────────────────────────────────┘
+ * JavaScript functionality for reports page
+ * 
+ * Handles filtering, refreshing, and time formatting
+ * for the reports display.
+ */
+// Initialize selected values from server
+let selectedSymbol = '{{ selected_symbol }}';
+let selectedStatus = '{{ selected_status }}';
+let selectedTimeRange = '{{ selected_time_range }}' || 'all';
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize filter selections
+    if (selectedSymbol) {
+        document.getElementById('selectedSymbolText').textContent = selectedSymbol;
+    }
+    if (selectedStatus) {
+        document.getElementById('statusFilter').value = selectedStatus;
+    }
+    if (selectedTimeRange) {
+        document.getElementById('timeFilter').value = selectedTimeRange;
+    }
+    
+    // Initialize time formatting
+    formatReportTimes();
+    
+    // Load symbols for dropdown
+    loadSymbolsDropdown();
+    
+    // Setup event listeners
+    setupEventListeners();
+    
+    // Setup auto-refresh if enabled
+    if (window.AppConfig && window.AppConfig.app_auto_refresh) {
+        setupAutoRefresh();
+    }
+});
+
+/**
+ * Load symbols into the dropdown
+ */
+async function loadSymbolsDropdown() {
+    try {
+        // Get unique symbols from reports
+        const response = await fetch('/api/reports/symbols');
+        const data = await response.json();
+        
+        const dropdownMenu = document.getElementById('symbolFilterMenu');
+        
+        // Clear loading message
+        const existingItems = dropdownMenu.querySelectorAll('.dropdown-item.symbol-filter-item');
+        existingItems.forEach(item => {
+            if (item.getAttribute('data-symbol') !== '') {
+                item.remove();
+            }
+        });
+        
+        const divider = dropdownMenu.querySelector('.dropdown-divider');
+        const header = dropdownMenu.querySelector('.dropdown-header');
+        
+        if (data.symbols && data.symbols.length > 0) {
+            // Remove loading header
+            if (header) header.remove();
+            
+            // Add symbols to dropdown
+            data.symbols.forEach(symbol => {
+                const li = document.createElement('li');
+                const link = document.createElement('a');
+                link.className = 'dropdown-item symbol-filter-item';
+                link.href = '#';
+                link.setAttribute('data-symbol', symbol);
+                link.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <span class="symbol-text">${symbol}</span>
+                    </div>
+                `;
+                li.appendChild(link);
+                dropdownMenu.appendChild(li);
+            });
+        } else {
+            if (header) {
+                header.textContent = 'No symbols found';
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load symbols:', error);
+        const header = document.querySelector('.dropdown-header');
+        if (header) {
+            header.textContent = 'Error loading symbols';
+        }
+    }
+}
+
+/**
+ * Format all report times on the page
+ */
+function formatReportTimes() {
+    const timeElements = document.querySelectorAll('.time-text[data-time-fetched]');
+    timeElements.forEach(element => {
+        const timeFetched = element.getAttribute('data-time-fetched');
+        if (timeFetched) {
+            element.textContent = formatTimeAgo(timeFetched);
+        }
+    });
+}
+
+/**
+ * Format time as relative time without 'ago'
+ */
+function formatTimeAgo(isoString) {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return '0s';
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffHours < 24) return `${diffHours}h`;
+    if (diffDays < 7) return `${diffDays}d`;
+    
+    return date.toLocaleDateString();
+}
+
+/**
+ * Setup event listeners for the page
+ */
+function setupEventListeners() {
+    // Refresh button
+    const refreshBtn = document.querySelector('.refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', refreshReports);
+    }
+    
+    // Delete all button
+    const deleteAllBtn = document.querySelector('.delete-all-btn');
+    if (deleteAllBtn) {
+        deleteAllBtn.addEventListener('click', handleDeleteAllReports);
+    }
+    
+    // Symbol dropdown items
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.symbol-filter-item')) {
+            e.preventDefault();
+            const item = e.target.closest('.symbol-filter-item');
+            selectedSymbol = item.getAttribute('data-symbol');
+            document.getElementById('selectedSymbolText').textContent = selectedSymbol || 'ALL SYMBOLS';
+            applyFilters();
+        }
+    });
+    
+    // Status filter
+    const statusFilter = document.getElementById('statusFilter');
+    if (statusFilter) {
+        statusFilter.addEventListener('change', applyFilters);
+    }
+    
+    // Time filter
+    const timeFilter = document.getElementById('timeFilter');
+    if (timeFilter) {
+        timeFilter.addEventListener('change', applyFilters);
+    }
+}
+
+/**
+ * Apply filters and refresh the page with new parameters
+ */
+function applyFilters() {
+    const params = new URLSearchParams();
+    
+    if (selectedSymbol) {
+        params.append('symbol', selectedSymbol);
+    }
+    
+    const statusFilter = document.getElementById('statusFilter')?.value;
+    if (statusFilter) {
+        params.append('status', statusFilter);
+    }
+    
+    const timeFilter = document.getElementById('timeFilter')?.value;
+    if (timeFilter) {
+        params.append('time_range', timeFilter);
+    }
+    
+    // Reload the page with the new parameters
+    window.location.href = '/reports' + (params.toString() ? '?' + params.toString() : '');
+}
+
+/**
+ * Refresh the reports data
+ */
+function refreshReports() {
+    location.reload();
+}
+
+/**
+ * Setup auto-refresh functionality
+ */
+function setupAutoRefresh() {
+    const refreshInterval = window.AppConfig?.UI_REFRESH_TABLE || 30000;
+    
+    setInterval(() => {
+        formatReportTimes();
+    }, refreshInterval);
+}
+
+/**
+ * Handle delete all reports
+ */
+async function handleDeleteAllReports() {
+    // Get current filter state to show contextual message
+    const hasFilters = selectedSymbol || 
+                      document.getElementById('statusFilter')?.value || 
+                      (document.getElementById('timeFilter')?.value && document.getElementById('timeFilter')?.value !== 'all');
+    
+    const confirmMessage = hasFilters 
+        ? 'Are you sure you want to delete ALL reports? This will delete all reports in the database, not just the filtered ones shown.'
+        : 'Are you sure you want to delete ALL reports? This action cannot be undone.';
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    // Double confirmation for safety
+    if (!confirm('This will permanently delete ALL reports. Are you absolutely sure?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/reports/all', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            // Show success message
+            alert(`Successfully deleted ${result.deleted_count} reports.`);
+            
+            // Reload the page to show empty state
+            window.location.reload();
+        } else {
+            alert(`Failed to delete reports: ${result.message || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Error deleting reports:', error);
+        alert(`Failed to delete reports: ${error.message}`);
+    }
+}
+</script>
+{% endblock %}

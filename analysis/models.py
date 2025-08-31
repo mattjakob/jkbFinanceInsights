@@ -26,12 +26,11 @@ from typing import Dict, Any, Optional
 from enum import Enum
 
 
-class AnalysisAction(str, Enum):
-    """Trading action recommendations"""
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-    WATCH = "WATCH"
+# Import from core to maintain consistency
+from core.models import TradingAction
+
+# Alias for analysis module
+AnalysisAction = TradingAction
 
 
 @dataclass

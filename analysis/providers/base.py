@@ -72,13 +72,13 @@ class AIProvider(ABC):
     async def analyze_text_async(self, request: AnalysisRequest) -> AnalysisResult:
         """Async wrapper for text analysis"""
         import asyncio
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.analyze_text, request)
     
     async def analyze_image_async(self, request: ImageAnalysisRequest) -> str:
         """Async wrapper for image analysis"""
         import asyncio
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.analyze_image, request)
     
     def analyze_report(self, request: AnalysisRequest) -> AnalysisResult:
@@ -96,7 +96,7 @@ class AIProvider(ABC):
     async def analyze_report_async(self, request: AnalysisRequest) -> AnalysisResult:
         """Async wrapper for report analysis"""
         import asyncio
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.analyze_report, request)
 
 

@@ -2,22 +2,24 @@
 /**
  * 
  *  ┌─────────────────────────────────────┐
- *  │       ANALYSIS SERVICE              │
+ *  │    INSIGHT ANALYSIS SERVICE         │
  *  └─────────────────────────────────────┘
- *  Business logic for AI analysis operations
+ *  Business logic for AI analysis of insights
  * 
- *  Coordinates AI analysis operations and provides
- *  business logic layer for analysis management.
+ *  Handles AI-powered analysis of insight content including
+ *  text analysis, image analysis, and generating trading
+ *  recommendations.
  * 
  *  Parameters:
- *  - analysis_service: AnalysisService from analysis module
+ *  - core_service: Core AnalysisService from analysis module
  * 
  *  Returns:
- *  - AnalysisService instance
+ *  - InsightAnalysisService instance
  * 
  *  Notes:
- *  - Wraps the analysis module's service for business logic
- *  - Handles analysis coordination and validation
+ *  - Focuses on analyzing individual insights
+ *  - Provides structured AI analysis results
+ *  - Does NOT handle report generation
  */
 """
 
@@ -26,15 +28,15 @@ from analysis.service import AnalysisService as CoreAnalysisService
 from debugger import debug_info, debug_error
 
 
-class AnalysisService:
+class InsightAnalysisService:
     """
      ┌─────────────────────────────────────┐
-     │       ANALYSISSERVICE               │
+     │    INSIGHTANALYSISSERVICE           │
      └─────────────────────────────────────┘
-     Business logic service for AI analysis
+     Service for AI analysis of insights
      
-     Provides high-level operations for AI analysis,
-     implementing business rules and coordination.
+     Provides AI-powered analysis of insight content,
+     generating trading recommendations and summaries.
     """
     
     def __init__(self, core_service: Optional[CoreAnalysisService] = None):

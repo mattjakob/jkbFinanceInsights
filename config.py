@@ -40,17 +40,26 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", 8000))
 DATABASE_URL = os.getenv("DATABASE_URL", "finance_insights.db")
 
 # Database connection settings for better concurrency
-DATABASE_TIMEOUT = int(os.getenv("DATABASE_TIMEOUT", 60))  # Increased from 30
+DATABASE_TIMEOUT = int(os.getenv("DATABASE_TIMEOUT", 30000))  # milliseconds
 DATABASE_MAX_RETRIES = int(os.getenv("DATABASE_MAX_RETRIES", 3))
-DATABASE_RETRY_DELAY = float(os.getenv("DATABASE_RETRY_DELAY", 0.1))
+DATABASE_RETRY_DELAY = int(os.getenv("DATABASE_RETRY_DELAY", 100))  # milliseconds
 DATABASE_WAL_MODE = os.getenv("DATABASE_WAL_MODE", "true").lower() == "true"
 
 # =============================================================================
 # SCRAPER CONFIGURATION
 # =============================================================================
-SCRAPER_TIMEOUT = int(os.getenv("SCRAPER_TIMEOUT", 30))
+SCRAPER_TIMEOUT = int(os.getenv("SCRAPER_TIMEOUT", 30000))  # milliseconds
 SCRAPER_MAX_RETRIES = int(os.getenv("SCRAPER_MAX_RETRIES", 3))
-SCRAPER_RETRY_DELAY = int(os.getenv("SCRAPER_RETRY_DELAY", 1))
+SCRAPER_RETRY_DELAY = int(os.getenv("SCRAPER_RETRY_DELAY", 1000))  # milliseconds
+
+# Content filtering thresholds
+SCRAPER_MIN_CONTENT_LENGTH = int(os.getenv("SCRAPER_MIN_CONTENT_LENGTH", 15))  # Reduced from 20
+SCRAPER_MIN_TITLE_LENGTH = int(os.getenv("SCRAPER_MIN_TITLE_LENGTH", 5))
+SCRAPER_DUPLICATE_WINDOW_HOURS = int(os.getenv("SCRAPER_DUPLICATE_WINDOW_HOURS", 48))
+
+# API limits for different scrapers
+OPINIONS_API_MAX_LIMIT = int(os.getenv("OPINIONS_API_MAX_LIMIT", 20))  # TradingView API limit
+IDEAS_POPULAR_TYPICAL_LIMIT = int(os.getenv("IDEAS_POPULAR_TYPICAL_LIMIT", 25))  # Typical available count
 
 # =============================================================================
 # AI CONFIGURATION
@@ -92,6 +101,7 @@ elif OPENAI_RATE_LIMIT > 60:
 TASK_WORKER_COUNT = int(os.getenv("TASK_WORKERS", os.getenv("TASK_WORKER_COUNT", 3)))
 TASK_MAX_RETRIES = int(os.getenv("TASK_MAX_RETRIES", 3))
 TASK_PROCESSING_TIMEOUT = int(os.getenv("TASK_PROCESSING_TIMEOUT", 300000))  # Default: 5 minutes in milliseconds
+TASK_POLLING_INTERVAL = int(os.getenv("TASK_POLLING_INTERVAL", 100))  # Worker polling interval in milliseconds
 # Validate TASK_PROCESSING_TIMEOUT is reasonable
 if TASK_PROCESSING_TIMEOUT < 1000:  # Less than 1 second
     TASK_PROCESSING_TIMEOUT = 1000
@@ -112,16 +122,15 @@ elif TASK_PENDING_TIMEOUT > 86400000:  # More than 24 hours
 # FRONTEND REFRESH INTERVALS (in milliseconds)
 # =============================================================================
 # Core refresh intervals for different UI components
-# Support both UI_REFRESH and FRONTEND_UNIFIED_REFRESH_INTERVAL for compatibility
-UI_REFRESH = int(os.getenv("UI_REFRESH", os.getenv("FRONTEND_UNIFIED_REFRESH_INTERVAL", 1000)))
-FRONTEND_UNIFIED_REFRESH_INTERVAL = UI_REFRESH
-FRONTEND_TABLE_REFRESH_INTERVAL = int(os.getenv("FRONTEND_TABLE_REFRESH_INTERVAL", 10000))
+# Support both UI_REFRESH and UI_REFRESH for compatibility
+UI_REFRESH = int(os.getenv("UI_REFRESH", 3000))
+UI_REFRESH_TABLE = int(os.getenv("UI_REFRESH_TABLE", 10000))
 
 FRONTEND_REFRESH_INTERVALS = {
-    "age": FRONTEND_UNIFIED_REFRESH_INTERVAL,      # Age display updates
-    "table": FRONTEND_TABLE_REFRESH_INTERVAL,      # Table data refresh  
-    "status": FRONTEND_UNIFIED_REFRESH_INTERVAL,   # Status bar updates
-    "unified": FRONTEND_UNIFIED_REFRESH_INTERVAL   # Unified interval for all UI elements
+    "age": UI_REFRESH,      # Age display updates
+    "table": UI_REFRESH_TABLE,      # Table data refresh  
+    "status": UI_REFRESH,   # Status bar updates
+    "unified": UI_REFRESH   # Unified interval for all UI elements
 }
 
 # =============================================================================
@@ -212,7 +221,8 @@ def get_config_summary():
             "host": SERVER_HOST,
             "port": SERVER_PORT,
             "reload": UVICORN_RELOAD,
-            "workers": TASK_WORKER_COUNT
+            "workers": TASK_WORKER_COUNT,
+            "task_polling_interval": TASK_POLLING_INTERVAL
         },
         "database": {
             "url": DATABASE_URL

@@ -27,6 +27,7 @@ from bs4 import BeautifulSoup
 
 from .base import BaseScraper
 from core import ScrapedItem, FeedType
+from config import SCRAPER_MIN_CONTENT_LENGTH
 from debugger import debug_info, debug_error, debug_warning
 
 
@@ -100,16 +101,29 @@ class TradingViewNewsScraper(BaseScraper):
         
         # Process each news item
         scraped_items = []
+        filtered_count = 0
+        error_count = 0
+        
         for idx, item in enumerate(items):
             try:
                 scraped_item = self._process_news_item(item)
                 if scraped_item:
                     scraped_items.append(scraped_item)
+                else:
+                    filtered_count += 1
             except Exception as e:
                 debug_error(f"Error processing news item {idx}: {str(e)}")
                 debug_info(f"Item type: {type(item)}, Item: {str(item)[:200]}")
+                error_count += 1
                 continue
         
+        # Log filtering statistics
+        if filtered_count > 0:
+            debug_warning(f"Filtered out {filtered_count} news items due to insufficient content/invalid data")
+        if error_count > 0:
+            debug_warning(f"Failed to process {error_count} news items due to errors")
+        
+        debug_info(f"News processing: {len(scraped_items)} valid items from {len(items)} raw items")
         return scraped_items
     
     def _process_news_item(self, item: dict) -> Optional[ScrapedItem]:
@@ -136,51 +150,31 @@ class TradingViewNewsScraper(BaseScraper):
         # Extract basic fields
         title = item.get('title', '')
         if not title:
-            return None
+            title = "Untitled News Item"  # Provide fallback instead of filtering
         
         # Limit title length
         if len(title) > 200:
             title = title[:197] + "..."
         
-        # Get timestamp
+        # Get timestamp - use current time if not available
         timestamp = self._parse_timestamp(item)
         if not timestamp:
-            debug_warning(f"Skipping news item with no timestamp: {title}")
-            return None
+            timestamp = datetime.now()
         
         # Get content - try to fetch full article first
         content = self._fetch_article_content(item)
         
-        if content:
-            debug_info(f"Successfully fetched full article content for: {title[:50]}...")
-        else:
-            debug_info(f"No full article content available for: {title[:50]}...")
-        
         # If no full article, use description
         if not content:
             content = item.get('description', '')
-            if content:
-                debug_info(f"Using description as content for: {title[:50]}...")
         
-        # Only use title as absolute last resort, and only if it's substantial
-        if not content or len(content.strip()) < 20:
-            # Try to get more context from the item
-            if item.get('description') and len(item.get('description', '').strip()) > 20:
-                content = item.get('description')
-                debug_info(f"Using description as fallback content for: {title[:50]}...")
-            elif item.get('summary') and len(item.get('summary', '').strip()) > 20:
-                content = item.get('summary')
-                debug_info(f"Using summary as fallback content for: {title[:50]}...")
-            else:
-                debug_warning(f"Skipping news item with insufficient content: {title}")
-                return None
+        # If no description, use summary
+        if not content:
+            content = item.get('summary', '')
         
-        # Ensure content is substantial
-        if len(content.strip()) < 20:
-            debug_warning(f"Skipping news item with insufficient content: {title}")
-            return None
-        
-        debug_info(f"Final content length for '{title[:50]}...': {len(content)} characters")
+        # If still no content, use title as fallback
+        if not content:
+            content = title
         
         # Extract other fields
         image_url = item.get('image', item.get('thumbnail', ''))

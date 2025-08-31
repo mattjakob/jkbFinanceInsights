@@ -10,10 +10,11 @@ from .models import (
     TaskStatus,
     TaskName,
     TaskInfo,
-    AIAction,
+    TradingAction,
     InsightModel,
     ScrapedItem,
-    AIAnalysisResult
+    AIAnalysisResult,
+    ReportModel
 )
 
 from .database import (
@@ -27,10 +28,11 @@ from .database import (
 __all__ = [
     # Models
     'FeedType',
-    'AIAction',
+    'TradingAction',
     'InsightModel',
     'ScrapedItem',
     'AIAnalysisResult',
+    'ReportModel',
     # Task System
     'TaskStatus',
     'TaskName',

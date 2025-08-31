@@ -25,14 +25,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any
 
-from services import ScrapingService
+from services import InsightScrapingService, SymbolService
 from debugger import debug_info, debug_error
 
 # Create router
 router = APIRouter(prefix="/api/scraping", tags=["scraping"])
 
-# Service instance
-scraping_service = ScrapingService()
+# Service instances
+scraping_service = InsightScrapingService()
+symbol_service = SymbolService()
 
 
 class FetchRequest(BaseModel):
@@ -55,7 +56,7 @@ async def fetch_insights(request: FetchRequest):
      store it in the database.
     """
     try:
-        return scraping_service.fetch_insights(
+        return await scraping_service.create_scraping_task(
             symbol=request.symbol,
             exchange=request.exchange,
             feed_type=request.feed_type,
@@ -100,7 +101,7 @@ async def search_symbols(query: str):
      and suggested exchange for each symbol.
     """
     try:
-        return scraping_service.search_symbols(query)
+        return symbol_service.search_symbols(query)
         
     except Exception as e:
         debug_error(f"Symbol search failed: {e}")

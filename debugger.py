@@ -38,6 +38,8 @@ class Debugger:
         self.current_message = ""
         self.current_status = "info"
         self.timestamp = None
+        self.message_history = []  # Store recent messages
+        self.max_history = 50  # Keep last 50 messages in backend
     
     def debug(self, message: str, status: str = "info") -> None:
         """
@@ -60,10 +62,22 @@ class Debugger:
          - Messages are logged to console immediately
          - Messages are stored for frontend status bar updates
         """
-        # Update internal state
-        self.current_message = message
-        self.current_status = status
-        self.timestamp = datetime.now()
+        # Update internal state only if we have a valid message
+        if message and message.strip():
+            self.current_message = message
+            self.current_status = status
+            self.timestamp = datetime.now()
+        
+        # Add to message history
+        self.message_history.append({
+            'message': message,
+            'status': status,
+            'timestamp': self.timestamp.isoformat()
+        })
+        
+        # Keep only recent messages
+        if len(self.message_history) > self.max_history:
+            self.message_history = self.message_history[-self.max_history:]
         
         # Send to console based on status level
         if status == "error":
@@ -88,24 +102,25 @@ class Debugger:
          Returns:
          - Dictionary with message, status, and timestamp
         """
+        # If current message is empty but we have history, use the last message
+        message = self.current_message
+        status = self.current_status
+        timestamp = self.timestamp
+        
+        if not message and self.message_history:
+            last_message = self.message_history[-1]
+            message = last_message['message']
+            status = last_message['status']
+            timestamp = datetime.fromisoformat(last_message['timestamp'])
+        
         return {
-            "message": self.current_message,
-            "status": self.current_status,
-            "timestamp": self.timestamp,
+            "message": message,
+            "status": status,
+            "timestamp": timestamp.isoformat() if timestamp else None,
+            "history": self.message_history[-10:]  # Send last 10 messages to UI
         }
     
-    def clear(self) -> None:
-        """
-         ┌─────────────────────────────────────┐
-         │             CLEAR                   │
-         └─────────────────────────────────────┘
-         Clear current debug message
-         
-         Resets the current message state.
-        """
-        self.current_message = ""
-        self.current_status = "info"
-        self.timestamp = None
+
 
 # Global debugger instance
 debugger = Debugger()

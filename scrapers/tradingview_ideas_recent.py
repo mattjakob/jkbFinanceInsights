@@ -46,7 +46,7 @@ class TradingViewIdeasRecentScraper(BaseScraper):
         
         all_items = []
         page = 1
-        max_pages = 10  # Safety limit to prevent infinite loops
+        max_pages = max(10, (limit // 20) + 2) if limit else 10  # Scale pages with requested limit
         
         while len(all_items) < limit and page <= max_pages:
             # Build URL for recent ideas with pagination
@@ -155,11 +155,10 @@ class TradingViewIdeasRecentScraper(BaseScraper):
             likes_section = f"------------------------------------------------------------\n{likes_count} PEOPLE LIKED THIS POST OR FOUND IT USEFUL\n------------------------------------------------------------"
             formatted_content = f"{likes_section}\n{formatted_content}"
         
-        # Parse timestamp - the API uses 'created_at' and 'date_timestamp'
+        # Parse timestamp - use current time if not available
         timestamp = self._parse_timestamp(item)
         if not timestamp:
-            debug_warning(f"Skipping recent idea with no timestamp: {title}")
-            return None
+            timestamp = datetime.now()
         
         # Extract other fields - handle image dict
         image_info = item.get('image', {})

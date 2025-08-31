@@ -4,7 +4,7 @@ Queue management API routes
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 
-from tasks import TaskQueue
+from tasks import get_task_queue
 from debugger import debug_info, debug_error, debug_success
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
@@ -22,8 +22,8 @@ async def get_queue_health() -> Dict[str, Any]:
      - Queue health metrics including stats, stuck tasks, and health status
     """
     try:
-        queue = TaskQueue()
-        health = queue.get_health_metrics()
+        queue = await get_task_queue()
+        health = await queue.get_health_metrics()
         return {
             "success": True,
             "data": health
@@ -45,8 +45,8 @@ async def get_queue_stats() -> Dict[str, Any]:
      - Queue statistics by status
     """
     try:
-        queue = TaskQueue()
-        stats = queue.get_stats()
+        queue = await get_task_queue()
+        stats = await queue.get_stats()
         return {
             "success": True,
             "data": stats
@@ -71,13 +71,13 @@ async def trigger_cleanup(days: int = 7) -> Dict[str, Any]:
      - Number of tasks cleaned up
     """
     try:
-        queue = TaskQueue()
+        queue = await get_task_queue()
         
         # Clean up old tasks
-        cleaned = queue.cleanup_old_tasks(days=days)
+        cleaned = await queue.cleanup_old_tasks(days=days)
         
         # Also purge invalid tasks
-        purged = queue.purge_invalid_tasks()
+        purged = await queue.purge_invalid_tasks()
         
         debug_info(f"Manual cleanup: {cleaned} old tasks removed, {purged} invalid tasks purged")
         
@@ -106,10 +106,10 @@ async def purge_stuck_tasks() -> Dict[str, Any]:
      - Number of stuck tasks reset
     """
     try:
-        queue = TaskQueue()
+        queue = await get_task_queue()
         
         # Use the built-in reset_stuck_tasks method
-        stuck_count = queue.reset_stuck_tasks(timeout_hours=1)
+        stuck_count = await queue.reset_stuck_tasks(timeout_hours=1)
         
         debug_info(f"Reset {stuck_count} stuck tasks")
         
@@ -134,13 +134,13 @@ async def reset_queue() -> Dict[str, Any]:
      and resets insights to pending status
     """
     try:
-        queue = TaskQueue()
+        queue = await get_task_queue()
         
         # Get queue stats before reset
-        stats = queue.get_stats()
+        stats = await queue.get_stats()
         
         # Cancel all pending and processing tasks
-        cancelled_count = queue.cancel_all_tasks()
+        cancelled_count = await queue.cancel_all_tasks()
         
         # Reset all insights with failed AI analysis back to EMPTY
         from data import InsightsRepository

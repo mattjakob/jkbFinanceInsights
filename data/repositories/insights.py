@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 import hashlib
 
 from core import InsightModel, FeedType, TaskStatus, TaskName, TaskInfo, get_db_session
+from config import SCRAPER_DUPLICATE_WINDOW_HOURS
 from debugger import debug_info, debug_warning, debug_error
 
 
@@ -87,7 +88,7 @@ class InsightsRepository:
             ))
             
             insight_id = cursor.lastrowid
-            debug_info(f"Created new insight with ID: {insight_id}")
+            debug_info(f"Insight {insight_id} created for {insight.symbol} {insight.type}")
             return (insight_id, True)
     
     def get_by_id(self, insight_id: int) -> Optional[InsightModel]:
@@ -299,7 +300,7 @@ class InsightsRepository:
          └─────────────────────────────────────┘
          Check for duplicate insights
          
-         Uses title and content hash within 48-hour window.
+         Simple title-based duplicate detection only.
          
          Parameters:
          - insight: Insight to check
@@ -307,44 +308,23 @@ class InsightsRepository:
          Returns:
          - ID of duplicate if found, None otherwise
         """
-        hours_window = 48
-        content_hash = hashlib.md5(insight.content.encode()).hexdigest()
-        
         with get_db_session() as conn:
-            # Build query
+            # Simple query: check for exact title match with same type and symbol
             query = """
-                SELECT id, title, content
+                SELECT id
                 FROM insights
-                WHERE type = ?
-                AND (title = ? OR LOWER(title) = LOWER(?))
+                WHERE type = ? 
+                AND title = ?
+                AND symbol = ?
+                LIMIT 1
             """
-            params = [insight.type.value, insight.title, insight.title]
-            
-            if insight.symbol:
-                query += " AND symbol = ?"
-                params.append(insight.symbol)
-            
-            query += """
-                AND datetime(timePosted) > datetime(?, '-' || ? || ' hours')
-            """
-            params.extend([insight.time_posted.isoformat(), hours_window])
+            params = [insight.type.value, insight.title, insight.symbol]
             
             cursor = conn.cursor()
             cursor.execute(query, params)
+            row = cursor.fetchone()
             
-            for row in cursor.fetchall():
-                # Check content hash
-                existing_hash = hashlib.md5(row['content'].encode()).hexdigest()
-                if existing_hash == content_hash:
-                    return row['id']
-                
-                # Check similar content length
-                if row['title'] == insight.title:
-                    content_ratio = len(insight.content) / len(row['content'])
-                    if 0.8 <= content_ratio <= 1.2:
-                        return row['id']
-            
-            return None
+            return row['id'] if row else None
     
     def _to_db_column(self, field_name: str) -> str:
         """Convert Python field name to database column name"""
@@ -378,12 +358,12 @@ class InsightsRepository:
                 SET TaskStatus = ?
                 WHERE TaskStatus = ?
             """, (
-                TaskStatus.PENDING.value,
+                TaskStatus.EMPTY.value,
                 TaskStatus.FAILED.value
             )).rowcount
             
             if reset_count > 0:
-                debug_info(f"Reset {reset_count} insights with failed AI analysis back to pending")
+                debug_info(f"Reset {reset_count} insights with failed AI analysis back to EMPTY")
             
             return reset_count
     
@@ -403,12 +383,12 @@ class InsightsRepository:
                 SET TaskStatus = ?
                 WHERE TaskStatus = ?
             """, (
-                TaskStatus.PENDING.value,
-                'processing'
+                TaskStatus.EMPTY.value,
+                TaskStatus.PROCESSING.value
             )).rowcount
             
             if reset_count > 0:
-                debug_info(f"Reset {reset_count} insights with processing AI analysis back to pending")
+                debug_info(f"Reset {reset_count} insights with processing AI analysis back to EMPTY")
             
             return reset_count
     
@@ -439,8 +419,13 @@ class InsightsRepository:
                     AIEventTime = NULL,
                     AILevels = NULL,
                     AIImageSummary = NULL
-                WHERE TaskStatus IN ('pending', 'processing', 'failed')
-            """, (TaskStatus.EMPTY.value,)).rowcount
+                WHERE TaskStatus IN (?, ?, ?)
+            """, (
+                TaskStatus.EMPTY.value,
+                TaskStatus.PENDING.value,
+                TaskStatus.PROCESSING.value,
+                TaskStatus.FAILED.value
+            )).rowcount
             
             if reset_count > 0:
                 debug_info(f"Reset {reset_count} stuck insights to EMPTY status")

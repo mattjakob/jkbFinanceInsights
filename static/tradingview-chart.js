@@ -22,6 +22,51 @@
 * - Maintains styling consistency across symbol updates
 */
 
+// Suppress deprecated unload event listener warnings from TradingView library
+(function() {
+    // Store original console methods
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    
+    // Override console.warn to filter out unload deprecation warnings
+    console.warn = function(...args) {
+        const message = args.join(' ');
+        if (message.includes('Unload event listeners are deprecated') || 
+            message.includes('beforeunload') || 
+            message.includes('unload')) {
+            return; // Suppress these specific warnings
+        }
+        originalWarn.apply(console, args);
+    };
+    
+    // Override console.error to filter out unload deprecation warnings
+    console.error = function(...args) {
+        const message = args.join(' ');
+        if (message.includes('Unload event listeners are deprecated') || 
+            message.includes('beforeunload') || 
+            message.includes('unload')) {
+            return; // Suppress these specific warnings
+        }
+        originalError.apply(console, args);
+    };
+    
+    // Use modern page visibility API instead of unload events
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                // Page is being hidden (user navigating away)
+                // Clean up any resources here if needed
+            }
+        });
+        
+        // Use pagehide instead of unload for better performance
+        window.addEventListener('pagehide', function(event) {
+            // Page is being unloaded
+            // Clean up any resources here if needed
+        });
+    }
+})();
+
 // TradingView widget configuration with monochromatic theme
 const TRADINGVIEW_CONFIG = {
     base: {
@@ -229,6 +274,9 @@ function updateTradingViewChart(symbol) {
         tvScript.onload = function() {
             createWidget(newWidgetContainer.id, cleanSymbol);   
         };
+        tvScript.onerror = function() {
+            console.warn('TradingView: Failed to load library');
+        };
         document.head.appendChild(tvScript);
     } else {
         createWidget(newWidgetContainer.id, cleanSymbol);
@@ -309,12 +357,76 @@ function updateTradingViewChartFromInputs() {
     updateTradingViewChart(tradingViewSymbol);
 }
 
+/**
+*
+* ┌─────────────────────────────────────┐
+* │      CLEANUP TRADINGVIEW            │
+* └─────────────────────────────────────┘
+* Clean up TradingView widget and resources
+*
+* Properly disposes of TradingView widgets and removes event listeners
+* to prevent memory leaks and deprecated event warnings.
+*
+* Parameters:
+* - None
+*
+* Returns:
+* - None
+*
+* Notes:
+* - Called when page is being unloaded or hidden
+* - Removes all TradingView-related event listeners
+* - Cleans up widget containers
+*/
+function cleanupTradingView() {
+    try {
+        // Remove all TradingView widgets
+        const containers = document.querySelectorAll('.tradingview-widget-container__widget');
+        containers.forEach(container => {
+            if (container && container.parentNode) {
+                container.parentNode.removeChild(container);
+            }
+        });
+        
+        // Clear main container
+        const mainContainer = document.querySelector('.tradingview-widget-container');
+        if (mainContainer) {
+            mainContainer.innerHTML = '';
+        }
+        
+        // Remove any global TradingView references
+        if (window.TradingView) {
+            delete window.TradingView;
+        }
+        
+        if (window.TradingViewChart) {
+            delete window.TradingViewChart;
+        }
+    } catch (error) {
+        console.warn('TradingView: Cleanup error:', error);
+    }
+}
+
 // Export functions for use in other modules
 if (typeof window !== 'undefined') {
     window.TradingViewChart = {
         initialize: initializeTradingView,
         updateChart: updateTradingViewChart,
         updateFromInputs: updateTradingViewChartFromInputs,
+        cleanup: cleanupTradingView,
         config: TRADINGVIEW_CONFIG
     };
+    
+    // Set up cleanup on page unload using modern events
+    if (typeof window !== 'undefined') {
+        // Use pagehide instead of unload for better performance
+        window.addEventListener('pagehide', cleanupTradingView);
+        
+        // Use visibilitychange for when page is hidden
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                cleanupTradingView();
+            }
+        });
+    }
 }

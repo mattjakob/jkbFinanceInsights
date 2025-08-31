@@ -73,7 +73,16 @@ class TradingViewIdeasPopularScraper(BaseScraper):
         
         debug_info(f"Found {len(articles)} articles")
         
-        # Process articles and limit
+        # Check if we have fewer articles than requested
+        from config import IDEAS_POPULAR_TYPICAL_LIMIT
+        
+        if len(articles) < limit:
+            if len(articles) <= IDEAS_POPULAR_TYPICAL_LIMIT:
+                debug_info(f"TD IDEAS POPULAR: Found {len(articles)} popular ideas (requested: {limit}). This is typical - popular ideas are limited by TradingView.")
+            else:
+                debug_warning(f"TD IDEAS POPULAR: Only {len(articles)} popular ideas available (requested: {limit})")
+        
+        # Process articles up to requested limit
         scraped_items = []
         for idx, article in enumerate(articles):
             if limit and len(scraped_items) >= limit:
@@ -83,9 +92,12 @@ class TradingViewIdeasPopularScraper(BaseScraper):
                 scraped_item = self._parse_article_to_item(article, symbol, exchange)
                 if scraped_item:
                     scraped_items.append(scraped_item)
+                else:
+                    # Still count failed parsing towards limit to be honest about what we processed
+                    pass
             except Exception as e:
                 debug_error(f"Error processing popular idea {idx}: {str(e)}")
-                continue
+                # Continue processing other items
         
         return scraped_items
     
@@ -95,11 +107,11 @@ class TradingViewIdeasPopularScraper(BaseScraper):
             # Extract title
             title_tag = article.find('a', class_=lambda x: x and x.startswith('title-'))
             if not title_tag:
-                return None
-            
-            title = title_tag.text.strip()
-            if not title:
-                return None
+                title = "Untitled Popular Idea"
+            else:
+                title = title_tag.text.strip()
+                if not title:
+                    title = "Untitled Popular Idea"
             
             # Limit title length
             if len(title) > 200:
@@ -109,9 +121,7 @@ class TradingViewIdeasPopularScraper(BaseScraper):
             para_tag = article.find('a', class_=lambda x: x and x.startswith('paragraph-'))
             content = para_tag.text.strip() if para_tag else title
             
-            if len(content.strip()) < 10:
-                debug_warning(f"Skipping popular idea with insufficient content: {title}")
-                return None
+            # Keep all content, no filtering
             
             # Extract metadata for content enhancement
             metadata = self._extract_article_metadata(article)
@@ -125,11 +135,10 @@ class TradingViewIdeasPopularScraper(BaseScraper):
                 likes_section = f"------------------------------------------------------------\n{likes_count} PEOPLE LIKED THIS POST OR FOUND IT USEFUL\n------------------------------------------------------------"
                 formatted_content = f"{likes_section}\n{formatted_content}"
             
-            # Extract timestamp
+            # Extract timestamp - use current time if not available
             timestamp = self._parse_article_timestamp(article)
             if not timestamp:
-                debug_warning(f"Skipping popular idea with no timestamp: {title}")
-                return None
+                timestamp = datetime.now()
             
             # Extract image URL
             image_url = ""

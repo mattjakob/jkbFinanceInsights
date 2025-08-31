@@ -25,15 +25,14 @@ from fastapi import APIRouter, HTTPException, Response
 from typing import Dict, Any
 from datetime import datetime
 
-from tasks import TaskQueue
+from tasks import get_task_queue
 from data import InsightsRepository
 from debugger import debug_info, debug_error, debug_success
 
 # Create router
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
-# Initialize task queue and repositories
-task_queue = TaskQueue()
+# Initialize repositories
 insights_repo = InsightsRepository()
 
 
@@ -48,7 +47,8 @@ async def get_task_stats():
      Returns counts of tasks by status.
     """
     try:
-        stats = task_queue.get_stats()
+        queue = await get_task_queue()
+        stats = await queue.get_stats()
         
         return {
             "stats": stats,
@@ -73,7 +73,8 @@ async def get_tasks_status():
     """
     try:
         # Get stats
-        stats = task_queue.get_stats()
+        queue = await get_task_queue()
+        stats = await queue.get_stats()
         
         # Build response text
         lines = []
@@ -145,7 +146,8 @@ async def cleanup_old_tasks(days: int = 7):
      Removes tasks older than specified days.
     """
     try:
-        task_queue.cleanup_old_tasks(days)
+        queue = await get_task_queue()
+        await queue.cleanup_old_tasks(days)
         
         return {
             "success": True,
@@ -168,7 +170,8 @@ async def cleanup_stale_pending_tasks():
      Uses TASK_PENDING_TIMEOUT from config.
     """
     try:
-        count = task_queue.cleanup_stale_pending_tasks()
+        queue = await get_task_queue()
+        count = await queue.cleanup_stale_pending_tasks()
         
         return {
             "success": True,
@@ -253,7 +256,8 @@ async def reset_tasks(request: Dict[str, Any] = {}):
             }
         else:
             # Reset all tasks
-            tasks_cleared = task_queue.cancel_all_tasks()
+            queue = await get_task_queue()
+            tasks_cleared = await queue.cancel_all_tasks()
             
             # Reset all insight statuses that are stuck in PENDING or PROCESSING
             insights_reset = insights_repo.reset_stuck_insights()

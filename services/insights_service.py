@@ -2,22 +2,24 @@
 /**
  * 
  *  ┌─────────────────────────────────────┐
- *  │       INSIGHTS SERVICE              │
+ *  │   INSIGHT MANAGEMENT SERVICE        │
  *  └─────────────────────────────────────┘
- *  Business logic for insights operations
+ *  Business logic for insight data management
  * 
- *  Coordinates insights CRUD operations and provides
- *  business logic layer between controllers and repositories.
+ *  Handles CRUD operations, deduplication, and database
+ *  management for insights. This is the core service for
+ *  managing insight data lifecycle.
  * 
  *  Parameters:
  *  - insights_repo: InsightsRepository instance
  * 
  *  Returns:
- *  - InsightsService instance
+ *  - InsightManagementService instance
  * 
  *  Notes:
- *  - Handles business rules and validation
- *  - Coordinates with other services as needed
+ *  - Manages insight lifecycle (create, read, update, delete)
+ *  - Handles deduplication and validation
+ *  - Does NOT handle scraping or AI analysis
  */
 """
 
@@ -29,15 +31,16 @@ from data import InsightsRepository
 from debugger import debug_info, debug_success, debug_error
 
 
-class InsightsService:
+class InsightManagementService:
     """
      ┌─────────────────────────────────────┐
-     │        INSIGHTSSERVICE              │
+     │   INSIGHTMANAGEMENTSERVICE          │
      └─────────────────────────────────────┘
-     Business logic service for insights
+     Service for managing insight data lifecycle
      
-     Provides high-level operations for insights management,
-     implementing business rules and coordinating data access.
+     Handles CRUD operations, validation, and database
+     coordination for insights. Focuses purely on data
+     management, not scraping or analysis.
     """
     
     def __init__(self, insights_repo: Optional[InsightsRepository] = None):
@@ -187,24 +190,7 @@ class InsightsService:
          - Dictionary with deletion results
         """
         if feed_type == "" or feed_type.upper() == "ALL":
-            # Delete all insights
-            all_deleted = 0
-            all_ids = []
-            
-            for ft in FeedType:
-                count, ids = self.insights_repo.delete_by_type(ft)
-                all_deleted += count
-                all_ids.extend(ids)
-            
-            debug_success(f"Deleted {all_deleted} insights (all types)")
-            
-            return {
-                "success": True,
-                "message": f"Deleted {all_deleted} insights (all types)",
-                "deleted_count": all_deleted,
-                "failed_count": 0,
-                "deleted_ids": all_ids
-            }
+            return self._delete_all_insights()
         else:
             # Delete specific type
             ft = FeedType(feed_type)
@@ -251,51 +237,31 @@ class InsightsService:
         
         return self.insights_repo.update(insight_id, updates)
     
-    def get_normalized_symbols(self) -> Dict[str, Any]:
+    def _delete_all_insights(self) -> Dict[str, Any]:
         """
          ┌─────────────────────────────────────┐
-         │    GET_NORMALIZED_SYMBOLS           │
+         │      _DELETE_ALL_INSIGHTS           │
          └─────────────────────────────────────┘
-         Get normalized list of unique symbols
+         Delete all insights across all feed types
          
          Returns:
-         - Dictionary with unique symbols and metadata
+         - Dictionary with deletion results
         """
-        try:
-            # Get all insights to extract unique symbols
-            insights = self.insights_repo.find_all()
-            
-            # Create a dictionary to normalize symbols (symbol -> exchange)
-            symbol_map = {}
-            
-            for insight in insights:
-                if insight.symbol:
-                    symbol = insight.symbol.upper()
-                    exchange = insight.exchange or 'NASDAQ'
-                    
-                    # If symbol already exists, prefer the first exchange found
-                    if symbol not in symbol_map:
-                        symbol_map[symbol] = exchange
-            
-            # Convert to list format
-            normalized_symbols = [
-                {
-                    "symbol": symbol,
-                    "exchange": exchange,
-                    "url": f"/api/insights/{exchange}:{symbol}"
-                }
-                for symbol, exchange in symbol_map.items()
-            ]
-            
-            # Sort by symbol for consistent ordering
-            normalized_symbols.sort(key=lambda x: x["symbol"])
-            
-            return {
-                "success": True,
-                "count": len(normalized_symbols),
-                "symbols": normalized_symbols
-            }
-            
-        except Exception as e:
-            debug_error(f"Failed to get normalized symbols: {e}")
-            return {"success": False, "error": str(e)}
+        all_deleted = 0
+        all_ids = []
+        
+        for ft in FeedType:
+            count, ids = self.insights_repo.delete_by_type(ft)
+            all_deleted += count
+            all_ids.extend(ids)
+        
+        debug_success(f"Deleted {all_deleted} insights (all types)")
+        
+        return {
+            "success": True,
+            "message": f"Deleted {all_deleted} insights (all types)",
+            "deleted_count": all_deleted,
+            "failed_count": 0,
+            "deleted_ids": all_ids
+        }
+

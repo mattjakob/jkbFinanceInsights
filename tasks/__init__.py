@@ -5,14 +5,15 @@ This module provides a simple, reusable task queue system
 for async processing with database persistence.
 """
 
-# QueueTask is now defined in tasks/queue.py
-from .queue import TaskQueue
+# Task system - all async
+from .queue import TaskQueue, get_task_queue
 from .worker import TaskWorker, WorkerPool
 from .handlers import HANDLERS, handle_ai_analysis, handle_bulk_analysis, handle_cleanup
 
 __all__ = [
     # Queue
     'TaskQueue',
+    'get_task_queue',
     # Worker
     'TaskWorker', 
     'WorkerPool',

@@ -2,56 +2,59 @@
 /**
  * 
  *  ┌─────────────────────────────────────┐
- *  │       SCRAPING SERVICE              │
+ *  │    INSIGHT SCRAPING SERVICE         │
  *  └─────────────────────────────────────┘
- *  Business logic for scraping operations
+ *  Business logic for scraping insights from external sources
  * 
- *  Coordinates data scraping operations and provides
- *  business logic layer for external data fetching.
+ *  Manages the process of fetching new insights from various
+ *  external data sources using the task queue system.
  * 
  *  Parameters:
- *  - scraper_manager: ScraperManager instance
+ *  - None
  * 
  *  Returns:
- *  - ScrapingService instance
+ *  - InsightScrapingService instance
  * 
  *  Notes:
- *  - Handles scraping coordination and validation
- *  - Manages symbol validation and feed selection
+ *  - Creates scraping tasks via task queue
+ *  - Supports multiple feed types
+ *  - Does NOT handle symbol search (use SymbolService)
  */
 """
 
 from typing import Dict, Any, List
-from scrapers import ScraperManager
-from symbol_validator import exchange_manager
-from core import FeedType
+import asyncio
+from core import FeedType, TaskName
+from tasks import get_task_queue
 from debugger import debug_info, debug_error
 
 
-class ScrapingService:
+class InsightScrapingService:
     """
      ┌─────────────────────────────────────┐
-     │       SCRAPINGSERVICE               │
+     │    INSIGHTSCRAPINGSERVICE           │
      └─────────────────────────────────────┘
-     Business logic service for scraping
+     Service for scraping insights from external sources
      
-     Provides high-level operations for data scraping,
-     implementing business rules and validation.
+     Manages creation of scraping tasks and coordination
+     of external data fetching operations.
     """
     
-    def __init__(self, scraper_manager: ScraperManager = None):
-        self.scraper_manager = scraper_manager or ScraperManager()
+    def __init__(self):
+        self.queue = None  # Will be initialized async
     
-    def fetch_insights(self, 
-                      symbol: str, 
-                      exchange: str, 
-                      feed_type: str, 
-                      max_items: int = 50) -> Dict[str, Any]:
+    async def create_scraping_task(self, 
+                            symbol: str, 
+                            exchange: str, 
+                            feed_type: str, 
+                            max_items: int = 50) -> Dict[str, Any]:
         """
          ┌─────────────────────────────────────┐
-         │       FETCH_INSIGHTS                │
+         │     CREATE_SCRAPING_TASK            │
          └─────────────────────────────────────┘
-         Fetch insights from external sources
+         Create task to scrape insights from external sources
+         
+         Creates tasks for scraping operations via task queue.
          
          Parameters:
          - symbol: Trading symbol
@@ -60,17 +63,16 @@ class ScrapingService:
          - max_items: Maximum items to fetch
          
          Returns:
-         - Dictionary with fetch results
+         - Dictionary with task creation results
         """
         try:
+            # Initialize queue if needed
+            if not self.queue:
+                self.queue = await get_task_queue()
+            
             # Handle ALL feed type
             if feed_type == "ALL" or not feed_type:
-                debug_info("Fetching from all feed types")
-                result = self.scraper_manager.fetch_all_feeds(
-                    symbol=symbol,
-                    exchange=exchange,
-                    limit=max_items
-                )
+                return await self._create_all_scraping_tasks(symbol, exchange, max_items)
             else:
                 # Single feed type
                 try:
@@ -86,20 +88,54 @@ class ScrapingService:
                         "results": []
                     }
                 
-                result = self.scraper_manager.fetch_and_store(
-                    feed_type=ft,
-                    symbol=symbol,
-                    exchange=exchange,
-                    limit=max_items
+                # Map feed type to task name
+                task_name_map = {
+                    FeedType.TD_NEWS: TaskName.SCRAPING_NEWS,
+                    FeedType.TD_IDEAS_RECENT: TaskName.SCRAPING_IDEAS_RECENT,
+                    FeedType.TD_IDEAS_POPULAR: TaskName.SCRAPING_IDEAS_POPULAR,
+                    FeedType.TD_OPINIONS: TaskName.SCRAPING_OPINIONS
+                }
+                
+                task_name = task_name_map.get(ft)
+                if not task_name:
+                    return {
+                        "success": False,
+                        "message": f"No task handler for feed type: {feed_type}",
+                        "processed_items": 0,
+                        "created_insights": 0,
+                        "duplicate_insights": 0,
+                        "failed_items": 0,
+                        "results": []
+                    }
+                
+                # Create task for specific feed type
+                task_id = await self.queue.add_task(
+                    task_name.value,
+                    {
+                        'symbol': symbol,
+                        'exchange': exchange,
+                        'limit': max_items
+                    },
+                    max_retries=1,  # Scraping typically shouldn't retry many times
+                    entity_type='scraping',
+                    entity_id=None
                 )
-            
-            return result
+                
+                # Task creation logged by queue
+                
+                return {
+                    "success": True,
+                    "message": f"Created task to fetch {feed_type}",
+                    "task_id": task_id,
+                    "feed_type": feed_type,
+                    "tasks_created": 1
+                }
             
         except Exception as e:
-            debug_error(f"Fetch failed: {e}")
+            debug_error(f"Failed to create scraping task: {e}")
             return {
                 "success": False,
-                "message": f"Fetch failed: {str(e)}",
+                "message": f"Failed to create scraping task: {str(e)}",
                 "processed_items": 0,
                 "created_insights": 0,
                 "duplicate_insights": 0,
@@ -135,71 +171,56 @@ class ScrapingService:
         
         return feeds
     
-    def search_symbols(self, query: str) -> Dict[str, Any]:
+    async def _create_all_scraping_tasks(self, symbol: str, exchange: str, max_items: int) -> Dict[str, Any]:
         """
          ┌─────────────────────────────────────┐
-         │       SEARCH_SYMBOLS                │
+         │   _CREATE_ALL_SCRAPING_TASKS        │
          └─────────────────────────────────────┘
-         Search for trading symbols
+         Create scraping tasks for all feed types
          
          Parameters:
-         - query: Search query string
+         - symbol: Trading symbol
+         - exchange: Exchange name
+         - max_items: Maximum items per feed
          
          Returns:
-         - Dictionary with symbol suggestions
+         - Dictionary with task creation results
         """
-        try:
-            if not query or len(query.strip()) < 1:
-                return {"suggestions": []}
+        # Creating multiple scraping tasks
+        
+        # Map feed types to task names
+        feed_task_map = {
+            FeedType.TD_NEWS: TaskName.SCRAPING_NEWS,
+            FeedType.TD_IDEAS_RECENT: TaskName.SCRAPING_IDEAS_RECENT,
+            FeedType.TD_IDEAS_POPULAR: TaskName.SCRAPING_IDEAS_POPULAR,
+            FeedType.TD_OPINIONS: TaskName.SCRAPING_OPINIONS
+        }
+        
+        tasks_created = 0
+        task_ids = []
+        
+        for feed_type, task_name in feed_task_map.items():
+            task_id = await self.queue.add_task(
+                task_name.value,
+                {
+                    'symbol': symbol,
+                    'exchange': exchange,
+                    'limit': max_items
+                },
+                max_retries=1,
+                entity_type='scraping',
+                entity_id=None
+            )
             
-            # Search symbols using exchange manager
-            results = exchange_manager.search_symbol(query.strip())
-            
-            # Process results to match frontend expectations
-            suggestions = []
-            
-            # Group results by symbol to show multiple exchange options
-            symbol_groups = {}
-            for result in results:
-                symbol = result.symbol.upper()
-                if symbol not in symbol_groups:
-                    symbol_groups[symbol] = []
-                symbol_groups[symbol].append(result)
-            
-            # Show multiple exchange options for each symbol, respecting TradingView's ranking
-            for symbol, group in list(symbol_groups.items())[:5]:  # Limit to 5 unique symbols
-                # For symbols with multiple exchanges, show up to 6 options
-                if len(group) > 1:
-                    # Show multiple exchange options, respecting TradingView's order
-                    # Filter for spot trading first (most relevant for users)
-                    spot_results = [r for r in group if r.type == 'spot']
-                    other_results = [r for r in group if r.type != 'spot']
-                    
-                    # Combine spot results first, then others, respecting TradingView's ranking
-                    all_results = spot_results + other_results
-                    top_exchanges = all_results[:6]
-                    
-                    for result in top_exchanges:
-                        suggestions.append({
-                            "symbol": result.symbol,
-                            "description": result.description,
-                            "exchange": result.exchange,
-                            "type": result.type,
-                            "provider_id": result.provider_id
-                        })
-                else:
-                    # Single exchange result
-                    best_result = group[0]
-                    suggestions.append({
-                        "symbol": best_result.symbol,
-                        "description": best_result.description,
-                        "exchange": best_result.exchange,
-                        "type": best_result.type,
-                        "provider_id": best_result.provider_id
-                    })
-            
-            return {"suggestions": suggestions}
-            
-        except Exception as e:
-            debug_error(f"Symbol search failed: {e}")
-            return {"suggestions": [], "error": str(e)}
+            task_ids.append(task_id)
+            tasks_created += 1
+            # Task creation logged by queue
+        
+        return {
+            "success": True,
+            "message": f"Created {tasks_created} scraping tasks for all feeds",
+            "feed_type": "ALL",
+            "tasks_created": tasks_created,
+            "task_ids": task_ids
+        }
+

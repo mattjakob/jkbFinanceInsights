@@ -25,7 +25,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import sqlite3
 
-from core.models import ReportModel, TaskStatus, AIAction
+from core.models import ReportModel, TaskStatus, TradingAction
 from core.database import get_db_session, get_db_connection
 from debugger import debug_info, debug_error, debug_success
 
@@ -202,7 +202,7 @@ class ReportsRepository:
             
             query = f"""
                 SELECT * FROM {self.table_name}
-                WHERE datetime(timeFetched) >= ?
+                WHERE timeFetched >= ?
                 ORDER BY timeFetched DESC
             """
             
@@ -309,6 +309,34 @@ class ReportsRepository:
             
             if deleted_count > 0:
                 debug_info(f"Deleted {deleted_count} old reports")
+            
+            return deleted_count
+    
+    def delete_all(self) -> int:
+        """
+         ┌─────────────────────────────────────┐
+         │          DELETE_ALL                 │
+         └─────────────────────────────────────┘
+         Delete all reports from the database
+         
+         Returns:
+         - Number of reports deleted
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get count before deletion
+            cursor.execute(f"SELECT COUNT(*) FROM {self.table_name}")
+            count = cursor.fetchone()[0]
+            
+            # Delete all reports
+            query = f"DELETE FROM {self.table_name}"
+            cursor.execute(query)
+            
+            deleted_count = cursor.rowcount
+            
+            if deleted_count > 0:
+                debug_info(f"Deleted all {deleted_count} reports")
             
             return deleted_count
     

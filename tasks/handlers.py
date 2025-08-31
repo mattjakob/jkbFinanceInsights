@@ -24,12 +24,19 @@
 from typing import Dict, Any, Optional
 
 from data import InsightsRepository
-from core import TaskStatus, TaskName
+from core import TaskStatus, TaskName, FeedType
 from debugger import debug_info, debug_error, debug_success, debug_warning
 
 
-# Initialize repository
-insights_repo = InsightsRepository()
+# Repository will be initialized when needed
+insights_repo = None
+
+def get_insights_repo():
+    """Get insights repository instance (lazy initialization)"""
+    global insights_repo
+    if insights_repo is None:
+        insights_repo = InsightsRepository()
+    return insights_repo
 
 
 async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
@@ -50,7 +57,7 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
     """
     try:
         # Get insight from database
-        insight = insights_repo.get_by_id(insight_id)
+        insight = get_insights_repo().get_by_id(insight_id)
         if not insight:
             # Insight has been deleted - gracefully handle this
             debug_warning(f"Insight {insight_id} not found - likely deleted")
@@ -62,16 +69,13 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             }
         
         # Update status to processing (this ensures consistency)
-        insights_repo.update_ai_status(insight_id, TaskStatus.PROCESSING)
-        debug_info(f"Updated insight {insight_id} status to PROCESSING")
+        get_insights_repo().update_ai_status(insight_id, TaskStatus.PROCESSING)
+        # Status update: insight processing
         
         # Import AI module here to avoid circular imports
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from analysis import AnalysisService, OpenAIProvider
         
-        # Create analysis service
+        # Create analysis service for AI operations
         service = AnalysisService(OpenAIProvider())
         
         results = {}
@@ -90,7 +94,7 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
                 results['image_analysis'] = image_result
                 
                 # Update database
-                insights_repo.update(insight_id, {
+                get_insights_repo().update(insight_id, {
                     'ai_image_summary': image_result
                 })
             except Exception as e:
@@ -118,10 +122,10 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             'ai_levels': analysis_result.format_levels()
         }
         
-        insights_repo.update(insight_id, updates)
-        insights_repo.update_ai_status(insight_id, TaskStatus.COMPLETED)
+        get_insights_repo().update(insight_id, updates)
+        get_insights_repo().update_ai_status(insight_id, TaskStatus.COMPLETED)
         
-        debug_success(f"AI analysis completed for #{insight_id} - status updated to COMPLETED")
+        debug_success(f"AI analysis completed for insight {insight_id}")
         
         return {
             'success': True,
@@ -134,7 +138,7 @@ async def handle_ai_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         
         # Update status to failed
         try:
-            insights_repo.update_ai_status(insight_id, TaskStatus.FAILED)
+            get_insights_repo().update_ai_status(insight_id, TaskStatus.FAILED)
             debug_warning(f"Updated insight {insight_id} status to FAILED")
         except Exception as status_error:
             debug_error(f"Failed to update insight {insight_id} status to FAILED: {status_error}")
@@ -169,7 +173,7 @@ async def handle_image_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
     """
     try:
         # Get insight from database
-        insight = insights_repo.get_by_id(insight_id)
+        insight = get_insights_repo().get_by_id(insight_id)
         if not insight:
             debug_warning(f"Insight {insight_id} not found - likely deleted")
             return {
@@ -180,8 +184,8 @@ async def handle_image_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             }
         
         # Update status to PROCESSING now that task is actually running
-        insights_repo.update_ai_status(insight_id, TaskStatus.PROCESSING)
-        debug_info(f"Updated insight {insight_id} status to PROCESSING")
+        get_insights_repo().update_ai_status(insight_id, TaskStatus.PROCESSING)
+        # Status update: insight processing
         
         # Verify image URL still exists
         if not insight.image_url or not insight.image_url.strip():
@@ -195,12 +199,9 @@ async def handle_image_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             }
         
         # Import AI module here to avoid circular imports
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from analysis import AnalysisService, OpenAIProvider
         
-        # Create analysis service
+        # Create analysis service for AI operations
         service = AnalysisService(OpenAIProvider())
         
         # Perform image analysis
@@ -215,7 +216,7 @@ async def handle_image_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             )
             
             # Update database with image analysis result
-            insights_repo.update(insight_id, {
+            get_insights_repo().update(insight_id, {
                 'ai_image_summary': image_result
             })
             
@@ -234,7 +235,7 @@ async def handle_image_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             debug_error(f"Image analysis failed for insight {insight_id}: {e}")
             
             # Update status to failed
-            insights_repo.update_ai_status(insight_id, TaskStatus.FAILED)
+            get_insights_repo().update_ai_status(insight_id, TaskStatus.FAILED)
             
             return {
                 'success': False,
@@ -248,7 +249,7 @@ async def handle_image_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         
         # Update status to failed
         try:
-            insights_repo.update_ai_status(insight_id, TaskStatus.FAILED)
+            get_insights_repo().update_ai_status(insight_id, TaskStatus.FAILED)
         except Exception as status_error:
             debug_error(f"Failed to update insight {insight_id} status to FAILED: {status_error}")
         
@@ -282,7 +283,7 @@ async def handle_text_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
     """
     try:
         # Get insight from database
-        insight = insights_repo.get_by_id(insight_id)
+        insight = get_insights_repo().get_by_id(insight_id)
         if not insight:
             debug_warning(f"Insight {insight_id} not found - likely deleted")
             return {
@@ -293,16 +294,13 @@ async def handle_text_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             }
         
         # Update status to PROCESSING now that task is actually running
-        insights_repo.update_ai_status(insight_id, TaskStatus.PROCESSING)
-        debug_info(f"Updated insight {insight_id} status to PROCESSING")
+        get_insights_repo().update_ai_status(insight_id, TaskStatus.PROCESSING)
+        # Status update: insight processing
         
         # Import AI module here to avoid circular imports
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from analysis import AnalysisService, OpenAIProvider
         
-        # Create analysis service
+        # Create analysis service for AI operations
         service = AnalysisService(OpenAIProvider())
         
         # Perform text analysis
@@ -331,10 +329,10 @@ async def handle_text_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
             'ai_levels': analysis_result.format_levels()
         }
         
-        insights_repo.update(insight_id, updates)
-        insights_repo.update_ai_status(insight_id, TaskStatus.COMPLETED)
+        get_insights_repo().update(insight_id, updates)
+        get_insights_repo().update_ai_status(insight_id, TaskStatus.COMPLETED)
         
-        debug_success(f"Text analysis completed for insight {insight_id} - status updated to COMPLETED")
+        debug_success(f"Text analysis completed for insight {insight_id}")
         
         return {
             'success': True,
@@ -347,7 +345,7 @@ async def handle_text_analysis(insight_id: int, **kwargs) -> Dict[str, Any]:
         
         # Update status to failed
         try:
-            insights_repo.update_ai_status(insight_id, TaskStatus.FAILED)
+            get_insights_repo().update_ai_status(insight_id, TaskStatus.FAILED)
         except Exception as status_error:
             debug_error(f"Failed to update insight {insight_id} status to FAILED: {status_error}")
         
@@ -373,10 +371,10 @@ async def _create_text_analysis_task(insight_id: int) -> str:
      - Task ID of created task
     """
     try:
-        from .queue import TaskQueue
-        queue = TaskQueue()
+        from .queue import get_task_queue
+        queue = await get_task_queue()
         
-        task_id = queue.add_task(
+        task_id = await queue.add_task(
             TaskName.AI_TEXT_ANALYSIS.value,
             {'insight_id': insight_id},
             max_retries=None,  # Use config value
@@ -384,7 +382,7 @@ async def _create_text_analysis_task(insight_id: int) -> str:
             entity_id=insight_id
         )
         
-        debug_info(f"Created text analysis task {task_id} for insight {insight_id}")
+        # Task creation logged by queue
         return task_id
         
     except Exception as e:
@@ -417,7 +415,7 @@ async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kw
     """
     try:
         # Get insights needing analysis
-        insights = insights_repo.find_for_ai_analysis()
+        insights = get_insights_repo().find_for_ai_analysis()
         
         if not insights:
             debug_info("No insights need AI analysis")
@@ -466,8 +464,8 @@ async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kw
             }
         
         # Import task queue here
-        from .queue import TaskQueue
-        queue = TaskQueue()
+        from .queue import get_task_queue
+        queue = await get_task_queue()
         
         # Phase 1: Create image analysis tasks (only for insights with valid image URLs)
         image_tasks_created = 0
@@ -481,10 +479,10 @@ async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kw
                 
                 if needs_image_analysis:
                     # Create image analysis task first
-                    insights_repo.update_ai_status(insight.id, TaskStatus.PENDING, TaskName.AI_IMAGE_ANALYSIS)
-                    debug_info(f"Updated insight {insight.id} status to PENDING for image analysis")
+                    get_insights_repo().update_ai_status(insight.id, TaskStatus.PENDING, TaskName.AI_IMAGE_ANALYSIS)
+                    # Status update: pending image analysis
                     
-                    task_id = queue.add_task(
+                    task_id = await queue.add_task(
                         TaskName.AI_IMAGE_ANALYSIS.value,
                         {'insight_id': insight.id},
                         max_retries=None,  # Use config value
@@ -492,13 +490,13 @@ async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kw
                         entity_id=insight.id
                     )
                     image_tasks_created += 1
-                    debug_info(f"Created image analysis task {task_id} for insight {insight.id}")
+                    # Task creation logged by queue
                 else:
                     # No image needed, create text analysis task directly
-                    insights_repo.update_ai_status(insight.id, TaskStatus.PENDING, TaskName.AI_TEXT_ANALYSIS)
-                    debug_info(f"Updated insight {insight.id} status to PENDING for text analysis")
+                    get_insights_repo().update_ai_status(insight.id, TaskStatus.PENDING, TaskName.AI_TEXT_ANALYSIS)
+                    # Status update: pending text analysis
                     
-                    task_id = queue.add_task(
+                    task_id = await queue.add_task(
                         TaskName.AI_TEXT_ANALYSIS.value,
                         {'insight_id': insight.id},
                         max_retries=None,  # Use config value
@@ -506,7 +504,7 @@ async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kw
                         entity_id=insight.id
                     )
                     text_tasks_created += 1
-                    debug_info(f"Created text analysis task {task_id} for insight {insight.id}")
+                    # Task creation logged by queue
                 
             except Exception as e:
                 debug_error(f"Failed to create task for insight {insight.id}: {e}")
@@ -514,7 +512,7 @@ async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kw
                 
                 # Reset status back to EMPTY on task creation failure
                 try:
-                    insights_repo.update_ai_status(insight.id, TaskStatus.EMPTY)
+                    get_insights_repo().update_ai_status(insight.id, TaskStatus.EMPTY)
                     debug_warning(f"Reset insight {insight.id} status back to EMPTY due to task creation failure")
                 except Exception as reset_error:
                     debug_error(f"Failed to reset insight {insight.id} status: {reset_error}")
@@ -551,7 +549,7 @@ async def handle_bulk_analysis(symbol: str = None, type_filter: str = None, **kw
         raise
 
 
-def handle_cleanup(days: int = 7, **kwargs) -> Dict[str, Any]:
+async def handle_cleanup(days: int = 7, **kwargs) -> Dict[str, Any]:
     """
      ┌─────────────────────────────────────┐
      │        HANDLE_CLEANUP               │
@@ -564,11 +562,11 @@ def handle_cleanup(days: int = 7, **kwargs) -> Dict[str, Any]:
      Returns:
      - Cleanup statistics
     """
-    from .queue import TaskQueue
-    queue = TaskQueue()
+    from .queue import get_async_task_queue
+    queue = await get_async_task_queue()
     
     # Cleanup old tasks
-    queue.cleanup_old_tasks(days)
+    await queue.cleanup_old_tasks(days)
     
     return {
         'success': True,
@@ -576,73 +574,7 @@ def handle_cleanup(days: int = 7, **kwargs) -> Dict[str, Any]:
     }
 
 
-def handle_test_timeout(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-     ┌─────────────────────────────────────┐
-     │        HANDLE_TEST_TIMEOUT           │
-     └─────────────────────────────────────┘
-     Test handler for timeout functionality
-     
-     Simulates a long-running operation to test task timeout.
-    """
-    import time
-    import random
-    
-    # Get timeout from payload or use default
-    timeout_seconds = payload.get('timeout_seconds', 10)
-    
-    # Simulate work time (will timeout if longer than TASK_PROCESSING_TIMEOUT)
-    work_time = random.randint(1, int(timeout_seconds * 2))
-    time.sleep(work_time)
-    
-    return {
-        'success': True,
-        'work_time': work_time,
-        'message': f'Test task completed in {work_time} seconds'
-    }
-
-
-def handle_create_timeout_test(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-     ┌─────────────────────────────────────┐
-     │      HANDLE_CREATE_TIMEOUT_TEST      │
-     └─────────────────────────────────────┘
-     Create a test task that will likely timeout
-     
-     Useful for testing timeout and retry functionality.
-    """
-    try:
-        from .queue import TaskQueue
-        from config import TASK_PROCESSING_TIMEOUT
-        
-        queue = TaskQueue()
-        
-        # Create a test task with a timeout that will likely exceed TASK_PROCESSING_TIMEOUT
-        timeout_seconds = payload.get('timeout_seconds', TASK_PROCESSING_TIMEOUT / 1000.0 * 1.5)
-        
-        task_id = queue.add_task(
-            'test_timeout',
-            {'timeout_seconds': timeout_seconds},
-            max_retries=None  # Use config value
-        )
-        
-        return {
-            'success': True,
-            'task_id': task_id,
-            'timeout_seconds': timeout_seconds,
-            'config_timeout_ms': TASK_PROCESSING_TIMEOUT,
-            'message': f'Created timeout test task {task_id} with {timeout_seconds}s work time'
-        }
-        
-    except Exception as e:
-        return {
-            'success': False,
-            'error': str(e),
-            'message': f'Failed to create timeout test: {str(e)}'
-        }
-
-
-def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
      ┌─────────────────────────────────────┐
      │    HANDLE_AI_REPORT_GENERATION      │
@@ -661,18 +593,18 @@ def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
             debug_error("No symbol provided for report generation")
             return {'success': False, 'should_retry': False, 'error': 'No symbol provided'}
         
-        debug_info(f"Generating AI report for {symbol} with {insights_count} insights")
+        # Generating AI report
         
         # Import analysis service
         from analysis.service import AnalysisService
         service = AnalysisService()
         
-        # Generate the report using AI
-        result = service.analyze_report(symbol=symbol, content=content)
+        # Generate the report using AI (async)
+        result = await service.analyze_report_async(symbol=symbol, content=content)
         
         # Create a report entry in the database
         from data.repositories.reports import get_reports_repository
-        from core.models import ReportModel, AIAction
+        from core.models import ReportModel, TradingAction
         from datetime import datetime
         
         reports_repo = get_reports_repository()
@@ -681,7 +613,7 @@ def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
         # OpenAI returns confidence as 0-100, convert to 0-1
         confidence_normalized = result.confidence / 100.0 if result.confidence is not None else 0.0
         
-        # Convert action to uppercase and map to AIAction enum
+        # Convert action to uppercase and map to TradingAction enum
         action_str = result.action.upper() if result.action else "HOLD"
         
         # Format levels as string
@@ -691,7 +623,7 @@ def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
             time_fetched=datetime.now(),
             symbol=symbol,
             ai_summary=result.summary,
-            ai_action=AIAction(action_str),
+            ai_action=TradingAction(action_str),
             ai_confidence=confidence_normalized,
             ai_event_time=result.event_time,
             ai_levels=levels_str
@@ -714,6 +646,181 @@ def handle_ai_report_generation(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {'success': False, 'should_retry': True, 'error': str(e)}
 
 
+async def handle_scraping_task(feed_type: FeedType, **kwargs) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │      HANDLE_SCRAPING_TASK           │
+     └─────────────────────────────────────┘
+     Handle scraping task for a specific feed type
+     
+     Executes the scraper for the specified feed type and stores results.
+     
+     Parameters:
+     - feed_type: FeedType to scrape
+     - symbol: Trading symbol
+     - exchange: Exchange name
+     - limit: Maximum items to fetch
+     
+     Returns:
+     - Dictionary with scraping results
+     
+     Notes:
+     - One task per scraper call
+     - Returns statistics about created/duplicate items
+    """
+    try:
+        # Extract parameters
+        symbol = kwargs.get('symbol')
+        exchange = kwargs.get('exchange')
+        limit = kwargs.get('limit', 50)
+        
+        if not symbol or not exchange:
+            return {
+                'success': False,
+                'error': 'Missing required parameters: symbol and exchange',
+                'should_retry': False
+            }
+        
+        # Scraping task processing
+        
+        # Import scraper manager to avoid circular imports
+        from scrapers import ScraperManager
+        manager = ScraperManager()
+        
+        # Fetch and store data
+        result = manager.fetch_and_store(
+            feed_type=feed_type,
+            symbol=symbol,
+            exchange=exchange,
+            limit=limit
+        )
+        
+        # Log results
+        if result['success']:
+            debug_success(f"{feed_type.value} scraping completed: {result['created_insights']} insights created, {result['duplicate_insights']} duplicates")
+        else:
+            debug_error(f"{feed_type.value} scraping failed: {result.get('message', 'Unknown error')}")
+        
+        return {
+            'success': result['success'],
+            'feed_type': feed_type.value,
+            'symbol': symbol,
+            'exchange': exchange,
+            'processed_items': result.get('processed_items', 0),
+            'created_insights': result.get('created_insights', 0),
+            'duplicate_insights': result.get('duplicate_insights', 0),
+            'failed_items': result.get('failed_items', 0),
+            'message': result.get('message'),
+            'should_retry': False  # Scraping failures typically shouldn't be retried
+        }
+        
+    except Exception as e:
+        debug_error(f"{feed_type.value} scraping failed with exception: {e}")
+        return {
+            'success': False,
+            'feed_type': feed_type.value,
+            'error': str(e),
+            'should_retry': True
+        }
+
+
+def _create_scraping_handler(feed_type: FeedType):
+    """Create a scraping handler for a specific feed type"""
+    async def handler(symbol: str, exchange: str, limit: int = 50, **kwargs) -> Dict[str, Any]:
+        return await handle_scraping_task(feed_type, symbol=symbol, exchange=exchange, limit=limit, **kwargs)
+    return handler
+
+
+async def handle_scraping_all(symbol: str, exchange: str, limit: int = 50, **kwargs) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │      HANDLE_SCRAPING_ALL            │
+     └─────────────────────────────────────┘
+     Handle scraping all feed types
+     
+     Creates individual tasks for each feed type using helper function.
+     
+     Parameters:
+     - symbol: Trading symbol
+     - exchange: Exchange name
+     - limit: Maximum items per feed
+     
+     Returns:
+     - Dictionary with task creation results
+    """
+    try:
+        from .queue import get_task_queue
+        queue = await get_task_queue()
+        
+        # Use helper function to create tasks for all feed types
+        return await _create_tasks_for_all_feeds(queue, symbol, exchange, limit, 'scraping')
+        
+    except Exception as e:
+        debug_error(f"Failed to create scraping tasks: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'should_retry': False
+        }
+
+
+async def _create_tasks_for_all_feeds(queue, symbol: str, exchange: str, limit: int, operation_type: str) -> Dict[str, Any]:
+    """
+     ┌─────────────────────────────────────┐
+     │   _CREATE_TASKS_FOR_ALL_FEEDS       │
+     └─────────────────────────────────────┘
+     Helper function to create tasks for all feed types
+     
+     Parameters:
+     - queue: TaskQueue instance
+     - symbol: Trading symbol
+     - exchange: Exchange name
+     - limit: Maximum items per feed
+     - operation_type: Type of operation ('scraping', 'analysis')
+     
+     Returns:
+     - Dictionary with task creation results
+    """
+    # Map feed types to task names based on operation type
+    if operation_type == 'scraping':
+        feed_task_map = {
+            FeedType.TD_NEWS: TaskName.SCRAPING_NEWS,
+            FeedType.TD_IDEAS_RECENT: TaskName.SCRAPING_IDEAS_RECENT,
+            FeedType.TD_IDEAS_POPULAR: TaskName.SCRAPING_IDEAS_POPULAR,
+            FeedType.TD_OPINIONS: TaskName.SCRAPING_OPINIONS
+        }
+    else:
+        # For future use with other operation types
+        raise ValueError(f"Unsupported operation type: {operation_type}")
+    
+    tasks_created = 0
+    task_ids = []
+    
+    for feed_type, task_name in feed_task_map.items():
+        task_id = await queue.add_task(
+            task_name.value,
+            {
+                'symbol': symbol,
+                'exchange': exchange,
+                'limit': limit
+            },
+            max_retries=1,
+            entity_type=operation_type,
+            entity_id=None
+        )
+        
+        task_ids.append(task_id)
+        tasks_created += 1
+        # Task creation logged by queue
+    
+    return {
+        'success': True,
+        'message': f'Created {tasks_created} {operation_type} tasks',
+        'tasks_created': tasks_created,
+        'task_ids': task_ids
+    }
+
+
 # Handler registry for easy registration
 HANDLERS = {
     TaskName.AI_ANALYSIS.value: handle_ai_analysis,
@@ -722,6 +829,9 @@ HANDLERS = {
     TaskName.BULK_ANALYSIS.value: handle_bulk_analysis,
     TaskName.CLEANUP.value: handle_cleanup,
     TaskName.REPORT_GENERATION.value: handle_ai_report_generation,
-    'test_timeout': handle_test_timeout,
-    'create_timeout_test': handle_create_timeout_test
+    TaskName.SCRAPING_NEWS.value: _create_scraping_handler(FeedType.TD_NEWS),
+    TaskName.SCRAPING_IDEAS_RECENT.value: _create_scraping_handler(FeedType.TD_IDEAS_RECENT),
+    TaskName.SCRAPING_IDEAS_POPULAR.value: _create_scraping_handler(FeedType.TD_IDEAS_POPULAR),
+    TaskName.SCRAPING_OPINIONS.value: _create_scraping_handler(FeedType.TD_OPINIONS),
+    TaskName.SCRAPING_ALL.value: handle_scraping_all
 }

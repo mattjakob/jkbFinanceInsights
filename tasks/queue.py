@@ -2,12 +2,12 @@
 /**
  * 
  *  ┌─────────────────────────────────────┐
- *  │          TASK QUEUE                 │
+ *  │       TASK QUEUE V2                 │
  *  └─────────────────────────────────────┘
- *  Simple task queue implementation
+ *  Improved task queue with better performance
  * 
- *  Provides a lightweight task queue system for async processing
- *  with database persistence and retry logic.
+ *  Addresses database locking issues and improves task
+ *  processing flow with async operations and better concurrency.
  * 
  *  Parameters:
  *  - None
@@ -16,26 +16,32 @@
  *  - TaskQueue instance
  * 
  *  Notes:
- *  - Uses SQLite for persistence
- *  - Supports retries and timeouts
+ *  - Uses async database operations
+ *  - Implements exponential backoff for retries
+ *  - Better handling of concurrent access
  */
 """
 
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
-from enum import Enum
-from typing import Optional, Dict, Any, List, Tuple
+import asyncio
 import json
 import uuid
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, List, Tuple
+import aiosqlite
+import sqlite3
 
-from core.database import get_db_session
 from core.models import TaskStatus, TaskName
-from debugger import debug_info, debug_error, debug_warning
+from debugger import debug_info, debug_error, debug_warning, debug_success
+from config import (
+    DATABASE_URL, DATABASE_TIMEOUT, DATABASE_WAL_MODE,
+    TASK_MAX_RETRIES, TASK_PROCESSING_TIMEOUT, TASK_PENDING_TIMEOUT
+)
 
-# Legacy Task class for backward compatibility
+
 @dataclass
 class Task:
-    """Legacy task structure for queue compatibility"""
+    """Task structure for queue"""
     task_type: str
     payload: Dict[str, Any]
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -85,79 +91,160 @@ class Task:
 class TaskQueue:
     """
      ┌─────────────────────────────────────┐
-     │          TASKQUEUE                  │
+     │         TASKQUEUE                   │
      └─────────────────────────────────────┘
-     Simple task queue with database persistence
+     Task queue with async operations
      
-     Manages task lifecycle with minimal complexity.
+     Uses async SQLite operations and better concurrency
+     control to reduce delays and improve throughput.
     """
     
-    def __init__(self):
-        self._initialize_schema()
+    _instance = None
+    _initialized = False
+    _db_pool: List[aiosqlite.Connection] = []
+    _pool_size = 5
+    _pool_lock = None
     
-    def _initialize_schema(self):
+    def __new__(cls):
+        """Singleton pattern"""
+        if cls._instance is None:
+            cls._instance = super(TaskQueue, cls).__new__(cls)
+        return cls._instance
+    
+    async def initialize(self):
+        """Initialize the queue (async version)"""
+        if not TaskQueue._initialized:
+            await self._initialize_schema()
+            await self._setup_connection_pool()
+            TaskQueue._initialized = True
+    
+    async def _setup_connection_pool(self):
+        """Setup connection pool for better concurrency"""
+        for _ in range(self._pool_size):
+            conn = await aiosqlite.connect(
+                DATABASE_URL,
+                timeout=DATABASE_TIMEOUT
+            )
+            
+            # Enable WAL mode for better concurrency
+            if DATABASE_WAL_MODE:
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await conn.execute("PRAGMA synchronous=NORMAL")
+                await conn.execute("PRAGMA busy_timeout=5000")
+                await conn.execute("PRAGMA wal_autocheckpoint=1000")
+            
+            # Enable row factory
+            conn.row_factory = aiosqlite.Row
+            
+            self._db_pool.append(conn)
+    
+    async def _get_connection(self) -> aiosqlite.Connection:
+        """Get a connection from the pool"""
+        if self._pool_lock is None:
+            self._pool_lock = asyncio.Lock()
+        async with self._pool_lock:
+            if self._db_pool:
+                return self._db_pool.pop()
+        
+        # Create new connection if pool is empty
+        conn = await aiosqlite.connect(
+            DATABASE_URL,
+            timeout=DATABASE_TIMEOUT
+        )
+        
+        if DATABASE_WAL_MODE:
+            await conn.execute("PRAGMA journal_mode=WAL")
+            await conn.execute("PRAGMA synchronous=NORMAL")
+            await conn.execute("PRAGMA busy_timeout=5000")
+        
+        conn.row_factory = aiosqlite.Row
+        return conn
+    
+    async def _return_connection(self, conn: aiosqlite.Connection):
+        """Return connection to pool"""
+        if self._pool_lock is None:
+            self._pool_lock = asyncio.Lock()
+        async with self._pool_lock:
+            if len(self._db_pool) < self._pool_size:
+                self._db_pool.append(conn)
+            else:
+                await conn.close()
+    
+    async def _execute_with_retry(self, func, max_retries=3):
+        """Execute database operation with exponential backoff retry"""
+        for attempt in range(max_retries):
+            try:
+                return await func()
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 0.1  # Exponential backoff
+                    debug_warning(f"Database locked, retrying in {wait_time:.2f}s (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise
+    
+    async def _initialize_schema(self):
         """Create tasks table if it doesn't exist"""
-        with get_db_session() as conn:
+        conn = await self._get_connection()
+        try:
             # Check if table exists
-            table_exists = conn.execute("""
+            cursor = await conn.execute("""
                 SELECT name FROM sqlite_master 
                 WHERE type='table' AND name='simple_tasks'
-            """).fetchone() is not None
+            """)
+            table_exists = await cursor.fetchone() is not None
             
             if not table_exists:
-                # Create new table with all columns
-                conn.execute("""
+                await conn.execute("""
                     CREATE TABLE simple_tasks (
                         id TEXT PRIMARY KEY,
                         task_type TEXT NOT NULL,
                         payload TEXT NOT NULL,
                         status TEXT NOT NULL,
                         retries INTEGER DEFAULT 0,
-                        max_retries INTEGER DEFAULT 3,  -- Will be overridden by config
+                        max_retries INTEGER DEFAULT 3,
                         created_at TEXT NOT NULL,
                         started_at TEXT,
                         completed_at TEXT,
                         result TEXT,
                         error TEXT,
                         entity_type TEXT,
-                        entity_id INTEGER
+                        entity_id INTEGER,
+                        priority INTEGER DEFAULT 0
                     )
                 """)
             else:
-                # Add columns if they don't exist (for migration)
+                # Add priority column if it doesn't exist
                 try:
-                    conn.execute("ALTER TABLE simple_tasks ADD COLUMN entity_type TEXT")
-                    debug_info("Added entity_type column to simple_tasks")
+                    await conn.execute("ALTER TABLE simple_tasks ADD COLUMN priority INTEGER DEFAULT 0")
+                    debug_info("Added priority column to simple_tasks")
                 except:
-                    pass  # Column already exists
-                
-                try:
-                    conn.execute("ALTER TABLE simple_tasks ADD COLUMN entity_id INTEGER")
-                    debug_info("Added entity_id column to simple_tasks")
-                except:
-                    pass  # Column already exists
+                    pass
             
             # Create indexes
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_tasks_status ON simple_tasks(status)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_tasks_type ON simple_tasks(task_type)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_tasks_status ON simple_tasks(status)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_tasks_type ON simple_tasks(task_type)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_tasks_priority ON simple_tasks(priority DESC, created_at ASC)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_tasks_entity ON simple_tasks(entity_type, entity_id)")
             
-            # Only create entity index if columns exist
-            try:
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_tasks_entity ON simple_tasks(entity_type, entity_id)")
-            except:
-                pass  # Columns may not exist in older schemas
+            await conn.commit()
+        finally:
+            await self._return_connection(conn)
     
-    def add_task(self, task_type: str, payload: Dict[str, Any], max_retries: int = None, entity_type: str = None, entity_id: int = None) -> str:
+    async def add_task(self, task_type: str, payload: Dict[str, Any], 
+                      max_retries: int = None, entity_type: str = None, 
+                      entity_id: int = None, priority: int = 0) -> str:
         """
          ┌─────────────────────────────────────┐
          │          ADD_TASK                   │
          └─────────────────────────────────────┘
-         Add a new task to the queue
+         Add a new task to the queue (async)
          
          Parameters:
          - task_type: Type identifier for routing
          - payload: Task-specific data
          - max_retries: Maximum retry attempts
+         - priority: Task priority (higher = more important)
          
          Returns:
          - Task ID
@@ -169,337 +256,205 @@ class TaskQueue:
         
         # Use config value if max_retries not provided
         if max_retries is None:
-            from config import TASK_MAX_RETRIES
             max_retries = TASK_MAX_RETRIES
-            
+        
         task = Task(
             task_type=task_type,
             payload=payload,
             max_retries=max_retries
         )
         
-        with get_db_session() as conn:
-            data = task.to_dict()
-            conn.execute("""
-                INSERT INTO simple_tasks (
-                    id, task_type, payload, status, retries,
-                    max_retries, created_at, started_at, completed_at,
-                    result, error, entity_type, entity_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                data['id'], data['task_type'], data['payload'],
-                data['status'], data['retries'], data['max_retries'],
-                data['created_at'], data['started_at'], data['completed_at'],
-                data['result'], data['error'], entity_type, entity_id
-            ))
+        async def insert_task():
+            conn = await self._get_connection()
+            try:
+                data = task.to_dict()
+                await conn.execute("""
+                    INSERT INTO simple_tasks (
+                        id, task_type, payload, status, retries,
+                        max_retries, created_at, started_at, completed_at,
+                        result, error, entity_type, entity_id, priority
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    data['id'], data['task_type'], data['payload'],
+                    data['status'], data['retries'], data['max_retries'],
+                    data['created_at'], data['started_at'], data['completed_at'],
+                    data['result'], data['error'], entity_type, entity_id, priority
+                ))
+                await conn.commit()
+            finally:
+                await self._return_connection(conn)
         
-        debug_info(f"Added task {task.id} of type {task_type}")
+        await self._execute_with_retry(insert_task)
+        debug_info(f"Task {task.id} created for {task_type}")
         return task.id
     
-    def get_next_task(self) -> Optional[Task]:
+    async def get_next_task(self) -> Optional[Task]:
         """
          ┌─────────────────────────────────────┐
          │        GET_NEXT_TASK                │
          └─────────────────────────────────────┘
-         Get the next pending task
+         Get the next pending task (async)
          
-         Returns the oldest pending task and marks it
-         as processing.
+         Uses priority and creation time for ordering.
+         Implements atomic claim to prevent race conditions.
          
          Returns:
          - Task instance or None
         """
-        with get_db_session() as conn:
-            # Find oldest pending task
-            row = conn.execute("""
-                SELECT * FROM simple_tasks
-                WHERE status = ?
-                ORDER BY created_at ASC
-                LIMIT 1
-            """, (TaskStatus.PENDING.value,)).fetchone()
-            
-            if not row:
-                return None
-            
-            # Mark as processing
-            conn.execute("""
-                UPDATE simple_tasks
-                SET status = ?, started_at = ?
-                WHERE id = ?
-            """, (TaskStatus.PROCESSING.value, datetime.now().isoformat(), row['id']))
-            
-            # Return task
-            task = Task.from_dict(dict(row))
-            task.status = TaskStatus.PROCESSING
-            task.started_at = datetime.now()
-            
-            debug_info(f"Processing task {task.id} of type {task.task_type}")
-            return task
-    
-    def complete_task(self, task_id: str, result: Optional[Dict[str, Any]] = None):
-        """
-         ┌─────────────────────────────────────┐
-         │        COMPLETE_TASK                │
-         └─────────────────────────────────────┘
-         Mark task as completed
-         
-         Parameters:
-         - task_id: Task to complete
-         - result: Optional result data
-        """
-        with get_db_session() as conn:
-            conn.execute("""
-                UPDATE simple_tasks
-                SET status = ?, completed_at = ?, result = ?
-                WHERE id = ?
-            """, (
-                TaskStatus.COMPLETED.value,
-                datetime.now().isoformat(),
-                json.dumps(result) if result else None,
-                task_id
-            ))
+        async def claim_task():
+            conn = await self._get_connection()
+            try:
+                # Use a transaction for atomic claim
+                await conn.execute("BEGIN IMMEDIATE")
+                
+                # Find next task (priority first, then oldest)
+                cursor = await conn.execute("""
+                    SELECT * FROM simple_tasks
+                    WHERE status = ?
+                    ORDER BY priority DESC, created_at ASC
+                    LIMIT 1
+                """, (TaskStatus.PENDING.value,))
+                
+                row = await cursor.fetchone()
+                if not row:
+                    await conn.rollback()
+                    return None
+                
+                # Claim the task
+                start_time = datetime.now().isoformat()
+                await conn.execute("""
+                    UPDATE simple_tasks
+                    SET status = ?, started_at = ?
+                    WHERE id = ? AND status = ?
+                """, (
+                    TaskStatus.PROCESSING.value,
+                    start_time,
+                    row['id'],
+                    TaskStatus.PENDING.value
+                ))
+                
+                if conn.total_changes == 0:
+                    await conn.rollback()
+                    return None
+                
+                await conn.commit()
+                
+                # Convert to Task object
+                task_dict = dict(row)
+                task = Task.from_dict(task_dict)
+                task.status = TaskStatus.PROCESSING
+                task.started_at = datetime.now()
+                
+                return task
+                
+            except Exception as e:
+                await conn.rollback()
+                raise
+            finally:
+                await self._return_connection(conn)
         
-        debug_info(f"Completed task {task_id}")
+        return await self._execute_with_retry(claim_task)
     
-    def fail_task(self, task_id: str, error: str, permanent: bool = False):
-        """
-         ┌─────────────────────────────────────┐
-         │          FAIL_TASK                  │
-         └─────────────────────────────────────┘
-         Mark task as failed with retry logic
-         
-         Parameters:
-         - task_id: Task that failed
-         - error: Error message
-         - permanent: If True, fail immediately without retry
-        """
-        with get_db_session() as conn:
-            # Get current task state
-            row = conn.execute(
-                "SELECT retries, max_retries FROM simple_tasks WHERE id = ?",
-                (task_id,)
-            ).fetchone()
-            
-            if not row:
-                return
-            
-            retries = row['retries']
-            max_retries = row['max_retries']
-            
-            # Check for permanent failure or if we should retry
-            if not permanent and retries < max_retries:
-                # Retry - mark as pending again
-                conn.execute("""
+    async def complete_task(self, task_id: str, result: Optional[Dict[str, Any]] = None):
+        """Complete a task (async)"""
+        async def update_task():
+            conn = await self._get_connection()
+            try:
+                # Get task type for logging
+                cursor = await conn.execute(
+                    "SELECT task_type FROM simple_tasks WHERE id = ?",
+                    (task_id,)
+                )
+                row = await cursor.fetchone()
+                task_type = row['task_type'] if row else 'unknown'
+                
+                await conn.execute("""
                     UPDATE simple_tasks
-                    SET status = ?, retries = ?, error = ?, started_at = NULL
+                    SET status = ?, completed_at = ?, result = ?
                     WHERE id = ?
-                """, (TaskStatus.PENDING.value, retries + 1, error, task_id))
+                """, (
+                    TaskStatus.COMPLETED.value,
+                    datetime.now().isoformat(),
+                    json.dumps(result) if result else None,
+                    task_id
+                ))
+                await conn.commit()
                 
-                debug_warning(f"Task {task_id} failed, retry {retries + 1}/{max_retries}")
-            else:
-                # Final failure or permanent failure
-                conn.execute("""
-                    UPDATE simple_tasks
-                    SET status = ?, completed_at = ?, error = ?
-                    WHERE id = ?
-                """, (TaskStatus.FAILED.value, datetime.now().isoformat(), error, task_id))
+                debug_success(f"Task {task_id} complete ({task_type})")
                 
-                if permanent:
-                    debug_error(f"Task {task_id} permanently failed: {error}")
-                else:
-                    debug_error(f"Task {task_id} failed after {max_retries} retries")
-                
-                # Update entity status when task fails
-                self._update_entity_status_on_failure(task_id, error)
+            finally:
+                await self._return_connection(conn)
+        
+        await self._execute_with_retry(update_task)
     
-    def _update_entity_status_on_failure(self, task_id: str, error: str):
-        """
-         ┌─────────────────────────────────────┐
-         │   UPDATE_ENTITY_STATUS_ON_FAILURE   │
-         └─────────────────────────────────────┘
-         Update the status of the entity associated with a failed task
-         
-         Parameters:
-         - task_id: ID of the failed task
-         - error: Error message from the task failure
-        """
-        try:
-            with get_db_session() as conn:
-                # Get task details including entity information
-                task_row = conn.execute("""
-                    SELECT task_type, entity_type, entity_id, payload
-                    FROM simple_tasks
-                    WHERE id = ?
-                """, (task_id,)).fetchone()
+    async def fail_task(self, task_id: str, error: str, permanent: bool = False):
+        """Fail a task with retry logic (async)"""
+        async def update_task():
+            conn = await self._get_connection()
+            try:
+                # Get current task state
+                cursor = await conn.execute(
+                    "SELECT retries, max_retries, entity_type, entity_id FROM simple_tasks WHERE id = ?",
+                    (task_id,)
+                )
+                row = await cursor.fetchone()
                 
-                if not task_row:
+                if not row:
                     return
                 
-                task_type = task_row['task_type']
-                entity_type = task_row['entity_type']
-                entity_id = task_row['entity_id']
-                payload = json.loads(task_row['payload']) if task_row['payload'] else {}
+                retries = row['retries']
+                max_retries = row['max_retries']
                 
-                # For insight-related tasks, get insight_id from payload if entity_id is empty
-                insight_id = entity_id if entity_id else payload.get('insight_id')
-                
-                # Update entity status based on task type
-                if task_type in ['ai_analysis', 'ai_image_analysis', 'ai_text_analysis'] and insight_id:
-                    # Update insight AI analysis status to FAILED
-                    conn.execute("""
-                        UPDATE insights
-                        SET TaskStatus = ?
+                # Check for permanent failure or if we should retry
+                if not permanent and retries < max_retries:
+                    # Retry with exponential backoff on priority
+                    new_priority = -retries  # Lower priority for retries
+                    await conn.execute("""
+                        UPDATE simple_tasks
+                        SET status = ?, retries = ?, error = ?, started_at = NULL, priority = ?
                         WHERE id = ?
-                    """, (TaskStatus.FAILED.value, insight_id))
-                    debug_info(f"Updated insight {insight_id} status to FAILED due to task {task_id} failure")
-                
-                elif entity_type == 'symbol' and task_type == 'ai_report_generation':
-                    # For report generation tasks, we need to find the most recent report
-                    # and mark it as failed, or create a failed report entry
-                    symbol = payload.get('symbol')
-                    if symbol:
-                        # Try to find existing report for this symbol
-                        report_row = conn.execute("""
-                            SELECT id FROM reports
-                            WHERE symbol = ? AND TaskStatus = 'completed'
-                            ORDER BY timeFetched DESC
-                            LIMIT 1
-                        """, (symbol,)).fetchone()
-                        
-                        if report_row:
-                            # Update existing report to failed
-                            conn.execute("""
-                                UPDATE reports
-                                SET TaskStatus = ?
-                                WHERE id = ?
-                            """, (TaskStatus.FAILED.value, report_row['id']))
-                            debug_info(f"Updated report {report_row['id']} status to failed due to task {task_id}")
-                        else:
-                            # Create a failed report entry
-                            from datetime import datetime
-                            conn.execute("""
-                                INSERT INTO reports (timeFetched, symbol, AISummary, AIAction, 
-                                                   AIConfidence, AIEventTime, AILevels, TaskStatus, TaskName)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (
-                                datetime.now().isoformat(),
-                                symbol,
-                                f"Failed to generate report: {error}",
-                                'HOLD',
-                                0.0,
-                                None,
-                                None,
-                                TaskStatus.FAILED.value,
-                                'ai_report_generation'
-                            ))
-                            debug_info(f"Created failed report entry for {symbol} due to task {task_id}")
-                
-        except Exception as e:
-            debug_error(f"Failed to update entity status for task {task_id}: {e}")
-    
-    def _update_entity_status_bulk(self, conn, tasks: List[Dict[str, Any]], error: str):
-        """
-         ┌─────────────────────────────────────┐
-         │    UPDATE_ENTITY_STATUS_BULK        │
-         └─────────────────────────────────────┘
-         Update the status of multiple entities in a single database connection
-         
-         Parameters:
-         - conn: Database connection to use
-         - tasks: List of tasks to update entity status for
-         - error: Error message for the status update
-        """
-        try:
-            # Collect all insight IDs and report symbols that need updates
-            insight_ids = []
-            report_symbols = []
-            
-            for task in tasks:
-                task_type = task['task_type']
-                entity_type = task['entity_type']
-                entity_id = task['entity_id']
-                payload = json.loads(task['payload']) if task['payload'] else {}
-                
-                if entity_type == 'insight' and entity_id:
-                    insight_ids.append(entity_id)
-                elif entity_type == 'symbol' and task_type == 'ai_report_generation':
-                    symbol = payload.get('symbol')
-                    if symbol:
-                        report_symbols.append(symbol)
-            
-            # Bulk update insights
-            if insight_ids:
-                placeholders = ','.join(['?' for _ in insight_ids])
-                conn.execute(f"""
-                    UPDATE insights
-                    SET AIAnalysisStatus = ?
-                    WHERE id IN ({placeholders})
-                """, ['failed'] + insight_ids)
-                debug_info(f"Bulk updated {len(insight_ids)} insights to failed status")
-            
-            # Handle report updates
-            if report_symbols:
-                for symbol in report_symbols:
-                    # Try to find existing report for this symbol
-                    report_row = conn.execute("""
-                        SELECT id FROM reports
-                        WHERE symbol = ? AND AIAnalysisStatus = 'completed'
-                        ORDER BY timeFetched DESC
-                        LIMIT 1
-                    """, (symbol,)).fetchone()
+                    """, (TaskStatus.PENDING.value, retries + 1, error, new_priority, task_id))
                     
-                    if report_row:
-                        # Update existing report to failed
-                        conn.execute("""
-                            UPDATE reports
-                            SET AIAnalysisStatus = ?
-                            WHERE id = ?
-                        """, ('failed', report_row['id']))
-                        debug_info(f"Updated report {report_row['id']} status to failed for symbol {symbol}")
+                    debug_warning(f"Task {task_id} failed, retry {retries + 1}/{max_retries}")
+                else:
+                    # Final failure
+                    await conn.execute("""
+                        UPDATE simple_tasks
+                        SET status = ?, completed_at = ?, error = ?
+                        WHERE id = ?
+                    """, (TaskStatus.FAILED.value, datetime.now().isoformat(), error, task_id))
+                    
+                    if permanent:
+                        debug_error(f"Task {task_id} permanently failed: {error}")
                     else:
-                        # Create a failed report entry
-                        from datetime import datetime
-                        conn.execute("""
-                            INSERT INTO reports (timeFetched, symbol, AISummary, AIAction, 
-                                               AIConfidence, AIEventTime, AILevels, AIAnalysisStatus)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            datetime.now().isoformat(),
-                            symbol,
-                            f"Failed to generate report: {error}",
-                            'HOLD',
-                            0.0,
-                            None,
-                            None,
-                            'failed'
-                        ))
-                        debug_info(f"Created failed report entry for {symbol}")
+                        debug_error(f"Task {task_id} failed after {max_retries} retries")
+                    
+                    # Update entity status if needed
+                    if row['entity_type'] == 'insight' and row['entity_id']:
+                        await self._update_entity_status(conn, row['entity_id'], TaskStatus.FAILED)
                 
+                await conn.commit()
+                
+            finally:
+                await self._return_connection(conn)
+        
+        await self._execute_with_retry(update_task)
+    
+    async def _update_entity_status(self, conn: aiosqlite.Connection, entity_id: int, status: TaskStatus):
+        """Update entity status"""
+        try:
+            await conn.execute("""
+                UPDATE insights
+                SET TaskStatus = ?
+                WHERE id = ?
+            """, (status.value, entity_id))
         except Exception as e:
-            debug_error(f"Failed to bulk update entity status: {e}")
+            debug_error(f"Failed to update entity status: {e}")
     
-    def cancel_task(self, task_id: str):
-        """Cancel a pending task"""
-        with get_db_session() as conn:
-            conn.execute("""
-                UPDATE simple_tasks
-                SET status = ?, completed_at = ?, error = ?
-                WHERE id = ? AND status = ?
-            """, (
-                TaskStatus.CANCELLED.value,
-                datetime.now().isoformat(),
-                "Task cancelled",
-                task_id,
-                TaskStatus.PENDING.value
-            ))
-            
-            # Update entity status when task is cancelled
-            self._update_entity_status_on_failure(task_id, "Task cancelled")
-    
-    def get_stats(self) -> Dict[str, int]:
-        """Get task statistics"""
-        with get_db_session() as conn:
-            # Initialize stats with all possible statuses
+    async def get_stats(self) -> Dict[str, int]:
+        """Get task statistics (async)"""
+        conn = await self._get_connection()
+        try:
             stats = {
                 'pending': 0,
                 'processing': 0,
@@ -508,39 +463,52 @@ class TaskQueue:
                 'cancelled': 0
             }
             
-            rows = conn.execute("""
+            cursor = await conn.execute("""
                 SELECT status, COUNT(*) as count
                 FROM simple_tasks
                 GROUP BY status
-            """).fetchall()
+            """)
             
-            for row in rows:
+            async for row in cursor:
                 stats[row['status']] = row['count']
             
             return stats
+            
+        finally:
+            await self._return_connection(conn)
     
-    def cleanup_old_tasks(self, days: int = 7) -> int:
-        """Remove old completed/failed tasks"""
+    async def cleanup_old_tasks(self, days: int = 7) -> int:
+        """Remove old completed/failed tasks (async)"""
         cutoff = datetime.now() - timedelta(days=days)
         
-        with get_db_session() as conn:
-            deleted = conn.execute("""
-                DELETE FROM simple_tasks
-                WHERE completed_at < ? 
-                AND status IN (?, ?, ?)
-            """, (
-                cutoff.isoformat(),
-                TaskStatus.COMPLETED.value,
-                TaskStatus.FAILED.value,
-                TaskStatus.CANCELLED.value
-            )).rowcount
-            
-            if deleted > 0:
-                debug_info(f"Cleaned up {deleted} old tasks")
-            
-            return deleted
+        async def delete_tasks():
+            conn = await self._get_connection()
+            try:
+                await conn.execute("""
+                    DELETE FROM simple_tasks
+                    WHERE completed_at < ? 
+                    AND status IN (?, ?, ?)
+                """, (
+                    cutoff.isoformat(),
+                    TaskStatus.COMPLETED.value,
+                    TaskStatus.FAILED.value,
+                    TaskStatus.CANCELLED.value
+                ))
+                
+                deleted = conn.total_changes
+                await conn.commit()
+                
+                if deleted > 0:
+                    debug_info(f"Cleaned up {deleted} old tasks")
+                
+                return deleted
+                
+            finally:
+                await self._return_connection(conn)
+        
+        return await self._execute_with_retry(delete_tasks)
     
-    def cleanup_stale_pending_tasks(self, timeout_ms: Optional[int] = None) -> int:
+    async def cleanup_stale_pending_tasks(self, timeout_ms: Optional[int] = None) -> int:
         """
          ┌─────────────────────────────────────┐
          │    CLEANUP_STALE_PENDING_TASKS     │
@@ -552,10 +520,6 @@ class TaskQueue:
          
          Returns:
          - Number of tasks cleaned up
-         
-         Notes:
-         - Updates entity status back to EMPTY
-         - Marks tasks as CANCELLED
         """
         if timeout_ms is None:
             from config import TASK_PENDING_TIMEOUT
@@ -564,137 +528,39 @@ class TaskQueue:
         timeout_seconds = timeout_ms / 1000.0
         cutoff = datetime.now() - timedelta(seconds=timeout_seconds)
         
-        debug_info(f"Cleaning up pending tasks older than {timeout_seconds}s")
-        
-        with get_db_session() as conn:
-            # Find stale pending tasks
-            stale_tasks = conn.execute("""
-                SELECT id, entity_type, entity_id FROM simple_tasks
-                WHERE status = ? AND created_at < ?
-            """, (TaskStatus.PENDING.value, cutoff.isoformat())).fetchall()
-            
-            if not stale_tasks:
-                return 0
-            
-            # Update tasks to CANCELLED
-            task_ids = [task['id'] for task in stale_tasks]
-            placeholders = ','.join(['?' for _ in task_ids])
-            conn.execute(f"""
-                UPDATE simple_tasks
-                SET status = ?, completed_at = ?, error = ?
-                WHERE id IN ({placeholders})
-            """, [TaskStatus.CANCELLED.value, datetime.now().isoformat(), 
-                  f"Task cancelled after {timeout_seconds}s pending timeout"] + task_ids)
-            
-            # Update associated entities back to EMPTY status
-            for task in stale_tasks:
-                if task['entity_type'] == 'insight' and task['entity_id']:
-                    try:
-                        conn.execute("""
-                            UPDATE insights 
-                            SET TaskStatus = ?
-                            WHERE id = ?
-                        """, (TaskStatus.EMPTY.value, task['entity_id']))
-                        debug_info(f"Reset insight {task['entity_id']} status to EMPTY")
-                    except Exception as e:
-                        debug_error(f"Failed to update insight {task['entity_id']}: {e}")
-            
-            debug_info(f"Cleaned up {len(stale_tasks)} stale pending tasks")
-            return len(stale_tasks)
-    
-    def get_orphaned_tasks(self) -> List[Dict[str, Any]]:
-        """
-         ┌─────────────────────────────────────┐
-         │       GET_ORPHANED_TASKS            │
-         └─────────────────────────────────────┘
-         Find tasks where the referenced entity no longer exists
-         
-         Returns:
-         - List of orphaned tasks
-        """
-        with get_db_session() as conn:
-            # Find tasks with entity references that don't exist
-            orphaned = conn.execute("""
-                SELECT t.* FROM simple_tasks t
-                LEFT JOIN insights i ON t.entity_type = 'insight' AND t.entity_id = i.id
-                WHERE t.entity_type IS NOT NULL 
-                AND t.entity_id IS NOT NULL
-                AND i.id IS NULL
-                AND t.status IN (?, ?)
-            """, (TaskStatus.PENDING.value, TaskStatus.PROCESSING.value)).fetchall()
-            
-            return [dict(row) for row in orphaned]
-    
-    def purge_orphaned_tasks(self) -> int:
-        """
-         ┌─────────────────────────────────────┐
-         │      PURGE_ORPHANED_TASKS           │
-         └─────────────────────────────────────┘
-         Remove tasks where the referenced entity no longer exists
-         
-         Returns:
-         - Number of tasks purged
-        """
-        orphaned = self.get_orphaned_tasks()
-        purged = 0
-        
-        with get_db_session() as conn:
-            for task in orphaned:
-                conn.execute("""
+        async def cleanup_tasks():
+            conn = await self._get_connection()
+            try:
+                # Find stale pending tasks
+                cursor = await conn.execute("""
+                    SELECT id, entity_type, entity_id FROM simple_tasks
+                    WHERE status = ? AND created_at < ?
+                """, (TaskStatus.PENDING.value, cutoff.isoformat()))
+                
+                stale_tasks = await cursor.fetchall()
+                
+                if not stale_tasks:
+                    return 0
+                
+                # Update tasks to CANCELLED
+                task_ids = [task['id'] for task in stale_tasks]
+                placeholders = ','.join(['?' for _ in task_ids])
+                await conn.execute(f"""
                     UPDATE simple_tasks
                     SET status = ?, completed_at = ?, error = ?
-                    WHERE id = ?
-                """, (
-                    TaskStatus.CANCELLED.value,
-                    datetime.now().isoformat(),
-                    "Referenced entity no longer exists",
-                    task['id']
-                ))
-                purged += 1
-                debug_warning(f"Purged orphaned task {task['id']} (type: {task['task_type']})")
+                    WHERE id IN ({placeholders})
+                """, [TaskStatus.CANCELLED.value, datetime.now().isoformat(), 
+                      f"Task cancelled after {timeout_seconds}s pending timeout"] + task_ids)
+                
+                await conn.commit()
+                return len(stale_tasks)
+                
+            finally:
+                await self._return_connection(conn)
         
-        if purged > 0:
-            debug_info(f"Purged {purged} orphaned tasks")
-        
-        return purged
+        return await self._execute_with_retry(cleanup_tasks)
     
-    def purge_invalid_tasks(self) -> int:
-        """
-         ┌─────────────────────────────────────┐
-         │      PURGE_INVALID_TASKS            │
-         └─────────────────────────────────────┘
-         Remove invalid tasks including orphaned ones
-         
-         Returns:
-         - Total number of tasks purged
-        """
-        return self.purge_orphaned_tasks()
-    
-    def get_stuck_tasks(self, timeout_hours: int = 1) -> List[Dict[str, Any]]:
-        """
-         ┌─────────────────────────────────────┐
-         │        GET_STUCK_TASKS              │
-         └─────────────────────────────────────┘
-         Find tasks stuck in processing state
-         
-         Parameters:
-         - timeout_hours: Hours before considering task stuck
-         
-         Returns:
-         - List of stuck tasks
-        """
-        cutoff = datetime.now() - timedelta(hours=timeout_hours)
-        
-        with get_db_session() as conn:
-            stuck = conn.execute("""
-                SELECT * FROM simple_tasks
-                WHERE status = ?
-                AND started_at < ?
-            """, (TaskStatus.PROCESSING.value, cutoff.isoformat())).fetchall()
-            
-            return [dict(row) for row in stuck]
-    
-    def reset_stuck_tasks(self, timeout_hours: int = 1) -> int:
+    async def reset_stuck_tasks(self, timeout_hours: int = 1) -> int:
         """
          ┌─────────────────────────────────────┐
          │       RESET_STUCK_TASKS             │
@@ -707,175 +573,186 @@ class TaskQueue:
          Returns:
          - Number of tasks reset
         """
-        stuck_tasks = self.get_stuck_tasks(timeout_hours)
-        reset_count = 0
+        cutoff = datetime.now() - timedelta(hours=timeout_hours)
         
-        with get_db_session() as conn:
-            for task in stuck_tasks:
-                if task['retries'] < task['max_retries']:
-                    # Reset to pending for retry
-                    conn.execute("""
-                        UPDATE simple_tasks
-                        SET status = ?, started_at = NULL, retries = ?
-                        WHERE id = ?
-                    """, (TaskStatus.PENDING.value, task['retries'] + 1, task['id']))
-                    debug_warning(f"Reset stuck task {task['id']} for retry")
-                else:
-                    # Mark as failed
-                    conn.execute("""
-                        UPDATE simple_tasks
-                        SET status = ?, completed_at = ?, error = ?
-                        WHERE id = ?
-                    """, (
-                        TaskStatus.FAILED.value,
-                        datetime.now().isoformat(),
-                        "Task timeout after max retries",
-                        task['id']
-                    ))
-                    debug_error(f"Failed stuck task {task['id']} after max retries")
+        async def reset_tasks():
+            conn = await self._get_connection()
+            try:
+                # Find stuck tasks
+                cursor = await conn.execute("""
+                    SELECT * FROM simple_tasks
+                    WHERE status = ? AND started_at < ?
+                """, (TaskStatus.PROCESSING.value, cutoff.isoformat()))
                 
-                reset_count += 1
+                stuck_tasks = await cursor.fetchall()
+                reset_count = 0
+                
+                for task in stuck_tasks:
+                    if task['retries'] < task['max_retries']:
+                        # Reset to pending for retry
+                        await conn.execute("""
+                            UPDATE simple_tasks
+                            SET status = ?, started_at = NULL, retries = ?
+                            WHERE id = ?
+                        """, (TaskStatus.PENDING.value, task['retries'] + 1, task['id']))
+                    else:
+                        # Mark as failed
+                        await conn.execute("""
+                            UPDATE simple_tasks
+                            SET status = ?, completed_at = ?, error = ?
+                            WHERE id = ?
+                        """, (
+                            TaskStatus.FAILED.value,
+                            datetime.now().isoformat(),
+                            "Task timeout after max retries",
+                            task['id']
+                        ))
+                    
+                    reset_count += 1
+                
+                await conn.commit()
+                return reset_count
+                
+            finally:
+                await self._return_connection(conn)
         
-        if reset_count > 0:
-            debug_info(f"Reset {reset_count} stuck tasks")
-        
-        return reset_count
+        return await self._execute_with_retry(reset_tasks)
     
-    def get_health_metrics(self) -> Dict[str, Any]:
-        """
-         ┌─────────────────────────────────────┐
-         │       GET_HEALTH_METRICS            │
-         └─────────────────────────────────────┘
-         Get comprehensive health metrics for the queue
-         
-         Returns:
-         - Dictionary with health metrics
-        """
-        stats = self.get_stats()
-        orphaned = self.get_orphaned_tasks()
-        stuck = self.get_stuck_tasks()
-        
-        # Calculate health score
-        total_active = stats.get(TaskStatus.PENDING.value, 0) + stats.get(TaskStatus.PROCESSING.value, 0)
-        total_tasks = sum(stats.values())
-        
-        health_score = 100
-        issues = []
-        
-        # Deduct points for various issues
-        if len(stuck) > 0:
-            health_score -= min(30, len(stuck) * 10)
-            issues.append(f"{len(stuck)} stuck tasks")
-        
-        if len(orphaned) > 0:
-            health_score -= min(20, len(orphaned) * 5)
-            issues.append(f"{len(orphaned)} orphaned tasks")
-        
-        failed_count = stats.get(TaskStatus.FAILED.value, 0)
-        if total_tasks > 0 and failed_count / total_tasks > 0.1:
-            health_score -= 20
-            issues.append(f"High failure rate ({failed_count}/{total_tasks})")
-        
-        # Determine health status
-        if health_score >= 90:
-            health_status = "healthy"
-        elif health_score >= 70:
-            health_status = "warning"
-        else:
-            health_status = "critical"
-        
-        # Add timeout information
-        from config import TASK_PROCESSING_TIMEOUT, TASK_MAX_RETRIES
-        timeout_info = {
-            'timeout_ms': TASK_PROCESSING_TIMEOUT,
-            'timeout_seconds': TASK_PROCESSING_TIMEOUT / 1000.0,
-            'max_retries': TASK_MAX_RETRIES,
-            'max_total_time': (TASK_PROCESSING_TIMEOUT / 1000.0) * (TASK_MAX_RETRIES + 1)
-        }
-        
-        return {
-            "health_score": max(0, health_score),
-            "health_status": health_status,
-            "stats": stats,
-            "stuck_tasks": len(stuck),
-            "orphaned_tasks": len(orphaned),
-            "issues": issues,
-            "recommendations": self._get_health_recommendations(health_status, issues),
-            "timeout_config": timeout_info
-        }
-    
-    def _get_health_recommendations(self, status: str, issues: List[str]) -> List[str]:
-        """Get recommendations based on health status"""
-        recommendations = []
-        
-        if "stuck tasks" in str(issues):
-            recommendations.append("Run purge-stuck-tasks to reset stuck tasks")
-        
-        if "orphaned tasks" in str(issues):
-            recommendations.append("Run cleanup to remove orphaned tasks")
-        
-        if "High failure rate" in str(issues):
-            recommendations.append("Check logs for recurring errors")
-            recommendations.append("Consider adjusting retry settings")
-        
-        if status == "critical":
-            recommendations.append("Immediate attention required")
-        
-        return recommendations
-    
-    def cancel_all_tasks(self) -> int:
+    async def cancel_all_tasks(self) -> int:
         """
          ┌─────────────────────────────────────┐
          │        CANCEL_ALL_TASKS             │
          └─────────────────────────────────────┘
-         Cancel all pending, processing, and failed tasks
+         Cancel all pending and processing tasks
          
          Returns:
          - Number of tasks cancelled
         """
-        with get_db_session() as conn:
-            # First, get all tasks that will be cancelled to update their entity status
-            tasks_to_cancel = conn.execute("""
-                SELECT id, task_type, entity_type, entity_id, payload
-                FROM simple_tasks
-                WHERE status IN (?, ?, ?)
-            """, (
-                TaskStatus.PENDING.value,
-                TaskStatus.PROCESSING.value,
-                TaskStatus.FAILED.value
-            )).fetchall()
-            
-            # Cancel all tasks
-            cancelled = conn.execute("""
-                UPDATE simple_tasks
-                SET status = ?, completed_at = ?, error = ?
-                WHERE status IN (?, ?, ?)
-            """, (
-                TaskStatus.CANCELLED.value,
-                datetime.now().isoformat(),
-                "Cancelled during queue reset",
-                TaskStatus.PENDING.value,
-                TaskStatus.PROCESSING.value,
-                TaskStatus.FAILED.value
-            )).rowcount
-            
-            if cancelled > 0:
-                debug_info(f"Cancelled {cancelled} tasks during queue reset")
+        async def cancel_tasks():
+            conn = await self._get_connection()
+            try:
+                # Cancel all active tasks
+                result = await conn.execute("""
+                    UPDATE simple_tasks
+                    SET status = ?, completed_at = ?, error = ?
+                    WHERE status IN (?, ?)
+                """, (
+                    TaskStatus.CANCELLED.value,
+                    datetime.now().isoformat(),
+                    "Cancelled during queue reset",
+                    TaskStatus.PENDING.value,
+                    TaskStatus.PROCESSING.value
+                ))
                 
-                # Update entity status for all cancelled tasks to EMPTY
-                insight_ids = [task['entity_id'] for task in tasks_to_cancel 
-                             if task['entity_type'] == 'insight' and task['entity_id']]
+                await conn.commit()
+                return result.rowcount
                 
-                if insight_ids:
-                    placeholders = ','.join(['?' for _ in insight_ids])
-                    conn.execute(f"""
-                        UPDATE insights
-                        SET TaskStatus = ?
-                        WHERE id IN ({placeholders})
-                    """, [TaskStatus.EMPTY.value] + insight_ids)
-                    debug_info(f"Reset {len(insight_ids)} insights to EMPTY status during queue reset")
-            
-            return cancelled
+            finally:
+                await self._return_connection(conn)
+        
+        return await self._execute_with_retry(cancel_tasks)
+    
+    async def purge_invalid_tasks(self) -> int:
+        """
+         ┌─────────────────────────────────────┐
+         │      PURGE_INVALID_TASKS            │
+         └─────────────────────────────────────┘
+         Remove invalid tasks including orphaned ones
+         
+         Returns:
+         - Number of tasks purged
+        """
+        async def purge_tasks():
+            conn = await self._get_connection()
+            try:
+                # Find orphaned tasks
+                cursor = await conn.execute("""
+                    SELECT t.* FROM simple_tasks t
+                    LEFT JOIN insights i ON t.entity_type = 'insight' AND t.entity_id = i.id
+                    WHERE t.entity_type IS NOT NULL 
+                    AND t.entity_id IS NOT NULL
+                    AND i.id IS NULL
+                    AND t.status IN (?, ?)
+                """, (TaskStatus.PENDING.value, TaskStatus.PROCESSING.value))
+                
+                orphaned = await cursor.fetchall()
+                purged = 0
+                
+                for task in orphaned:
+                    await conn.execute("""
+                        UPDATE simple_tasks
+                        SET status = ?, completed_at = ?, error = ?
+                        WHERE id = ?
+                    """, (
+                        TaskStatus.CANCELLED.value,
+                        datetime.now().isoformat(),
+                        "Referenced entity no longer exists",
+                        task['id']
+                    ))
+                    purged += 1
+                
+                await conn.commit()
+                return purged
+                
+            finally:
+                await self._return_connection(conn)
+        
+        return await self._execute_with_retry(purge_tasks)
+    
+    async def get_health_metrics(self) -> Dict[str, Any]:
+        """
+         ┌─────────────────────────────────────┐
+         │       GET_HEALTH_METRICS            │
+         └─────────────────────────────────────┘
+         Get basic health metrics for the queue
+         
+         Returns:
+         - Dictionary with health metrics
+        """
+        stats = await self.get_stats()
+        total_tasks = sum(stats.values())
+        failed_count = stats.get('failed', 0)
+        
+        # Simple health check
+        health_status = "critical" if total_tasks > 0 and failed_count / total_tasks > 0.2 else "healthy"
+        
+        return {
+            "health_status": health_status,
+            "stats": stats,
+            "total_tasks": total_tasks,
+            "failure_rate": failed_count / total_tasks if total_tasks > 0 else 0
+        }
+    
+    async def close(self):
+        """Close all connections in the pool"""
+        if self._pool_lock is None:
+            self._pool_lock = asyncio.Lock()
+        async with self._pool_lock:
+            for conn in self._db_pool:
+                await conn.close()
+            self._db_pool.clear()
 
 
+# Global queue instance
+_global_queue: Optional[TaskQueue] = None
 
+
+async def get_task_queue() -> TaskQueue:
+    """
+     ┌─────────────────────────────────────┐
+     │        GET_TASK_QUEUE               │
+     └─────────────────────────────────────┘
+     Get the singleton task queue instance
+     
+     Returns:
+     - TaskQueue singleton instance
+     
+     Notes:
+     - Must be called from async context
+     - Automatically initializes on first use
+    """
+    global _global_queue
+    if _global_queue is None:
+        _global_queue = TaskQueue()
+        await _global_queue.initialize()
+    return _global_queue

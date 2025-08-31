@@ -62,9 +62,16 @@ class SimpleApp {
         document.addEventListener('click', (e) => {
             const symbolInput = document.getElementById('symbolInput');
             const suggestions = document.getElementById('symbolSuggestions');
+            const statusDropdown = document.getElementById('statusDropdown');
+            const statusToggle = document.getElementById('statusDropdownToggle');
             
             if (suggestions && !symbolInput?.contains(e.target) && !suggestions.contains(e.target)) {
                 this.hideSymbolSuggestions();
+            }
+            
+            // Hide status dropdown when clicking outside
+            if (statusDropdown && !statusDropdown.contains(e.target) && !statusToggle?.contains(e.target)) {
+                statusDropdown.classList.remove('show');
             }
         });
 
@@ -75,7 +82,8 @@ class SimpleApp {
                 const symbol = symbolInput.value.trim();
                 const exchange = exchangeInput.value.trim();
                 if (symbol) {
-                    const url = exchange ? `/api/insights/${exchange}:${symbol}` : `/api/insights/${symbol}`;
+                    // Navigate to web interface with symbol parameter, not API endpoint
+                    const url = exchange ? `/?symbol=${exchange}:${symbol}` : `/?symbol=${symbol}`;
                     window.location.href = url;
                 }
             };
@@ -107,7 +115,8 @@ class SimpleApp {
                 let url = '/';
                 if (symbol) {
                     const exchangeSymbol = exchange ? `${exchange}:${symbol}` : symbol;
-                    url = type ? `/api/insights/${exchangeSymbol}/${type.replace(/\s+/g, '_')}` : `/api/insights/${exchangeSymbol}`;
+                    // Use query parameters for filtering instead of API path
+                    url = type ? `/?symbol=${exchangeSymbol}&type=${encodeURIComponent(type)}` : `/?symbol=${exchangeSymbol}`;
                 } else if (type) {
                     // If no symbol but type is selected, navigate to type-filtered home view
                     url = `/?type=${encodeURIComponent(type)}`;
@@ -135,6 +144,16 @@ class SimpleApp {
         const deleteBtn = document.querySelector('.delete-btn');
         if (deleteBtn) {
             deleteBtn.addEventListener('click', () => this.handleDeleteByType());
+        }
+
+        // Status dropdown toggle
+        const statusDropdownToggle = document.getElementById('statusDropdownToggle');
+        if (statusDropdownToggle) {
+            statusDropdownToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.toggleStatusDropdown();
+            });
         }
 
         // Reset buttons
@@ -210,19 +229,18 @@ class SimpleApp {
         // Age updates
         this.intervals.push(setInterval(() => {
             this.updateAges();
-        }, this.config.frontend_unified_refresh_interval || 1000));
+        }, this.config.UI_REFRESH || 1000));
 
-        // Status updates
+        // Status updates (debug messages only)
         this.intervals.push(setInterval(() => {
             this.updateDebugStatus();
-            this.updateTaskCounters();
         }, this.config.frontend_status_refresh_interval || 1000));
 
         // Table refresh (if auto-refresh is enabled)
         if (this.config.app_auto_refresh) {
             this.intervals.push(setInterval(() => {
                 this.refreshTable();
-            }, this.config.frontend_table_refresh_interval || 10000));
+            }, this.config.UI_REFRESH_TABLE || 10000));
         }
     }
 
@@ -231,7 +249,7 @@ class SimpleApp {
      *  ┌─────────────────────────────────────┐
      *  │         UPDATE AGES                 │
      *  └─────────────────────────────────────┘
-     *  Update relative time displays
+     *  Update relative time displays and horizons
      */
     updateAges() {
         // Update elements with data-time attribute
@@ -249,6 +267,17 @@ class SimpleApp {
                 element.textContent = this.timeAgo(new Date(timestamp));
             }
         });
+        
+        // Update horizon elements with data-horizon attribute
+        document.querySelectorAll('[data-horizon]').forEach(element => {
+            const timestamp = element.dataset.horizon;
+            if (timestamp) {
+                const horizonDisplay = element.querySelector('.horizon-display');
+                if (horizonDisplay) {
+                    horizonDisplay.textContent = this.timeHorizon(new Date(timestamp));
+                }
+            }
+        });
     }
 
     /**
@@ -260,23 +289,128 @@ class SimpleApp {
      */
     async updateDebugStatus() {
         try {
-            const response = await fetch('/api/debug-status');
+            const response = await fetch('/api/debugger');
+            
+            // Check if response is ok
+            if (!response.ok) {
+                console.warn(`Debug status API returned ${response.status}: ${response.statusText}`);
+                return; // Don't update anything if API fails
+            }
+            
             const data = await response.json();
             
             const statusMessageElement = document.getElementById('statusMessage');
             const statusIconElement = document.getElementById('statusIcon');
             
-            if (statusMessageElement && data.message) {
-                statusMessageElement.textContent = data.message.toUpperCase();
+            if (statusMessageElement) {
+                // Find the most recent message from either current or history
+                let messageToShow = '';
+                let statusToShow = 'info';
                 
-                // Update icon based on status
-                if (statusIconElement) {
-                    const iconClass = this.getStatusIcon(data.status);
-                    statusIconElement.innerHTML = `<i class="${iconClass}"></i>`;
+                // First try current message
+                if (data.message && data.message.trim()) {
+                    messageToShow = data.message;
+                    statusToShow = data.status;
                 }
+                // If no current message, get the latest from history
+                else if (data.history && data.history.length > 0) {
+                    // Find the most recent non-empty message in history
+                    for (let i = data.history.length - 1; i >= 0; i--) {
+                        if (data.history[i].message && data.history[i].message.trim()) {
+                            messageToShow = data.history[i].message;
+                            statusToShow = data.history[i].status;
+                            break;
+                        }
+                    }
+                }
+                
+                // Always update the status message if we found one
+                if (messageToShow && messageToShow.trim()) {
+                    statusMessageElement.textContent = messageToShow.toUpperCase();
+                    
+                    // Update icon based on status
+                    if (statusIconElement) {
+                        const iconClass = this.getStatusIcon(statusToShow);
+                        statusIconElement.innerHTML = `<i class="${iconClass}"></i>`;
+                    }
+                }
+                
+                // Update dropdown with recent messages
+                this.updateStatusDropdown(data.history || []);
             }
         } catch (error) {
             console.warn('Failed to update debug status:', error);
+            // Don't clear existing messages on API failure
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │    UPDATE STATUS DROPDOWN           │
+     *  └─────────────────────────────────────┘
+     *  Update the status dropdown with recent messages
+     */
+    updateStatusDropdown(history) {
+        const dropdownContent = document.getElementById('statusDropdownContent');
+        const dropdownToggle = document.getElementById('statusDropdownToggle');
+        
+        if (!dropdownContent) return;
+        
+        if (!history || history.length === 0) {
+            dropdownContent.innerHTML = '<div class="status-dropdown-item">No recent messages</div>';
+            if (dropdownToggle) dropdownToggle.style.opacity = '0.3';
+            return;
+        }
+        
+        // Show dropdown toggle when we have messages
+        if (dropdownToggle) dropdownToggle.style.opacity = '0.7';
+        
+        // Show last 10 messages, most recent first
+        const recentMessages = history.slice(-10).reverse();
+        
+        dropdownContent.innerHTML = recentMessages.map(msg => `
+            <div class="status-dropdown-item">
+                <span class="message-status ${msg.status}">${msg.status}</span>
+                <span class="message-text">${msg.message}</span>
+            </div>
+        `).join('');
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │    TOGGLE STATUS DROPDOWN           │
+     *  └─────────────────────────────────────┘
+     *  Toggle the status messages dropdown
+     */
+    toggleStatusDropdown() {
+        const dropdown = document.getElementById('statusDropdown');
+        if (dropdown) {
+            dropdown.classList.toggle('show');
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │      SETUP STATUS DROPDOWN          │
+     *  └─────────────────────────────────────┘
+     *  Setup status dropdown event handlers
+     */
+    setupStatusDropdown() {
+        const statusDropdownToggle = document.getElementById('statusDropdownToggle');
+        if (statusDropdownToggle) {
+            // Remove any existing listener
+            const newToggle = statusDropdownToggle.cloneNode(true);
+            statusDropdownToggle.parentNode.replaceChild(newToggle, statusDropdownToggle);
+            
+            // Add new listener
+            newToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.toggleStatusDropdown();
+            });
         }
     }
 
@@ -290,13 +424,13 @@ class SimpleApp {
     getStatusIcon(status) {
         switch (status) {
             case 'success':
-                return 'bi bi-check-circle';
+                return 'bi bi-check-lg';
             case 'error':
                 return 'bi bi-x-circle';
             case 'warning':
                 return 'bi bi-exclamation-triangle';
             default:
-                return 'bi bi-terminal';
+                return 'bi bi-chevron-right';
         }
     }
 
@@ -336,56 +470,12 @@ class SimpleApp {
      *  │      UPDATE TASK COUNTERS           │
      *  └─────────────────────────────────────┘
      *  Update task counter displays
+     *  
+     *  DEPRECATED: Using server-side rendering for status bar
      */
     async updateTaskCounters() {
-        try {
-            const response = await fetch('/api/tasks/stats');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const data = await response.json();
-            
-            // Handle nested stats structure
-            const stats = data.stats || data;
-
-
-            
-            // Update running tasks counter (processing)
-            const runningElement = document.querySelector('#statusRunning .task-count');
-            if (runningElement) {
-                runningElement.textContent = stats.processing || 0;
-
-            }
-            
-            // Update queued tasks counter (pending)
-            const queuedElement = document.querySelector('#statusQueued .task-count');
-            if (queuedElement) {
-                queuedElement.textContent = stats.pending || 0;
-
-            }
-            
-            // Update failed tasks counter
-            const failedElement = document.querySelector('#statusFailed .task-count');
-            if (failedElement) {
-                failedElement.textContent = stats.failed || 0;
-
-            }
-            
-            // Update status time
-            const timeElement = document.getElementById('statusTime');
-            if (timeElement) {
-                const now = new Date();
-                timeElement.textContent = now.toLocaleTimeString('en-US', { 
-                    hour12: false, 
-                    hour: '2-digit', 
-                    minute: '2-digit', 
-                    second: '2-digit' 
-                });
-            }
-            
-        } catch (error) {
-            console.warn('Failed to update task counters:', error);
-        }
+        // Task counters are now rendered server-side
+        // This method is kept for compatibility but does nothing
     }
 
     /**
@@ -404,6 +494,7 @@ class SimpleApp {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 
+                // Update table content
                 const newTable = doc.querySelector('#insightsTableBody');
                 const currentTable = document.querySelector('#insightsTableBody');
                 
@@ -416,6 +507,47 @@ class SimpleApp {
                     
                     // Update ages for new content
                     this.updateAges();
+                }
+                
+                // Update status bar content (server-side rendered)
+                const newStatusBar = doc.querySelector('#statusBarContent');
+                const currentStatusBar = document.querySelector('#statusBarContent');
+                
+                if (newStatusBar && currentStatusBar) {
+                    // Preserve dropdown state AND status message
+                    const dropdownOpen = currentStatusBar.querySelector('#statusDropdown')?.classList.contains('show');
+                    const dropdownContent = currentStatusBar.querySelector('#statusDropdownContent')?.innerHTML;
+                    const currentMessage = currentStatusBar.querySelector('#statusMessage')?.textContent;
+                    const currentIcon = currentStatusBar.querySelector('#statusIcon')?.innerHTML;
+                    
+                    // Update status bar content
+                    currentStatusBar.innerHTML = newStatusBar.innerHTML;
+                    
+                    // Restore dropdown state
+                    if (dropdownOpen) {
+                        currentStatusBar.querySelector('#statusDropdown')?.classList.add('show');
+                    }
+                    if (dropdownContent) {
+                        const dropdown = currentStatusBar.querySelector('#statusDropdownContent');
+                        if (dropdown) dropdown.innerHTML = dropdownContent;
+                    }
+                    
+                    // Restore status message and icon if they existed
+                    if (currentMessage && currentMessage.trim()) {
+                        const statusMessageEl = currentStatusBar.querySelector('#statusMessage');
+                        if (statusMessageEl) {
+                            statusMessageEl.textContent = currentMessage;
+                        }
+                    }
+                    if (currentIcon && currentIcon.trim()) {
+                        const statusIconEl = currentStatusBar.querySelector('#statusIcon');
+                        if (statusIconEl) {
+                            statusIconEl.innerHTML = currentIcon;
+                        }
+                    }
+                    
+                    // Re-setup dropdown handler
+                    this.setupStatusDropdown();
                 }
             }
         } catch (error) {
@@ -473,13 +605,11 @@ class SimpleApp {
             <div class="autocomplete-item" 
                  data-symbol="${suggestion.symbol}" 
                  data-exchange="${suggestion.exchange}">
-                <div class="symbol-content">
-                    <div class="symbol-line">
-                        <span class="symbol-text">${suggestion.symbol}</span>
-                        <span class="exchange-tag">${suggestion.exchange}</span>
-                    </div>
+                <div class="symbol-info">
+                    <span class="symbol-text">${suggestion.symbol}</span>
                     <span class="company-name">${suggestion.description || ''}</span>
                 </div>
+                <span class="exchange-tag">${suggestion.exchange}</span>
             </div>
         `).join('');
 
@@ -515,7 +645,8 @@ class SimpleApp {
                 const symbol = item.dataset.symbol;
                 const exchange = item.dataset.exchange;
                 if (symbol && exchange) {
-                    const url = `/api/insights/${exchange}:${symbol}`;
+                    // Navigate to web interface with query parameters
+                    const url = `/?symbol=${exchange}:${symbol}`;
                     window.location.href = url;
                 }
             });
@@ -569,9 +700,15 @@ class SimpleApp {
             const result = await response.json();
             
             if (result.success) {
-                this.sendDebugMessage(`Successfully fetched ${result.created_insights} new insights`, 'success');
-                // Refresh table after successful scraping
-                setTimeout(() => this.refreshTable(), 1000);
+                // Handle task-based response
+                if (result.task_id || result.tasks_created) {
+                    const taskCount = result.tasks_created || 1;
+                    this.sendDebugMessage(`Created ${taskCount} scraping task(s)`, 'success');
+                } else {
+                    this.sendDebugMessage('Scraping task created successfully', 'success');
+                }
+                // Refresh table after a delay to allow task processing
+                setTimeout(() => this.refreshTable(), this.config.app_reload_delay || this.config.UI_REFRESH);
             } else {
                 this.sendDebugMessage(`Scraping failed: ${result.message}`, 'error');
             }
@@ -594,7 +731,7 @@ class SimpleApp {
      */
     async resetInsightAI(insightId) {
         try {
-            const response = await fetch(`/api/insights/${insightId}/reset-ai`, {
+            const response = await fetch(`/api/insights/id/${insightId}/reset-ai`, {
                 method: 'POST'
             });
 
@@ -602,7 +739,7 @@ class SimpleApp {
             
             if (result.success) {
                 this.sendDebugMessage('AI analysis reset successfully', 'success');
-                setTimeout(() => this.refreshTable(), 1000);
+                setTimeout(() => this.refreshTable(), this.config.UI_REFRESH || 1000);
             } else {
                 this.sendDebugMessage('Failed to reset AI analysis', 'error');
             }
@@ -620,13 +757,13 @@ class SimpleApp {
      */
     async deleteInsight(insightId) {
         try {
-            const response = await fetch(`/api/insights/${insightId}`, {
+            const response = await fetch(`/api/insights/id/${insightId}`, {
                 method: 'DELETE'
             });
 
             if (response.ok) {
                 this.sendDebugMessage('Insight deleted successfully', 'success');
-                setTimeout(() => this.refreshTable(), 1000);
+                setTimeout(() => this.refreshTable(), this.config.UI_REFRESH || 1000);
             } else {
                 this.sendDebugMessage('Failed to delete insight', 'error');
             }
@@ -673,8 +810,14 @@ class SimpleApp {
             const result = await response.json();
             
             if (result.success) {
-                this.sendDebugMessage(`Successfully fetched ${result.created_insights} new insights`, 'success');
-                setTimeout(() => this.refreshTable(), 1000);
+                // Handle task-based response
+                if (result.task_id || result.tasks_created) {
+                    const taskCount = result.tasks_created || 1;
+                    this.sendDebugMessage(`Processing ${taskCount} scraping task(s)`, 'info');
+                } else {
+                    this.sendDebugMessage('Processing scraping task(s)', 'info');
+                }
+                setTimeout(() => this.refreshTable(), this.config.app_reload_delay || this.config.UI_REFRESH);
             } else {
                 this.sendDebugMessage(`Fetch failed: ${result.message}`, 'error');
             }
@@ -845,7 +988,7 @@ class SimpleApp {
             
             if (result.success) {
                 this.sendDebugMessage(`Deleted ${result.deleted_count} insights`, 'success');
-                setTimeout(() => this.refreshTable(), 1000);
+                setTimeout(() => this.refreshTable(), this.config.UI_REFRESH || 1000);
             } else {
                 this.sendDebugMessage(`Delete failed: ${result.message || 'Unknown error'}`, 'error');
             }
@@ -863,20 +1006,44 @@ class SimpleApp {
      *  ┌─────────────────────────────────────┐
      *  │         TIME AGO                    │
      *  └─────────────────────────────────────┘
-     *  Calculate relative time string
+     *  Calculate relative time string without 'ago'
      */
     timeAgo(date) {
         const now = new Date();
         const diffInSeconds = Math.floor((now - date) / 1000);
 
         if (diffInSeconds < 60) {
-            return `${diffInSeconds}s ago`;
+            return `${diffInSeconds}s`;
         } else if (diffInSeconds < 3600) {
-            return `${Math.floor(diffInSeconds / 60)}m ago`;
+            return `${Math.floor(diffInSeconds / 60)}m`;
         } else if (diffInSeconds < 86400) {
-            return `${Math.floor(diffInSeconds / 3600)}h ago`;
+            return `${Math.floor(diffInSeconds / 3600)}h`;
         } else {
-            return `${Math.floor(diffInSeconds / 86400)}d ago`;
+            return `${Math.floor(diffInSeconds / 86400)}d`;
+        }
+    }
+
+    /**
+     * 
+     *  ┌─────────────────────────────────────┐
+     *  │       TIME HORIZON                  │
+     *  └─────────────────────────────────────┘
+     *  Calculate time horizon with + for future, - for past
+     */
+    timeHorizon(date) {
+        const now = new Date();
+        const diffInSeconds = Math.floor((date - now) / 1000);
+        const absDiff = Math.abs(diffInSeconds);
+        const prefix = diffInSeconds >= 0 ? '+' : '-';
+
+        if (absDiff < 60) {
+            return `${prefix}${absDiff}s`;
+        } else if (absDiff < 3600) {
+            return `${prefix}${Math.floor(absDiff / 60)}m`;
+        } else if (absDiff < 86400) {
+            return `${prefix}${Math.floor(absDiff / 3600)}h`;
+        } else {
+            return `${prefix}${Math.floor(absDiff / 86400)}d`;
         }
     }
 
