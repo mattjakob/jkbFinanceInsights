@@ -188,18 +188,32 @@ class DatabaseManager:
     @contextmanager
     def get_write_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Get database connection for write operations with exclusive lock"""
-        with _db_write_lock:
-            # Use regular connection but with global write lock
-            with self.get_connection() as conn:
-                yield conn
+        # Try to acquire lock with timeout
+        if _db_write_lock.acquire(timeout=30):  # 30 second timeout
+            try:
+                # Use regular connection but with global write lock
+                with self.get_connection() as conn:
+                    yield conn
+            finally:
+                _db_write_lock.release()
+        else:
+            # Timeout - raise an exception
+            raise sqlite3.OperationalError("Database write lock timeout after 30 seconds")
     
     @contextmanager
     def get_write_session(self) -> Generator[sqlite3.Connection, None, None]:
         """Get database session for write operations with exclusive lock"""
-        with _db_write_lock:
-            # Use regular session but with global write lock
-            with self.get_session() as conn:
-                yield conn
+        # Try to acquire lock with timeout
+        if _db_write_lock.acquire(timeout=30):  # 30 second timeout
+            try:
+                # Use regular session but with global write lock
+                with self.get_session() as conn:
+                    yield conn
+            finally:
+                _db_write_lock.release()
+        else:
+            # Timeout - raise an exception
+            raise sqlite3.OperationalError("Database write lock timeout after 30 seconds")
     
     def execute_write_with_retry(self, operation_name: str, operation_func):
         """Execute write operation with retry logic for database locks"""
